@@ -2,6 +2,7 @@
 agent/views.py
 
 Day5: Agent 聊天接口 —— 接收用户消息，调用 DeepSeek，解析工具调用并返回回复。
+流程：AI 判断是否需要调工具 → 关键词兜底 → 调工具 → AI 生成自然回复
 """
 import json
 import os
@@ -46,12 +47,7 @@ SYSTEM_PROMPT = """你是「中渔小助」，中渔天下饵料公司的 AI 客
 
 
 def _extract_tool_call(ai_text: str):
-    """从 AI 回复中提取 JSON 格式的工具调用。
-    支持两种情况：
-    1. AI 直接输出 {"tool": "...", "arg": "..."}
-    2. AI 在回复中包含 JSON 片段
-    """
-    # 尝试直接解析整个回复
+    """从 AI 回复中提取 JSON 格式的工具调用。"""
     try:
         data = json.loads(ai_text.strip())
         if isinstance(data, dict) and "tool" in data and "arg" in data:
@@ -59,7 +55,6 @@ def _extract_tool_call(ai_text: str):
     except json.JSONDecodeError:
         pass
 
-    # 用正则提取 JSON 片段
     match = re.search(r'\{[^}]*"tool"[^}]*\}', ai_text, re.IGNORECASE)
     if match:
         try:
@@ -91,6 +86,39 @@ def _call_deepseek(messages):
         return f"AI 调用失败：{e}"
 
 
+def _keyword_match(message: str):
+    """关键词匹配兜底：当 AI 没输出 JSON 时，用简单规则识别意图。"""
+    # 订单查询
+    if "订单" in message or "查单" in message or "DD" in message.upper():
+        m = re.search(r'DD\d+', message.upper())
+        if m:
+            return "get_order_status", m.group()
+        return "get_order_status", message.strip()
+
+    # 库存查询
+    if any(kw in message for kw in ["库存", "有没有货", "还有多少", "缺货", "备货"]):
+        product = _extract_product_name(message)
+        if product:
+            return "check_inventory", product
+
+    # 产品查询
+    if any(kw in message for kw in ["多少钱", "价格", "规格", "介绍", "什么饵", "推荐", "钓"]):
+        product = _extract_product_name(message)
+        if product:
+            return "query_product", product
+
+    return None, None
+
+
+def _extract_product_name(message: str) -> str:
+    """从用户消息中提取产品名。"""
+    known = ["红虫颗粒", "九一八", "螺鲤3号", "蓝鲫X5", "速攻2号"]
+    for name in known:
+        if name in message:
+            return name
+    return message.strip()
+
+
 @csrf_exempt
 @require_POST
 def chat(request):
@@ -106,7 +134,7 @@ def chat(request):
 
     from agent.tools import call_tool
 
-    # 先尝试 AI 输出 JSON 工具调用
+    # 第 1 轮：让 AI 判断是否需要调工具
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_message},
@@ -114,7 +142,7 @@ def chat(request):
     ai_reply = _call_deepseek(messages)
     tool_name, tool_arg = _extract_tool_call(ai_reply)
 
-    # 兜底：关键词匹配（AI 没按 JSON 格式输出时使用）
+    # 兜底：关键词匹配
     if not tool_name:
         tool_name, tool_arg = _keyword_match(user_message)
 
@@ -124,49 +152,13 @@ def chat(request):
         messages.append({"role": "assistant", "content": ai_reply})
         messages.append({
             "role": "user",
-            "content": f"[工具 {tool_name} 返回结果]\n{tool_result}\n\n请根据以上工具结果，用自然语言回答用户的问题，不要提及工具调用过程。",
+            "content": (
+                f"[工具 {tool_name} 返回结果]\n{tool_result}\n\n"
+                "请根据以上工具结果，用自然语言回答用户的问题，不要提及工具调用过程。"
+            ),
         })
         final_reply = _call_deepseek(messages)
     else:
-        # AI 直接给出了自然语言回复
         final_reply = ai_reply
 
     return JsonResponse({"reply": final_reply})
-
-
-def _keyword_match(message: str):
-    """关键词匹配兜底：当 AI 没输出 JSON 时，用简单规则识别意图。"""
-    # 订单查询：包含订单号或"订单""查单"关键词
-    if "订单" in message or "查单" in message or "DD" in message.upper():
-        import re
-        m = re.search(r'DD\d+', message.upper())
-        if m:
-            return "get_order_status", m.group()
-        # 尝试提取可能的订单号
-        return "get_order_status", message.strip()
-
-    # 库存查询：包含"库存""有没有货""还有多少""缺货"
-    if any(kw in message for kw in ["库存", "有没有货", "还有多少", "缺货", "备货"]):
-        # 尝试提取产品名
-        product = _extract_product_name(message)
-        if product:
-            return "check_inventory", product
-
-    # 产品查询：包含"多少钱""价格""规格""介绍""什么饵""推荐"
-    if any(kw in message for kw in ["多少钱", "价格", "规格", "介绍", "什么饵", "推荐", "钓"]):
-        product = _extract_product_name(message)
-        if product:
-            return "query_product", product
-
-    # 无法匹配
-    return None, None
-
-
-def _extract_product_name(message: str) -> str:
-    """从用户消息中提取产品名。"""
-    known = ["红虫颗粒", "九一八", "螺鲤3号", "蓝鲫X5", "速攻2号"]
-    for name in known:
-        if name in message:
-            return name
-    # 没匹配到已知产品，返回整个消息让工具处理（会返回"没找到"）
-    return message.strip()
