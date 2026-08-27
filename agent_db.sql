@@ -18,22 +18,27 @@ SET NAMES utf8mb4;
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- ----------------------------
--- Table structure for conversations
+-- Table structure for products (先建，inventory 有外键引用)
 -- ----------------------------
+DROP TABLE IF EXISTS `inventory`;
 DROP TABLE IF EXISTS `conversations`;
-CREATE TABLE `conversations`  (
+DROP TABLE IF EXISTS `orders`;
+DROP TABLE IF EXISTS `products`;
+
+CREATE TABLE `products`  (
   `id` int NOT NULL AUTO_INCREMENT,
-  `session_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT '会话ID',
-  `role` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT 'user 或 assistant',
-  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '消息内容',
-  `created_at` datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '时间',
+  `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '产品名称',
+  `spec` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT '规格',
+  `target_fish` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT '适用鱼种',
+  `retail_price` decimal(10, 2) NULL DEFAULT 0.00 COMMENT '零售价',
+  `wholesale_price` decimal(10, 2) NULL DEFAULT 0.00 COMMENT '批发价',
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '产品描述',
   PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 8 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for inventory
 -- ----------------------------
-DROP TABLE IF EXISTS `inventory`;
 CREATE TABLE `inventory`  (
   `id` int NOT NULL AUTO_INCREMENT,
   `product_id` int NOT NULL COMMENT '对应products.id',
@@ -47,7 +52,6 @@ CREATE TABLE `inventory`  (
 -- ----------------------------
 -- Table structure for orders
 -- ----------------------------
-DROP TABLE IF EXISTS `orders`;
 CREATE TABLE `orders`  (
   `id` int NOT NULL AUTO_INCREMENT,
   `order_no` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '订单号',
@@ -61,18 +65,39 @@ CREATE TABLE `orders`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 6 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
--- Table structure for products
+-- Table structure for conversations
 -- ----------------------------
-DROP TABLE IF EXISTS `products`;
-CREATE TABLE `products`  (
+CREATE TABLE `conversations`  (
   `id` int NOT NULL AUTO_INCREMENT,
-  `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '产品名称',
-  `spec` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT '规格',
-  `target_fish` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT '适用鱼种',
-  `retail_price` decimal(10, 2) NULL DEFAULT 0.00 COMMENT '零售价',
-  `wholesale_price` decimal(10, 2) NULL DEFAULT 0.00 COMMENT '批发价',
-  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '产品描述',
+  `session_id` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT '会话ID',
+  `role` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT 'user 或 assistant',
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '消息内容',
+  `created_at` datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '时间',
   PRIMARY KEY (`id`) USING BTREE
-) ENGINE = InnoDB AUTO_INCREMENT = 8 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- ----------------------------
+-- 初始数据
+-- ----------------------------
+INSERT INTO `products` (`id`, `name`, `spec`, `target_fish`, `retail_price`, `wholesale_price`, `description`) VALUES
+(1, '红虫颗粒', '200g/包，1箱=10包', '鲫鱼、鲤鱼', 6.00, 4.00, '高蛋白浓腥味，野钓黑坑通用'),
+(2, '九一八', '150g/包，1箱=10包', '鲫鱼、鲤鱼', 5.00, 3.50, '经典广谱饵，四季可用'),
+(3, '螺鲤3号', '200g/包，1箱=10包', '鲤鱼', 7.00, 5.00, '薯香味浓，专攻大鲤鱼'),
+(4, '蓝鲫X5', '100g/包，1箱=10包', '鲫鱼、鲤鱼', 8.00, 6.00, '腥香结合，诱鱼快'),
+(5, '速攻2号', '200g/包，1箱=10包', '鲫鱼', 6.00, 4.50, '奶香浓郁，秋冬鲫鱼必备');
+
+INSERT INTO `inventory` (`id`, `product_id`, `stock`, `alert_line`) VALUES
+(1, 1, 320, 50),
+(2, 2, 80, 50),
+(3, 3, 30, 50),
+(4, 4, 150, 50),
+(5, 5, 0, 50);
+
+INSERT INTO `orders` (`id`, `order_no`, `customer_name`, `product_name`, `quantity`, `total_price`, `status`, `created_at`) VALUES
+(1, 'DD20240801', '张老板', '红虫颗粒+螺鲤3号', 150, 850.00, '已发货', '2024-08-01 10:30:00'),
+(2, 'DD20240815', '李老板', '九一八', 200, 700.00, '待发货', '2024-08-15 14:20:00'),
+(3, 'DD20240820', '王老板', '蓝鲫X5', 500, 3000.00, '已完成', '2024-08-20 09:15:00'),
+(4, 'DD20240901', '赵老板', '速攻2号', 100, 450.00, '已发货', '2024-09-01 16:45:00'),
+(5, 'DD20240910', '孙老板', '红虫颗粒', 300, 1200.00, '待发货', '2024-09-10 11:00:00');

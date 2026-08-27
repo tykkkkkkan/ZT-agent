@@ -2,9 +2,10 @@
 URL configuration for config project.
 
 Day4: 临时测试视图 /test-ai/ 用于验证 DeepSeek API 连通性。
+Day5: 注册 agent app 路由 /api/agent/
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include
 from django.http import JsonResponse
 
 import os
@@ -40,4 +41,5 @@ def test_ai(request):
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("test-ai/", test_ai, name="test_ai"),
+    path("api/agent/", include("agent.urls")),
 ]
