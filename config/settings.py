@@ -29,10 +29,15 @@ DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
 
+# CORS 配置 — 允许前端跨域请求
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+
 
 # Application definition
 # 注意：simpleui 必须放在 django.contrib.admin 之前
 INSTALLED_APPS = [
+    'corsheaders',
     'simpleui',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -44,6 +49,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.locale.LocaleMiddleware',

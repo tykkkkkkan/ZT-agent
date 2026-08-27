@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中渔天下 AI 助手</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .chat-container {
+            width: 100%;
+            max-width: 720px;
+            height: 90vh;
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(27, 94, 32, 0.12);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .chat-header {
+            background: linear-gradient(135deg, #2e7d32 0%, #43a047 100%);
+            color: white;
+            padding: 20px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .chat-header .logo {
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+        .chat-header h1 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        .chat-header .status {
+            font-size: 12px;
+            opacity: 0.85;
+            margin-top: 2px;
+        }
+        .chat-messages {
+            flex: 1;
+            padding: 20px 24px;
+            overflow-y: auto;
+            background: #fafafa;
+        }
+        .message {
+            margin-bottom: 16px;
+            display: flex;
+            gap: 10px;
+        }
+        .message.user {
+            flex-direction: row-reverse;
+        }
+        .message .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .message.user .avatar {
+            background: #2e7d32;
+            color: white;
+        }
+        .message.ai .avatar {
+            background: #e0e0e0;
+            color: #555;
+        }
+        .message .bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            line-height: 1.6;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .message.user .bubble {
+            background: #43a047;
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+        .message.ai .bubble {
+            background: #eceff1;
+            color: #333;
+            border-bottom-left-radius: 4px;
+        }
+        .message.error .bubble {
+            background: #ffebee;
+            color: #c62828;
+            border-bottom-left-radius: 4px;
+        }
+        .chat-input {
+            padding: 16px 24px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+        }
+        .chat-input textarea {
+            flex: 1;
+            padding: 10px 14px;
+            border: 2px solid #c8e6c9;
+            border-radius: 10px;
+            resize: none;
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+            height: 44px;
+        }
+        .chat-input textarea:focus {
+            border-color: #43a047;
+        }
+        .chat-input button {
+            padding: 0 24px;
+            background: linear-gradient(135deg, #2e7d32 0%, #43a047 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            min-width: 80px;
+        }
+        .chat-input button:hover:not(:disabled) {
+            opacity: 0.9;
+        }
+        .chat-input button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .typing-indicator {
+            display: inline-flex;
+            gap: 4px;
+        }
+        .typing-indicator span {
+            width: 6px;
+            height: 6px;
+            background: #999;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes bounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-6px); }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="chat-container">
+            <div class="chat-header">
+                <div class="logo">🎣</div>
+                <div>
+                    <h1>中渔天下 AI 助手</h1>
+                    <div class="status">在线 · 智能客服随时为您服务</div>
+                </div>
+            </div>
+
+            <div class="chat-messages" ref="messageBox">
+                <div
+                    v-for="(msg, idx) in messages"
+                    :key="idx"
+                    :class="['message', msg.role]"
+                >
+                    <div class="avatar">{{ msg.role === 'user' ? '我' : 'AI' }}</div>
+                    <div class="bubble" :class="{ error: msg.role === 'error' }">
+                        <span v-if="msg.typing" class="typing-indicator">
+                            <span></span><span></span><span></span>
+                        </span>
+                        <span v-else>{{ msg.content }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chat-input">
+                <textarea
+                    v-model="inputText"
+                    @keydown.enter.exact.prevent="sendMessage"
+                    placeholder="请输入您的问题，如：红虫颗粒多少钱一包"
+                    :disabled="loading"
+                ></textarea>
+                <button @click="sendMessage" :disabled="loading">
+                    {{ loading ? '思考中...' : '发送' }}
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, nextTick } = Vue;
+
+        createApp({
+            setup() {
+                const messages = ref([
+                    { role: 'ai', content: '您好！我是中渔小助 🎣\n可以帮您查询产品、库存、订单等信息，请问有什么可以帮您的？' }
+                ]);
+                const inputText = ref('');
+                const loading = ref(false);
+                const messageBox = ref(null);
+
+                const scrollToBottom = () => {
+                    nextTick(() => {
+                        if (messageBox.value) {
+                            messageBox.value.scrollTop = messageBox.value.scrollHeight;
+                        }
+                    });
+                };
+
+                const sendMessage = async () => {
+                    const text = inputText.value.trim();
+                    if (!text || loading.value) return;
+
+                    messages.value.push({ role: 'user', content: text });
+                    inputText.value = '';
+                    loading.value = true;
+                    scrollToBottom();
+
+                    // 添加"正在思考"占位
+                    const typingIdx = messages.value.length;
+                    messages.value.push({ role: 'ai', content: '正在思考', typing: true });
+                    scrollToBottom();
+
+                    try {
+                        const resp = await axios.post('http://localhost:8000/api/agent/chat/', {
+                            message: text
+                        }, {
+                            timeout: 30000
+                        });
+                        // 替换掉占位消息
+                        messages.value[typingIdx] = { role: 'ai', content: resp.data.reply };
+                    } catch (err) {
+                        messages.value[typingIdx] = {
+                            role: 'error',
+                            content: '⚠️ 连接后端失败，请检查后端服务是否启动。'
+                        };
+                    }
+
+                    loading.value = false;
+                    scrollToBottom();
+                };
+
+                return { messages, inputText, loading, messageBox, sendMessage };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
