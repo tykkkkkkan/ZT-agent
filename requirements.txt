@@ -1,0 +1,26 @@
+# 中渔天下 ZT-agent 依赖清单
+# 安装：pip install -r requirements.txt
+
+# Web 框架
+Django==5.2.17
+
+# 数据库（MySQL）
+PyMySQL==1.2.0
+
+# 认证（JWT）
+djangorestframework==3.18.0
+djangorestframework-simplejwt==5.5.1
+PyJWT==2.13.0
+
+# 跨域
+django-cors-headers==4.9.0
+
+# 后台管理 UI
+django-simpleui==2026.1.13
+django-unfold==0.104.1
+
+# AI 调用（DeepSeek 兼容 OpenAI SDK）
+openai==3.5.0
+
+# 环境变量
+python-dotenv==1.2.3
