@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工厂介绍 - 中渔天下</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/theme.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        paper: { DEFAULT: '#F6F1E7', deep: '#ECE4D4', card: '#FBF8F1' },
+                        brand: {
+                            50: '#EAF4EF', 100: '#DCEDE6', 200: '#BFE0D3', 300: '#8FC4B1',
+                            400: '#4FA386', 500: '#2C8466', 600: '#1F6B54', 700: '#185647',
+                            800: '#124037', 900: '#0C2A24',
+                        },
+                        sunset: {
+                            50: '#FCEFE6', 100: '#FBE6D8', 200: '#F7CBB2', 300: '#F4B495',
+                            400: '#ED935F', 500: '#E2703A', 600: '#D65F2A', 700: '#B5481C',
+                        },
+                        lake: {
+                            50: '#EBF5F7', 100: '#D2E9ED', 200: '#A6D4DC', 300: '#6FBAC6',
+                            400: '#3E9AA9', 500: '#2C7C8C', 600: '#236472', 700: '#1B4E5A',
+                            800: '#143B44',
+                        },
+                        ink: {
+                            900: '#15211D', 800: '#243029', 700: '#3A473F', 600: '#54615A',
+                            500: '#738079', 400: '#9AA89F', 300: '#C3CCC4',
+                        },
+                        white: '#FBF8F1',
+                        stone: { 50:'#F6F1E7',100:'#ECE4D4',200:'#E2D8C6',300:'#C9BBA3',400:'#9AA89F',500:'#738079',600:'#54615A',700:'#3A473F',800:'#243029',900:'#15211D' },
+                        slate: { 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
+                        emerald:{ 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
+                        green: { 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
+                        blue:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        sky:    { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        cyan:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        teal:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        indigo: { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        orange: { 50:'#FCEFE6',100:'#FBE6D8',200:'#F7CBB2',300:'#F4B495',400:'#ED935F',500:'#E2703A',600:'#D65F2A',700:'#B5481C',800:'#9A3A18',900:'#7E3013' },
+                        amber:  { 50:'#FCEFE6',100:'#FBE6D8',200:'#F7CBB2',300:'#F4B495',400:'#ED935F',500:'#E2703A',600:'#D65F2A',700:'#B5481C',800:'#9A3A18',900:'#7E3013' },
+                        red:    { 50:'#FDECEA',100:'#FAD2CC',200:'#F4A89C',300:'#EA7A6B',400:'#DC5240',500:'#C73320',600:'#A8281A',700:'#821E14',800:'#5E160F',900:'#43100B' }
+                    },
+                    fontFamily: {
+                        sans: ['Noto Sans SC', '-apple-system', 'BlinkMacSystemFont', 'PingFang SC', 'Microsoft YaHei', 'sans-serif'],
+                        display: ['Noto Serif SC', 'Noto Sans SC', 'serif'],
+                    }
+                }
+            }
+        };
+    </script>
+    
+<script src="auth.js"></script>
+</head>
+<body class="bg-stone-50 font-sans text-ink-800 antialiased">
+    <a class="skip-link" href="#main">跳到主内容</a>
+
+<nav id="navbar" aria-label="主导航" class="sticky top-0 z-50 bg-white/80 backdrop-blur-md transition-all">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <a href="index.html" class="flex items-center gap-2 text-xl font-bold text-ink-900">
+            <span class="text-brand-600" style="display:inline-flex"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.5em;height:1.5em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></span><span>中渔天下</span>
+        </a>
+        <div class="hidden md:flex items-center gap-1">
+            <a href="index.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">首页</a>
+            <a href="products.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">产品</a>
+            <a href="factory.html" class="nav-link active px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition" aria-current="page">工厂</a>
+            <a href="custom.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">定制</a>
+            <a href="order.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">下单</a>
+            <a href="order_query.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">查订单</a>
+            <a href="contact.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">联系</a>
+            <a href="index.html#ai-section" class="ml-3 inline-flex items-center gap-1.5 px-5 py-2 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition shadow-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 咨询 AI</a>
+        </div>
+                <div class="hidden md:flex items-center gap-1">
+            <a href="login.html" data-auth-nav="guest" class="px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">登录</a>
+            <a href="register.html" data-auth-nav="guest" class="px-4 py-2 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition shadow-sm">注册</a>
+            <div data-auth-nav="user" class="hidden items-center gap-2">
+                <span class="text-sm text-ink-600">你好，<span data-auth-username class="font-semibold text-brand-600"></span></span>
+                <button onclick="AUTH.logout()" class="px-3 py-2 text-sm text-ink-600 hover:text-red-600 transition">退出</button>
+            </div>
+        </div>
+
+        <button class="md:hidden p-2 text-ink-600" onclick="document.getElementById('navLinks').classList.toggle('hidden')">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+    </div>
+    <div id="navLinks" class="hidden md:hidden bg-white border-t border-stone-200 px-6 py-3 space-y-1">
+        <a href="index.html" class="block py-2 text-sm text-ink-700">首页</a>
+        <a href="products.html" class="block py-2 text-sm text-ink-700">产品</a>
+        <a href="factory.html" class="block py-2 text-sm text-brand-700 font-semibold">工厂</a>
+        <a href="custom.html" class="block py-2 text-sm text-ink-700">定制</a>
+        <a href="order.html" class="block py-2 text-sm text-ink-700">下单</a>
+        <a href="order_query.html" class="block py-2 text-sm text-ink-700">查订单</a>
+        <a href="contact.html" class="block py-2 text-sm text-ink-700">联系</a>        <a href="login.html" data-auth-nav="guest" class="block py-2 text-sm text-ink-700">登录</a>
+        <a href="register.html" data-auth-nav="guest" class="block py-2 text-sm text-ink-700">注册</a>
+        <div data-auth-nav="user" class="hidden py-2 text-sm text-ink-700">你好，<span data-auth-username class="font-semibold text-brand-600"></span> <button onclick="AUTH.logout()" class="ml-1 text-red-600">退出</button></div>
+
+    </div>
+</nav>
+
+<main id="main" tabindex="-1">
+    <!-- Hero -->
+    <section class="relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-br from-brand-50 via-white to-lake-50"></div>
+        <div class="absolute top-10 -right-20 w-80 h-80 bg-brand-200/30 rounded-full blur-3xl"></div>
+        <div class="absolute -bottom-20 -left-20 w-72 h-72 bg-lake-200/30 rounded-full blur-3xl"></div>
+
+        <div class="relative max-w-7xl mx-auto px-6 py-16 lg:py-20">
+            <div class="grid lg:grid-cols-2 gap-12 items-center">
+                <div>
+                    <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-100 text-brand-700 text-xs font-semibold rounded-full mb-4">
+                        <span class="fish-swim inline-block"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4H4a2 2 0 0 0-2 2z"/><path d="M17 18h1M12 18h1M7 18h1"/></svg></span> 自有工厂 · 实力可见
+                    </div>
+                    <h1 class="text-4xl lg:text-5xl font-extrabold text-ink-900 leading-tight">
+                        2000㎡ 标准化车间<br><span class="text-brand-600">3 条自动化生产线</span>
+                    </h1>
+                    <p class="mt-4 text-ink-500 text-lg">中渔天下成立于 2015 年，总部位于山东济南，是一家专业从事钓鱼饵料研发、生产与批发的综合型企业。</p>
+                    <p class="mt-3 text-ink-500 leading-relaxed">
+                        凭借过硬的品质和完善的服务，我们已与全国 500 余家经销商建立长期合作关系，产品覆盖全国 30 多个省市。每批产品经过严格品控，让您用得放心。
+                    </p>
+                </div>
+                <div class="relative">
+                    <div class="absolute -top-4 -left-4 w-full h-full bg-brand-200 rounded-2xl"></div>
+                    <img src="assets/images/factory-aerial.png"
+                         alt="中渔天下工厂鸟瞰"
+                         class="relative w-full h-72 lg:h-96 object-cover rounded-2xl shadow-2xl" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 数据条 -->
+    <section class="bg-ink-900 py-12">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 text-center">
+                <div><div class="text-3xl font-extrabold text-white">2000㎡</div><div class="mt-1 text-sm text-ink-400">标准化车间</div></div>
+                <div><div class="text-3xl font-extrabold text-white">3 条</div><div class="mt-1 text-sm text-ink-400">自动化产线</div></div>
+                <div><div class="text-3xl font-extrabold text-white">500+</div><div class="mt-1 text-sm text-ink-400">合作经销商</div></div>
+                <div><div class="text-3xl font-extrabold text-white">30+</div><div class="mt-1 text-sm text-ink-400">覆盖省市</div></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 生产流程 -->
+    <section class="py-20">
+        <div class="max-w-5xl mx-auto px-6">
+            <div class="text-center mb-12">
+                <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-100 text-brand-700 text-xs font-semibold rounded-full mb-3">
+                    <span class="fish-swim inline-block"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg></span> 生产流程
+                </div>
+                <h2 class="text-3xl font-bold text-ink-900">从原料到成品 · 每一步都可追溯</h2>
+            </div>
+
+            <div class="space-y-4">
+                <div class="step-card bg-white rounded-2xl border border-stone-200 p-6 flex items-start gap-5 hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-gradient-to-br from-brand-500 to-lake-600 text-white rounded-xl flex items-center justify-center text-lg flex-shrink-0 shadow">1</div>
+                    <div>
+                        <h3 class="text-lg font-bold text-ink-900 mb-1">原料精选</h3>
+                        <p class="text-ink-500 leading-relaxed">选用优质原料供应商，每批原料到厂均需通过感官、含水率、蛋白含量等多项检测，从源头把控品质。</p>
+                    </div>
+                </div>
+
+                <div class="step-card bg-white rounded-2xl border border-stone-200 p-6 flex items-start gap-5 hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-gradient-to-br from-brand-500 to-lake-600 text-white rounded-xl flex items-center justify-center text-lg flex-shrink-0 shadow">2</div>
+                    <div>
+                        <h3 class="text-lg font-bold text-ink-900 mb-1">配方调配</h3>
+                        <p class="text-ink-500 leading-relaxed">资深钓友团队 + 配方工程师联合研发，根据季节、鱼种、钓法持续迭代优化配方，已通过数千次实战验证。</p>
+                    </div>
+                </div>
+
+                <div class="step-card bg-white rounded-2xl border border-stone-200 p-6 flex items-start gap-5 hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-gradient-to-br from-brand-500 to-lake-600 text-white rounded-xl flex items-center justify-center text-lg flex-shrink-0 shadow">3</div>
+                    <div>
+                        <h3 class="text-lg font-bold text-ink-900 mb-1">自动化生产</h3>
+                        <p class="text-ink-500 leading-relaxed">3 条全自动生产线，从配料、搅拌、成型到包装全程机械化，单线日产能达 3 吨，效率稳定。</p>
+                    </div>
+                </div>
+
+                <div class="step-card bg-white rounded-2xl border border-stone-200 p-6 flex items-start gap-5 hover:shadow-md transition">
+                    <div class="w-12 h-12 bg-gradient-to-br from-brand-500 to-lake-600 text-white rounded-xl flex items-center justify-center text-lg flex-shrink-0 shadow">4</div>
+                    <div>
+                        <h3 class="text-lg font-bold text-ink-900 mb-1">出厂品控</h3>
+                        <p class="text-ink-500 leading-relaxed">每批次留样保存 3 个月可追溯，每包产品经过称重、密封、抽检三重检验，确保出厂零瑕疵。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 车间 & 品控 实拍 -->
+    <section class="py-20 bg-stone-50">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-12">
+                <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-100 text-brand-700 text-xs font-semibold rounded-full mb-3">
+                    <span class="fish-swim inline-block"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 7h4l2-3h6l2 3h4v13H3z"/><circle cx="12" cy="13" r="4"/></svg></span> 工厂实拍
+                </div>
+                <h2 class="text-3xl font-bold text-ink-900">透明生产 · 看得见的品质</h2>
+            </div>
+            <div class="grid md:grid-cols-2 gap-8">
+                <!-- 左：自动化车间 -->
+                <div>
+                    <div class="relative">
+                        <div class="absolute -top-4 -left-4 w-full h-72 bg-brand-200 rounded-2xl"></div>
+                        <img src="assets/images/factory-workshop.png"
+                             alt="自动化生产车间"
+                             class="relative w-full h-72 object-cover rounded-2xl shadow-2xl" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
+                    </div>
+                    <div class="mt-5">
+                        <h3 class="text-xl font-bold text-ink-900 mb-2">全自动化生产车间</h3>
+                        <p class="text-ink-500 text-sm leading-relaxed">3 条自动化生产线，从配料、搅拌、膨化成型到包装全程机械化，稳定高效。</p>
+                    </div>
+                </div>
+                <!-- 右：品控实验室 -->
+                <div>
+                    <div class="relative">
+                        <div class="absolute -top-4 -right-4 w-full h-72 bg-lake-200 rounded-2xl"></div>
+                        <img src="assets/images/factory-lab.png"
+                             alt="品控实验室"
+                             class="relative w-full h-72 object-cover rounded-2xl shadow-2xl" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
+                    </div>
+                    <div class="mt-5">
+                        <h3 class="text-xl font-bold text-ink-900 mb-2">出厂品控实验室</h3>
+                        <p class="text-ink-500 text-sm leading-relaxed">每批次产品通过含水率、蛋白含量、感官等多项检测，留样保存 3 个月可追溯。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 资质 -->
+    <section class="py-20 bg-white">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-12">
+                <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-100 text-brand-700 text-xs font-semibold rounded-full mb-3">
+                    <span class="fish-swim inline-block"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M5 4H3v3a3 3 0 0 0 3 3M19 4h2v3a3 3 0 0 1-3 3"/></svg></span> 资质认证
+                </div>
+                <h2 class="text-3xl font-bold text-ink-900">合规生产 · 用得放心</h2>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div class="bg-white rounded-2xl p-6 text-center shadow-sm hover:shadow-md transition">
+                    <div class="text-4xl mb-2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></div>
+                    <div class="font-semibold text-ink-800">SC 生产许可</div>
+                    <div class="text-xs text-ink-500 mt-1">食品级生产资质</div>
+                </div>
+                <div class="bg-white rounded-2xl p-6 text-center shadow-sm hover:shadow-md transition">
+                    <div class="text-4xl mb-2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/></svg></div>
+                    <div class="font-semibold text-ink-800">第三方检测</div>
+                    <div class="text-xs text-ink-500 mt-1">每批次合格报告</div>
+                </div>
+                <div class="bg-white rounded-2xl p-6 text-center shadow-sm hover:shadow-md transition">
+                    <div class="text-4xl mb-2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4H4a2 2 0 0 0-2 2z"/><path d="M17 18h1M12 18h1M7 18h1"/></svg></div>
+                    <div class="font-semibold text-ink-800">ISO 9001</div>
+                    <div class="text-xs text-ink-500 mt-1">质量管理体系</div>
+                </div>
+                <div class="bg-white rounded-2xl p-6 text-center shadow-sm hover:shadow-md transition">
+                    <div class="text-4xl mb-2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M11 20A7 7 0 0 1 4 13C4 7 11 4 20 4c0 9-3 16-9 16z"/><path d="M4 20c4-6 8-8 12-9"/></svg></div>
+                    <div class="font-semibold text-ink-800">绿色环保</div>
+                    <div class="text-xs text-ink-500 mt-1">可降解包装</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="py-16">
+        <div class="max-w-4xl mx-auto px-6 text-center">
+            <h2 class="text-3xl font-bold text-ink-900 mb-3">欢迎来厂考察 · 实地看货</h2>
+            <p class="text-ink-500 mb-6">提前一天预约，我们安排专人接待，全程陪同讲解生产工艺</p>
+            <div class="flex flex-wrap justify-center gap-3">
+                <a href="contact.html" class="inline-flex items-center gap-2 px-7 py-3 bg-brand-600 text-white text-sm font-semibold rounded-xl hover:bg-brand-700 transition shadow-md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 联系预约</a>
+                <a href="products.html" class="inline-flex items-center gap-2 px-7 py-3 bg-white border border-brand-200 text-brand-700 text-sm font-semibold rounded-xl hover:border-brand-400 transition">查看产品 →</a>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- 页脚 -->
+<footer class="bg-slate-900 text-stone-300">
+    <div class="max-w-7xl mx-auto px-6 py-16">
+        <div class="grid md:grid-cols-4 gap-10">
+            <div><h4 class="text-lg font-bold text-white mb-4">中渔天下</h4><p class="text-stone-400 text-sm leading-relaxed">山东济南 · 饵料生产批发<br>自有工厂 · 服务 500+ 经销商</p></div>
+            <div><h4 class="text-lg font-bold text-white mb-4">快速导航</h4><ul class="space-y-2 text-sm"><li><a href="index.html" class="hover:text-brand-400 transition">首页</a></li><li><a href="products.html" class="hover:text-brand-400 transition">产品中心</a></li><li><a href="factory.html" class="hover:text-brand-400 transition">工厂介绍</a></li><li><a href="order_query.html" class="hover:text-brand-400 transition">订单查询</a></li></ul></div>
+            <div><h4 class="text-lg font-bold text-white mb-4">服务</h4><ul class="space-y-2 text-sm"><li><a href="custom.html" class="hover:text-brand-400 transition">定制服务</a></li><li><a href="order.html" class="hover:text-brand-400 transition">在线下单</a></li><li><a href="contact.html" class="hover:text-brand-400 transition">联系我们</a></li></ul></div>
+            <div><h4 class="text-lg font-bold text-white mb-4">联系方式</h4><ul class="space-y-2 text-sm text-stone-400"><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.4 2.1L8.1 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.4c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2z"/></svg> 400-888-8888</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg> service@zhongyutianxia.com</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg> 山东省济南市天桥区</li></ul></div>
+        </div>
+        <div class="mt-12 pt-8 border-t border-slate-800 text-center text-sm text-stone-500">© 2026 中渔天下 · 专注好饵料，助你连竿爆护</div>
+    </div>
+</footer>
+
+<script>
+    window.addEventListener('scroll', () => {
+        const n = document.getElementById('navbar');
+        if (window.scrollY > 10) n.classList.add('nav-scrolled');
+        else n.classList.remove('nav-scrolled');
+    });
+</script>
+
+<script>document.addEventListener('DOMContentLoaded', function(){ if (window.AUTH) AUTH.syncNav(); });</script>
+</body>
+</html>

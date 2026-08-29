@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>注册 - 中渔天下</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/theme.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        paper: { DEFAULT: '#F6F1E7', deep: '#ECE4D4', card: '#FBF8F1' },
+                        brand: { 50: '#EAF4EF', 100: '#DCEDE6', 200: '#BFE0D3', 300: '#8FC4B1', 400: '#4FA386', 500: '#2C8466', 600: '#1F6B54', 700: '#185647', 800: '#124037', 900: '#0C2A24' },
+                        sunset: { 50: '#FCEFE6', 100: '#FBE6D8', 200: '#F7CBB2', 300: '#F4B495', 400: '#ED935F', 500: '#E2703A', 600: '#D65F2A', 700: '#B5481C', 800: '#9A3A18' },
+                        lake: { 50: '#EBF5F7', 100: '#D2E9ED', 200: '#A6D4DC', 300: '#6FBAC6', 400: '#3E9AA9', 500: '#2C7C8C', 600: '#236472', 700: '#1B4E5A', 800: '#143B44' },
+                        ink: { 900: '#15211D', 800: '#243029', 700: '#3A473F', 600: '#54615A', 500: '#738079', 400: '#9AA89F', 300: '#C3CCC4' },
+                        white: '#FBF8F1',
+                        stone: { 50:'#F6F1E7',100:'#ECE4D4',200:'#E2D8C6',300:'#C9BBA3',400:'#9AA89F',500:'#738079',600:'#54615A',700:'#3A473F',800:'#243029',900:'#15211D' },
+                        slate: { 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
+                        emerald:{ 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
+                        green: { 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
+                        blue:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        sky:    { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        cyan:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        teal:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        indigo: { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        orange: { 50:'#FCEFE6',100:'#FBE6D8',200:'#F7CBB2',300:'#F4B495',400:'#ED935F',500:'#E2703A',600:'#D65F2A',700:'#B5481C',800:'#9A3A18',900:'#7E3013' },
+                        amber:  { 50:'#FCEFE6',100:'#FBE6D8',200:'#F7CBB2',300:'#F4B495',400:'#ED935F',500:'#E2703A',600:'#D65F2A',700:'#B5481C',800:'#9A3A18',900:'#7E3013' },
+                        red:    { 50:'#FDECEA',100:'#FAD2CC',200:'#F4A89C',300:'#EA7A6B',400:'#DC5240',500:'#C73320',600:'#A8281A',700:'#821E14',800:'#5E160F',900:'#43100B' }
+                    },
+                    fontFamily: {
+                        sans: ['Noto Sans SC', '-apple-system', 'BlinkMacSystemFont', 'PingFang SC', 'Microsoft YaHei', 'sans-serif'],
+                        display: ['Noto Serif SC', 'Noto Sans SC', 'serif'],
+                    }
+                }
+            }
+        };
+    </script>
+    <script src="auth.js"></script>
+</head>
+<body class="bg-stone-50 font-sans text-ink-800 antialiased">
+    <a class="skip-link" href="#main">跳到主内容</a>
+
+    <!-- 顶部导航 -->
+    <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-stone-100">
+        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <a href="index.html" class="flex items-center gap-2 text-xl font-bold text-ink-900">
+                <span class="text-brand-600" style="display:inline-flex"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.5em;height:1.5em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></span>
+                <span>中渔天下</span>
+            </a>
+            <a href="index.html" class="text-sm text-ink-600 hover:text-brand-600 transition">返回首页</a>
+        </div>
+    </nav>
+
+    <main id="main" tabindex="-1" class="min-h-[calc(100vh-4rem)] flex items-center justify-center px-6 py-12">
+        <div class="w-full max-w-md">
+            <div class="bg-white rounded-2xl border border-brand-100 shadow-xl shadow-brand-500/5 p-8">
+                <div class="text-center mb-8">
+                    <div class="w-14 h-14 mx-auto bg-gradient-to-br from-brand-500 to-lake-600 rounded-2xl flex items-center justify-center text-white mb-4 shadow-lg shadow-brand-500/30">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.8em;height:1.8em" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </div>
+                    <h1 class="text-2xl font-bold text-ink-900">创建账号</h1>
+                    <p class="text-sm text-ink-500 mt-1">注册中渔天下，享受批发报价与订单跟踪</p>
+                </div>
+
+                <!-- 全局错误 -->
+                <div id="regError" class="hidden mb-5 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm"></div>
+
+                <form id="registerForm" class="space-y-4" novalidate>
+                    <div>
+                        <label for="f-username" class="block text-sm font-semibold text-ink-800 mb-2">用户名 <span class="text-sunset-600">*</span></label>
+                        <input id="f-username" name="username" type="text" required maxlength="150" autocomplete="username"
+                               aria-invalid="false" aria-describedby="f-username-error"
+                               class="form-input w-full px-4 py-3 border border-stone-200 rounded-xl text-sm transition" placeholder="4-30 位字母/数字/下划线" />
+                        <p id="f-username-error" class="field-error hidden"></p>
+                    </div>
+                    <div>
+                        <label for="f-email" class="block text-sm font-semibold text-ink-800 mb-2">邮箱 <span class="text-sunset-600">*</span></label>
+                        <input id="f-email" name="email" type="email" required maxlength="254" autocomplete="email"
+                               aria-invalid="false" aria-describedby="f-email-error"
+                               class="form-input w-full px-4 py-3 border border-stone-200 rounded-xl text-sm transition" placeholder="用于接收订单通知" />
+                        <p id="f-email-error" class="field-error hidden"></p>
+                    </div>
+                    <div>
+                        <label for="f-password" class="block text-sm font-semibold text-ink-800 mb-2">密码 <span class="text-sunset-600">*</span></label>
+                        <input id="f-password" name="password" type="password" required autocomplete="new-password"
+                               aria-invalid="false" aria-describedby="f-password-error"
+                               class="form-input w-full px-4 py-3 border border-stone-200 rounded-xl text-sm transition" placeholder="至少 8 位，含字母和数字" />
+                        <p id="f-password-error" class="field-error hidden"></p>
+                    </div>
+                    <div>
+                        <label for="f-confirm" class="block text-sm font-semibold text-ink-800 mb-2">确认密码 <span class="text-sunset-600">*</span></label>
+                        <input id="f-confirm" name="confirm_password" type="password" required autocomplete="new-password"
+                               aria-invalid="false" aria-describedby="f-confirm-error"
+                               class="form-input w-full px-4 py-3 border border-stone-200 rounded-xl text-sm transition" placeholder="再次输入密码" />
+                        <p id="f-confirm-error" class="field-error hidden"></p>
+                    </div>
+                    <button type="submit" id="submitBtn" class="w-full py-3.5 bg-gradient-to-r from-brand-600 to-lake-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-brand-500/30 transition flex items-center justify-center gap-2">
+                        <span id="submitBtnIcon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span> <span id="submitBtnText">注册</span>
+                    </button>
+                </form>
+
+                <p class="text-sm text-center text-ink-500 mt-6">
+                    已有账号？<a href="login.html" class="text-brand-600 font-semibold hover:text-brand-700 transition">直接登录</a>
+                </p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        (function () {
+            if (AUTH.redirectIfLoggedIn()) return;
+
+            const form = document.getElementById('registerForm');
+            const SPINNER = '<svg class="animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.2-8.56"/></svg>';
+            const USER_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>';
+            const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+            function setFieldError(el, msg) {
+                const tip = document.getElementById(el.id + '-error');
+                el.setAttribute('aria-invalid', msg ? 'true' : 'false');
+                if (tip) { tip.textContent = msg || ''; tip.classList.toggle('hidden', !msg); }
+            }
+
+            function validateField(el) {
+                const v = el.value.trim();
+                if (el.id === 'f-username') {
+                    if (!v) return '请输入用户名';
+                    if (v.length < 4) return '用户名至少 4 个字符';
+                }
+                if (el.id === 'f-email') {
+                    if (!v) return '请输入邮箱';
+                    if (!EMAIL_RE.test(v)) return '请输入正确的邮箱地址';
+                }
+                if (el.id === 'f-password') {
+                    if (!v) return '请输入密码';
+                    if (v.length < 8) return '密码至少 8 位';
+                }
+                if (el.id === 'f-confirm') {
+                    if (!v) return '请再次输入密码';
+                    if (v !== document.getElementById('f-password').value) return '两次输入的密码不一致';
+                }
+                return '';
+            }
+
+            async function doRegister() {
+                const btn = document.getElementById('submitBtn');
+                const icon = document.getElementById('submitBtnIcon');
+                const text = document.getElementById('submitBtnText');
+                const err = document.getElementById('regError');
+                err.classList.add('hidden');
+
+                let firstInvalid = null;
+                form.querySelectorAll('input').forEach(el => {
+                    const msg = validateField(el);
+                    setFieldError(el, msg);
+                    if (msg && !firstInvalid) firstInvalid = el;
+                });
+                if (firstInvalid) { firstInvalid.focus(); return; }
+
+                btn.disabled = true;
+                icon.innerHTML = SPINNER;
+                text.textContent = '注册中…';
+
+                try {
+                    const resp = await fetch('/api/auth/register/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            username: document.getElementById('f-username').value.trim(),
+                            email: document.getElementById('f-email').value.trim(),
+                            password: document.getElementById('f-password').value,
+                            confirm_password: document.getElementById('f-confirm').value,
+                        })
+                    });
+                    const d = await resp.json();
+                    if (resp.ok) {
+                        // 注册成功自动登录并跳首页
+                        AUTH.setTokens(d.access, d.refresh);
+                        AUTH.setUser(d.user);
+                        location.href = '/index.html';
+                    } else {
+                        // 后端字段错误（username/email/password/confirm_password）→ 映射到字段
+                        let shown = false;
+                        if (d.username) { setFieldError(document.getElementById('f-username'), d.username[0]); shown = true; }
+                        if (d.email) { setFieldError(document.getElementById('f-email'), d.email[0]); shown = true; }
+                        if (d.password) { setFieldError(document.getElementById('f-password'), d.password[0]); shown = true; }
+                        if (d.confirm_password) { setFieldError(document.getElementById('f-confirm'), d.confirm_password[0]); shown = true; }
+                        if (!shown) {
+                            err.textContent = (d.detail || '注册失败，请稍后重试');
+                            err.classList.remove('hidden');
+                        }
+                    }
+                } catch (e) {
+                    err.textContent = '网络异常，请稍后重试';
+                    err.classList.remove('hidden');
+                } finally {
+                    btn.disabled = false;
+                    icon.innerHTML = USER_ICON;
+                    text.textContent = '注册';
+                }
+            }
+
+            form.addEventListener('submit', (e) => { e.preventDefault(); doRegister(); });
+            form.querySelectorAll('input').forEach(el => {
+                el.addEventListener('input', () => setFieldError(el, ''));
+                el.addEventListener('blur', () => setFieldError(el, validateField(el)));
+            });
+        })();
+    </script>
+</body>
+</html>

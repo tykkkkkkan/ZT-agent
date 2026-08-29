@@ -3,270 +3,795 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>中渔天下 AI 助手</title>
+    <title>中渔天下 - 专注好饵料，助你连竿爆护</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/theme.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        paper: { DEFAULT: '#F6F1E7', deep: '#ECE4D4', card: '#FBF8F1' },
+                        brand: {
+                            50: '#EAF4EF', 100: '#DCEDE6', 200: '#BFE0D3', 300: '#8FC4B1',
+                            400: '#4FA386', 500: '#2C8466', 600: '#1F6B54', 700: '#185647',
+                            800: '#124037', 900: '#0C2A24',
+                        },
+                        sunset: {
+                            50: '#FCEFE6', 100: '#FBE6D8', 200: '#F7CBB2', 300: '#F4B495',
+                            400: '#ED935F', 500: '#E2703A', 600: '#D65F2A', 700: '#B5481C',
+                        },
+                        lake: {
+                            50: '#EBF5F7', 100: '#D2E9ED', 200: '#A6D4DC', 300: '#6FBAC6',
+                            400: '#3E9AA9', 500: '#2C7C8C', 600: '#236472', 700: '#1B4E5A',
+                            800: '#143B44',
+                        },
+                        ink: {
+                            900: '#15211D', 800: '#243029', 700: '#3A473F', 600: '#54615A',
+                            500: '#738079', 400: '#9AA89F', 300: '#C3CCC4',
+                        },
+                        white: '#FBF8F1',
+                        stone: { 50:'#F6F1E7',100:'#ECE4D4',200:'#E2D8C6',300:'#C9BBA3',400:'#9AA89F',500:'#738079',600:'#54615A',700:'#3A473F',800:'#243029',900:'#15211D' },
+                        slate: { 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
+                        emerald:{ 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
+                        green: { 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
+                        blue:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        sky:    { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        cyan:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        teal:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        indigo: { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        orange: { 50:'#FCEFE6',100:'#FBE6D8',200:'#F7CBB2',300:'#F4B495',400:'#ED935F',500:'#E2703A',600:'#D65F2A',700:'#B5481C',800:'#9A3A18',900:'#7E3013' },
+                        amber:  { 50:'#FCEFE6',100:'#FBE6D8',200:'#F7CBB2',300:'#F4B495',400:'#ED935F',500:'#E2703A',600:'#D65F2A',700:'#B5481C',800:'#9A3A18',900:'#7E3013' },
+                        red:    { 50:'#FDECEA',100:'#FAD2CC',200:'#F4A89C',300:'#EA7A6B',400:'#DC5240',500:'#C73320',600:'#A8281A',700:'#821E14',800:'#5E160F',900:'#43100B' }
+                    },
+                    fontFamily: {
+                        sans: ['Noto Sans SC', '-apple-system', 'BlinkMacSystemFont', 'PingFang SC', 'Microsoft YaHei', 'sans-serif'],
+                        display: ['Noto Serif SC', 'Noto Sans SC', 'serif'],
+                    }
+                }
+            }
+        };
+    </script>
+    
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        .chat-container {
-            width: 100%;
-            max-width: 720px;
-            height: 90vh;
-            background: #ffffff;
-            border-radius: 16px;
-            box-shadow: 0 8px 32px rgba(27, 94, 32, 0.12);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-        .chat-header {
-            background: linear-gradient(135deg, #2e7d32 0%, #43a047 100%);
-            color: white;
-            padding: 20px 24px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        .chat-header .logo {
-            width: 40px;
-            height: 40px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-        }
-        .chat-header h1 {
-            font-size: 18px;
-            font-weight: 600;
-        }
-        .chat-header .status {
-            font-size: 12px;
-            opacity: 0.85;
-            margin-top: 2px;
-        }
-        .chat-messages {
-            flex: 1;
-            padding: 20px 24px;
-            overflow-y: auto;
-            background: #fafafa;
-        }
-        .message {
-            margin-bottom: 16px;
-            display: flex;
-            gap: 10px;
-        }
-        .message.user {
-            flex-direction: row-reverse;
-        }
-        .message .avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-            flex-shrink: 0;
-        }
-        .message.user .avatar {
-            background: #2e7d32;
-            color: white;
-        }
-        .message.ai .avatar {
-            background: #e0e0e0;
-            color: #555;
-        }
-        .message .bubble {
-            max-width: 70%;
-            padding: 12px 16px;
-            border-radius: 12px;
-            line-height: 1.6;
-            font-size: 14px;
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-        .message.user .bubble {
-            background: #43a047;
-            color: white;
-            border-bottom-right-radius: 4px;
-        }
-        .message.ai .bubble {
-            background: #eceff1;
-            color: #333;
-            border-bottom-left-radius: 4px;
-        }
-        .message.error .bubble {
-            background: #ffebee;
-            color: #c62828;
-            border-bottom-left-radius: 4px;
-        }
-        .chat-input {
-            padding: 16px 24px;
-            background: white;
-            border-top: 1px solid #e0e0e0;
-            display: flex;
-            gap: 10px;
-        }
-        .chat-input textarea {
-            flex: 1;
-            padding: 10px 14px;
-            border: 2px solid #c8e6c9;
-            border-radius: 10px;
-            resize: none;
-            font-size: 14px;
-            font-family: inherit;
-            outline: none;
-            transition: border-color 0.2s;
-            height: 44px;
-        }
-        .chat-input textarea:focus {
-            border-color: #43a047;
-        }
-        .chat-input button {
-            padding: 0 24px;
-            background: linear-gradient(135deg, #2e7d32 0%, #43a047 100%);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 14px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: opacity 0.2s;
-            min-width: 80px;
-        }
-        .chat-input button:hover:not(:disabled) {
-            opacity: 0.9;
-        }
-        .chat-input button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .typing-indicator {
-            display: inline-flex;
-            gap: 4px;
-        }
-        .typing-indicator span {
-            width: 6px;
-            height: 6px;
-            background: #999;
-            border-radius: 50%;
-            animation: bounce 1.4s infinite;
-        }
-        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
-        @keyframes bounce {
-            0%, 60%, 100% { transform: translateY(0); }
-            30% { transform: translateY(-6px); }
-        }
-    </style>
+<script src="auth.js"></script>
 </head>
-<body>
-    <div id="app">
-        <div class="chat-container">
-            <div class="chat-header">
-                <div class="logo">🎣</div>
-                <div>
-                    <h1>中渔天下 AI 助手</h1>
-                    <div class="status">在线 · 智能客服随时为您服务</div>
-                </div>
-            </div>
+<body class="bg-stone-50 font-sans text-ink-800 antialiased">
+    <a class="skip-link" href="#main">跳到主内容</a>
 
-            <div class="chat-messages" ref="messageBox">
-                <div
-                    v-for="(msg, idx) in messages"
-                    :key="idx"
-                    :class="['message', msg.role]"
-                >
-                    <div class="avatar">{{ msg.role === 'user' ? '我' : 'AI' }}</div>
-                    <div class="bubble" :class="{ error: msg.role === 'error' }">
-                        <span v-if="msg.typing" class="typing-indicator">
-                            <span></span><span></span><span></span>
-                        </span>
-                        <span v-else>{{ msg.content }}</span>
+<!-- ====== 顶部导航栏 ====== -->
+<nav id="navbar" aria-label="主导航" class="sticky top-0 z-50 bg-white/80 backdrop-blur-md transition-all">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <a href="index.html" class="flex items-center gap-2 text-xl font-bold text-ink-900">
+            <span class="text-brand-600" style="display:inline-flex"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.5em;height:1.5em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></span>
+            <span>中渔天下</span>
+        </a>
+        <div class="hidden md:flex items-center gap-1">
+            <a href="index.html" class="nav-link active px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition" aria-current="page">首页</a>
+            <a href="products.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">产品</a>
+            <a href="factory.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">工厂</a>
+            <a href="custom.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">定制</a>
+            <a href="order.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">下单</a>
+            <a href="order_query.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">查订单</a>
+            <a href="contact.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">联系</a>
+            <a href="#ai-section" class="ml-3 inline-flex items-center gap-1.5 px-5 py-2 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition shadow-sm">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 咨询 AI
+            </a>
+        </div>
+                <div class="hidden md:flex items-center gap-1">
+            <a href="login.html" data-auth-nav="guest" class="px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">登录</a>
+            <a href="register.html" data-auth-nav="guest" class="px-4 py-2 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition shadow-sm">注册</a>
+            <div data-auth-nav="user" class="hidden items-center gap-2">
+                <span class="text-sm text-ink-600">你好，<span data-auth-username class="font-semibold text-brand-600"></span></span>
+                <button onclick="AUTH.logout()" class="px-3 py-2 text-sm text-ink-600 hover:text-red-600 transition">退出</button>
+            </div>
+        </div>
+
+        <button class="md:hidden p-2 text-ink-600" onclick="document.getElementById('navLinks').classList.toggle('hidden')">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+    </div>
+    <div id="navLinks" class="hidden md:hidden bg-white border-t border-stone-200 px-6 py-3 space-y-1">
+        <a href="index.html" class="block py-2 text-sm text-ink-700">首页</a>
+        <a href="products.html" class="block py-2 text-sm text-ink-700">产品</a>
+        <a href="factory.html" class="block py-2 text-sm text-ink-700">工厂</a>
+        <a href="custom.html" class="block py-2 text-sm text-ink-700">定制</a>
+        <a href="order.html" class="block py-2 text-sm text-ink-700">下单</a>
+        <a href="order_query.html" class="block py-2 text-sm text-ink-700">查订单</a>
+        <a href="contact.html" class="block py-2 text-sm text-ink-700">联系</a>        <a href="login.html" data-auth-nav="guest" class="block py-2 text-sm text-ink-700">登录</a>
+        <a href="register.html" data-auth-nav="guest" class="block py-2 text-sm text-ink-700">注册</a>
+        <div data-auth-nav="user" class="hidden py-2 text-sm text-ink-700">你好，<span data-auth-username class="font-semibold text-brand-600"></span> <button onclick="AUTH.logout()" class="ml-1 text-red-600">退出</button></div>
+
+    </div>
+</nav>
+
+<div id="app">
+    <main id="main" tabindex="-1">
+        <!-- ====== Hero 首屏 ====== -->
+        <section class="relative overflow-hidden">
+            <!-- 背景装饰 -->
+            <div class="absolute inset-0 bg-gradient-to-br from-brand-50 via-paper to-lake-50"></div>
+            <div class="absolute top-20 -right-20 w-96 h-96 bg-brand-200/30 rounded-full blur-3xl"></div>
+            <div class="absolute -bottom-20 -left-20 w-80 h-80 bg-lake-200/30 rounded-full blur-3xl"></div>
+
+            <!-- 签名元素：江面浮漂 + 涟漪（呼应钓鱼母题） -->
+            <div class="hero-ripple" style="top:58%;left:74%"></div>
+            <div class="hero-ripple r2" style="top:58%;left:74%"></div>
+            <div class="hero-ripple r3" style="top:58%;left:74%"></div>
+            <div class="hero-float bobber" style="top:50%;left:74%"></div>
+
+            <div class="relative max-w-7xl mx-auto px-6 py-20 lg:py-28">
+                <div class="grid lg:grid-cols-2 gap-12 items-center">
+                    <!-- 左侧文字 -->
+                    <div class="lg:col-span-1">
+                        <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-100 text-brand-700 text-xs font-semibold rounded-full mb-6">
+                            <span class="w-1.5 h-1.5 bg-brand-600 rounded-full"></span>
+                            专业饵料生产商 · 服务 500+ 经销商
+                        </div>
+                        <h1 class="text-4xl lg:text-5xl xl:text-6xl font-extrabold text-ink-900 leading-tight tracking-tight">
+                            专注好饵料<br>
+                            <span class="text-brand-600">助你连竿爆护</span>
+                        </h1>
+                        <p class="mt-6 text-lg text-ink-600 max-w-xl leading-relaxed">
+                            中渔天下 · 饵料生产与批发 · 服务钓友、经销商与企业客户
+                        </p>
+                        <div class="mt-10 flex flex-wrap gap-4">
+                            <a href="#ai-section" class="inline-flex items-center gap-2 px-7 py-3.5 bg-brand-600 text-white font-semibold rounded-xl hover:bg-brand-700 hover:-translate-y-0.5 transition shadow-lg shadow-brand-600/20">
+                                立即咨询 AI
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+                            </a>
+                            <a href="products.html" class="inline-flex items-center gap-2 px-7 py-3.5 bg-white text-brand-700 font-semibold rounded-xl border-2 border-jade-700 hover:bg-jade-700 hover:text-white transition">
+                                查看产品
+                            </a>
+                        </div>
+                    </div>
+                    <!-- 右侧图片 -->
+                    <div class="lg:col-span-1">
+                        <div class="relative">
+                            <div class="absolute -top-4 -left-4 w-full h-full bg-brand-200 rounded-2xl translate-x-2 translate-y-2"></div>
+                            <img src="assets/images/index-lake.png"
+                                 alt="钓鱼实景"
+                                 class="relative w-full h-72 lg:h-80 object-cover rounded-2xl shadow-2xl" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
+                            <div class="absolute -bottom-4 -right-4 bg-white rounded-xl shadow-xl px-4 py-3 flex items-center gap-3">
+                                <div class="w-10 h-10 bg-brand-100 rounded-full flex items-center justify-center text-xl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M5 4H3v3a3 3 0 0 0 3 3M19 4h2v3a3 3 0 0 1-3 3"/></svg></div>
+                                <div>
+                                    <div class="text-xs text-ink-500">2024 年度</div>
+                                    <div class="text-sm font-semibold text-ink-800">优质饵料供应商</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
+        </section>
 
-            <div class="chat-input">
-                <textarea
-                    v-model="inputText"
-                    @keydown.enter.exact.prevent="sendMessage"
-                    placeholder="请输入您的问题，如：红虫颗粒多少钱一包"
-                    :disabled="loading"
-                ></textarea>
-                <button @click="sendMessage" :disabled="loading">
-                    {{ loading ? '思考中...' : '发送' }}
+        <!-- ====== 数据条 ====== -->
+        <section class="bg-ink-900 py-14">
+            <div class="max-w-7xl mx-auto px-6">
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-8">
+                    <div class="text-center">
+                        <div class="text-3xl lg:text-4xl font-extrabold text-white">500+</div>
+                        <div class="mt-2 text-sm text-ink-400">服务经销商</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl lg:text-4xl font-extrabold text-white">20+</div>
+                        <div class="mt-2 text-sm text-ink-400">产品 SKU</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl lg:text-4xl font-extrabold text-white">10000+</div>
+                        <div class="mt-2 text-sm text-ink-400">年出货量（吨）</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl lg:text-4xl font-extrabold text-white">50+</div>
+                        <div class="mt-2 text-sm text-ink-400">合作品牌</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ====== 产品亮点（不对称排列） ====== -->
+        <section class="py-20 lg:py-28">
+            <div class="max-w-7xl mx-auto px-6">
+                <div class="max-w-2xl mb-14">
+                    <h2 class="text-3xl lg:text-4xl font-bold text-ink-900">为什么选择中渔天下</h2>
+                    <p class="mt-4 text-ink-500 text-lg">专业饵料生产商，让每一次出钓都有好收获</p>
+                </div>
+                <!-- 不对称 2+1 布局 -->
+                <div class="grid lg:grid-cols-3 gap-6">
+                    <!-- 大卡片 1：占 2 列 -->
+                    <div class="lg:col-span-2 bg-gradient-to-br from-brand-50 to-orange-50 rounded-2xl p-8 border border-stone-200/60 hover:shadow-lg transition">
+                        <div class="flex gap-6">
+                            <div class="w-16 h-16 bg-brand-100 rounded-xl flex items-center justify-center text-3xl flex-shrink-0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4H4a2 2 0 0 0-2 2z"/><path d="M17 18h1M12 18h1M7 18h1"/></svg></div>
+                            <div>
+                                <h3 class="text-xl font-bold text-ink-900 mb-2">自有工厂 · 品控可控</h3>
+                                <p class="text-ink-600 leading-relaxed">2000㎡ 标准化生产车间，全自动化生产线，从原料到成品全程监控，每批次产品经过严格检测，品质稳定可靠。</p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 小卡片 -->
+                    <div class="bg-white rounded-2xl p-8 border border-stone-200 hover:shadow-lg transition hover:-translate-y-1">
+                        <div class="w-14 h-14 bg-blue-50 rounded-xl flex items-center justify-center text-2xl mb-4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/></svg></div>
+                        <h3 class="text-lg font-bold text-ink-900 mb-2">专业配方</h3>
+                        <p class="text-sm text-ink-500 leading-relaxed">资深钓友团队研发，实战验证，不断迭代优化</p>
+                    </div>
+                </div>
+                <div class="grid lg:grid-cols-3 gap-6 mt-6">
+                    <div class="bg-white rounded-2xl p-8 border border-stone-200 hover:shadow-lg transition hover:-translate-y-1">
+                        <div class="w-14 h-14 bg-green-50 rounded-xl flex items-center justify-center text-2xl mb-4"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M10 17h4V5H2v10h3"/><path d="M20 17h2v-3.3l-3-3.2H12v9"/><circle cx="7.5" cy="17.5" r="1.6"/><circle cx="17.5" cy="17.5" r="1.6"/></svg></div>
+                        <h3 class="text-lg font-bold text-ink-900 mb-2">快速发货</h3>
+                        <p class="text-sm text-ink-500 leading-relaxed">全国物流覆盖，24 小时内出库，支持批量订货</p>
+                    </div>
+                    <div class="lg:col-span-2 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-8 border border-stone-200/60 hover:shadow-lg transition">
+                        <div class="flex gap-6">
+                            <div class="w-16 h-16 bg-blue-100 rounded-xl flex items-center justify-center text-3xl flex-shrink-0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg></div>
+                            <div>
+                                <h3 class="text-xl font-bold text-ink-900 mb-2">定制服务 · 按需打造</h3>
+                                <p class="text-ink-600 leading-relaxed">支持 OEM / ODM 代加工，根据客户需求定制专属配方、包装与规格，为品牌经销商提供全方位定制解决方案。</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ====== 工厂简介（左图右文） ====== -->
+        <section class="py-20 lg:py-28 bg-stone-100">
+            <div class="max-w-7xl mx-auto px-6">
+                <div class="grid lg:grid-cols-2 gap-12 items-center">
+                    <!-- 左图 -->
+                    <div class="relative">
+                        <div class="absolute -top-4 -left-4 w-full h-full bg-brand-200 rounded-2xl"></div>
+                        <img src="assets/images/factory-workshop.png"
+                             alt="工厂车间"
+                             class="relative w-full h-72 lg:h-96 object-cover rounded-2xl shadow-xl" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
+                    </div>
+                    <!-- 右文 -->
+                    <div>
+                        <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-brand-100 text-brand-700 text-xs font-semibold rounded-full mb-4">
+                            关于中渔天下
+                        </div>
+                        <h2 class="text-3xl lg:text-4xl font-bold text-ink-900 leading-tight">
+                            2000㎡ 标准车间<br>3 条自动化生产线
+                        </h2>
+                        <p class="mt-6 text-ink-600 leading-relaxed text-lg">
+                            中渔天下成立于 2015 年，总部位于山东省济南市，是一家专业从事钓鱼饵料研发、生产与批发的综合型企业。
+                        </p>
+                        <p class="mt-4 text-ink-500 leading-relaxed">
+                            凭借过硬的品质和完善的服务，我们已与全国 500 余家经销商建立长期合作关系，产品覆盖全国 30 多个省市。
+                        </p>
+                        <div class="mt-8 flex gap-4">
+                            <a href="factory.html" class="inline-flex items-center gap-2 px-6 py-3 bg-brand-600 text-white font-semibold rounded-xl hover:bg-brand-700 transition">
+                                了解工厂实力
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ====== AI 客服区块（江畔渔火主题） ====== -->
+        <section id="ai-section" class="py-20 lg:py-28 relative overflow-hidden">
+            <!-- 背景水纹装饰 -->
+            <div class="absolute inset-0 -z-10">
+                <div class="absolute top-10 -left-20 w-80 h-80 bg-brand-200/20 rounded-full blur-3xl"></div>
+                <div class="absolute bottom-10 -right-20 w-96 h-96 bg-lake-200/20 rounded-full blur-3xl"></div>
+            </div>
+            <div class="max-w-7xl mx-auto px-6">
+                <div class="text-center max-w-2xl mx-auto mb-14">
+                    <div class="inline-flex items-center gap-2 px-4 py-1.5 bg-brand-100 text-brand-700 text-xs font-semibold rounded-full mb-5">
+                        <span class="fish-swim inline-block"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/><circle cx="11" cy="11" r="1" fill="currentColor" stroke="none"/></svg></span>
+                        智能钓鱼顾问
+                    </div>
+                    <h2 class="text-3xl lg:text-4xl font-bold text-ink-900">江畔智能客服 · <span class="text-brand-600">中渔小助</span></h2>
+                    <p class="mt-4 text-ink-500 text-lg">7×24 小时在线 · 产品、库存、报价、订单一问即答</p>
+                </div>
+
+                <div class="grid lg:grid-cols-5 gap-8">
+                    <!-- 左侧：AI 介绍 -->
+                    <div class="lg:col-span-2">
+                        <div class="bg-gradient-to-br from-brand-50 to-white rounded-2xl p-8 border border-brand-100 shadow-sm">
+                            <div class="flex items-center gap-3 mb-6">
+                                <div class="relative w-12 h-12 bg-gradient-to-br from-brand-500 to-lake-600 rounded-2xl flex items-center justify-center text-2xl shadow-lg shadow-brand-500/30">
+                                    <span class="bobber inline-block"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/><circle cx="11" cy="11" r="1" fill="currentColor" stroke="none"/></svg></span>
+                                </div>
+                                <div>
+                                    <h3 class="text-xl font-bold text-ink-900">中渔小助</h3>
+                                    <p class="text-sm text-ink-500">您的专属饵料顾问</p>
+                                </div>
+                                <span class="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 bg-brand-50 text-brand-700 text-xs font-semibold rounded-full border border-brand-100">
+                                    <span class="w-1.5 h-1.5 bg-brand-500 rounded-full animate-pulse"></span>
+                                    在线
+                                </span>
+                            </div>
+                            <ul class="space-y-3 mb-8">
+                                <li class="flex items-center gap-3 text-ink-700">
+                                    <span class="w-5 h-5 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center text-xs font-bold">✓</span>
+                                    产品信息查询
+                                </li>
+                                <li class="flex items-center gap-3 text-ink-700">
+                                    <span class="w-5 h-5 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center text-xs font-bold">✓</span>
+                                    库存实时查询
+                                </li>
+                                <li class="flex items-center gap-3 text-ink-700">
+                                    <span class="w-5 h-5 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center text-xs font-bold">✓</span>
+                                    批发报价咨询
+                                </li>
+                                <li class="flex items-center gap-3 text-ink-700">
+                                    <span class="w-5 h-5 bg-brand-100 text-brand-600 rounded-full flex items-center justify-center text-xs font-bold">✓</span>
+                                    订单状态跟踪
+                                </li>
+                            </ul>
+                            <div class="border-t border-brand-100 pt-6">
+                                <h4 class="text-sm font-semibold text-ink-500 mb-3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.3h6c0-1 .4-1.8 1-2.3A7 7 0 0 0 12 2z"/></svg> 试试这些问题：</h4>
+                                <div class="space-y-2.5">
+                                    <button
+                                        v-for="(q, idx) in quickQuestions"
+                                        :key="idx"
+                                        class="bait-chip w-full text-left px-4 py-3 bg-white border border-brand-100 rounded-xl text-sm text-ink-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                        :disabled="loading"
+                                        @click="sendQuickQuestion(q)"
+                                    >
+                                        <span class="chip-fish"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></span>
+                                        <span>{{ q }}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 右侧：聊天窗口 -->
+                    <div class="lg:col-span-3">
+                        <div class="bg-white rounded-2xl border border-brand-100 shadow-lg shadow-brand-500/5 overflow-hidden flex flex-col h-[600px]">
+                            <!-- 头部：江面渐变 + 波浪底边 -->
+                            <div class="relative px-6 py-4 bg-gradient-to-r from-brand-600 via-brand-500 to-lake-600 text-white flex items-center gap-3">
+                                <div class="relative w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-xl backdrop-blur-sm">
+                                    <span class="fish-swim inline-block"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></span>
+                                </div>
+                                <div>
+                                    <div class="font-semibold text-sm">中渔小助 · AI 客服</div>
+                                    <div class="text-xs text-white/80 flex items-center gap-1.5">
+                                        <span class="w-1.5 h-1.5 bg-emerald-300 rounded-full animate-pulse"></span>
+                                        江畔在线 · 随时开钓
+                                    </div>
+                                </div>
+                                <button
+                                    @click="newChat"
+                                    class="ml-auto inline-flex items-center gap-1 px-3 py-1.5 bg-white/15 hover:bg-white/25 text-white text-xs font-medium rounded-full transition backdrop-blur-sm"
+                                >
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                    新对话
+                                </button>
+                                <svg class="wave-divider text-white" viewBox="0 0 1200 24" preserveAspectRatio="none" fill="currentColor"><path d="M0,0 C150,22 300,22 450,12 C600,2 750,2 900,12 C1050,22 1200,22 1200,22 L1200,24 L0,24 Z"/></svg>
+                            </div>
+
+                            <!-- 消息区：水波背景 -->
+                            <div class="water-surface flex-1 overflow-y-auto p-5 space-y-4" ref="messageBox">
+                                <!-- 普通消息 -->
+                                <template v-for="(msg, idx) in messages">
+                                    <div
+                                        v-if="msg.role !== 'card'"
+                                        :key="'msg-' + idx"
+                                        class="flex items-end gap-2"
+                                        :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
+                                    >
+                                        <!-- AI 小鱼头像 -->
+                                        <div
+                                            v-if="msg.role === 'ai' || msg.role === 'error'"
+                                            class="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-lake-600 text-white flex items-center justify-center text-sm flex-shrink-0 shadow-sm"
+                                        ><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></div>
+                                        <div
+                                            class="max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm"
+                                            :class="msg.role === 'user' ? 'bubble-user rounded-br-sm' : msg.role === 'error' ? 'bubble-error' : 'bubble-ai rounded-bl-sm'"
+                                        >
+                                            {{ msg.content }}
+                                            <span v-if="msg.streaming" class="cursor-blink text-brand-500 font-bold">|</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- 引导/订单卡片（AI 客服收尾动作） -->
+                                    <div
+                                        v-if="msg.role === 'card'"
+                                        :key="'card-' + idx"
+                                        class="flex justify-start items-end gap-2"
+                                    >
+                                        <div class="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-lake-600 text-white flex items-center justify-center text-sm flex-shrink-0 shadow-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></div>
+                                        <div class="max-w-[85%] overflow-hidden rounded-2xl border border-brand-200 shadow-lg bg-gradient-to-br from-white to-brand-50/50">
+                                            <!-- 引导转化卡片 -->
+                                            <template v-if="msg.cardType === 'guide'">
+                                                <div class="px-5 py-3 bg-gradient-to-r from-brand-600 to-lake-600 text-white flex items-center gap-2">
+                                                    <span class="text-lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg></span>
+                                                    <span class="font-semibold text-sm">下一步：定制或联系我们</span>
+                                                </div>
+                                                <div class="px-5 py-4 space-y-3">
+                                                    <p class="text-sm text-ink-600 leading-relaxed">
+                                                        我们的业务员会为您一对一服务，提交您的具体需求（配方、规格、数量、联系方式），我们会尽快与您对接。
+                                                    </p>
+                                                    <div class="grid grid-cols-3 gap-2 pt-2">
+                                                        <button
+                                                            @click="goToPage('custom.html')"
+                                                            class="px-2 py-2.5 bg-brand-600 text-white text-xs font-semibold rounded-lg hover:bg-brand-700 transition shadow-sm flex items-center justify-center gap-1"
+                                                        >
+                                                            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></span> 定制服务
+                                                        </button>
+                                                        <button
+                                                            @click="goToPage('order.html')"
+                                                            class="px-2 py-2.5 bg-sunset-700 text-white text-xs font-semibold rounded-lg hover:bg-sunset-800 transition shadow-sm flex items-center justify-center gap-1"
+                                                        >
+                                                            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span> 立即下单
+                                                        </button>
+                                                        <button
+                                                            @click="goToPage('contact.html')"
+                                                            class="px-2 py-2.5 bg-white text-ink-700 text-xs font-semibold rounded-lg border border-brand-100 hover:border-brand-400 hover:text-brand-600 transition flex items-center justify-center gap-1"
+                                                        >
+                                                            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> 联系我们
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                            <!-- 订单成功卡片（兼容保留） -->
+                                            <template v-else>
+                                                <div class="px-5 py-3 bg-gradient-to-r from-brand-600 to-lake-600 text-white flex items-center gap-2">
+                                                    <span class="text-lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></span>
+                                                    <span class="font-semibold text-sm">订单创建成功</span>
+                                                </div>
+                                                <div class="px-5 py-4 space-y-3">
+                                                    <div v-if="msg.orderNo" class="flex items-center gap-2 text-sm">
+                                                        <span class="text-ink-500">订单号：</span>
+                                                        <span class="font-mono font-semibold text-brand-700">{{ msg.orderNo }}</span>
+                                                    </div>
+                                                    <p class="text-sm text-ink-600 leading-relaxed">
+                                                        您的订单已提交成功！我们的客服会尽快与您联系确认详情。
+                                                    </p>
+                                                    <div class="grid grid-cols-3 gap-2 pt-2">
+                                                        <button
+                                                            @click="goToPage('custom.html')"
+                                                            class="px-2 py-2.5 bg-brand-600 text-white text-xs font-semibold rounded-lg hover:bg-brand-700 transition shadow-sm flex items-center justify-center gap-1"
+                                                        >
+                                                            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></span> 去定制
+                                                        </button>
+                                                        <button
+                                                            @click="goToPage('order_query.html')"
+                                                            class="px-2 py-2.5 bg-sunset-700 text-white text-xs font-semibold rounded-lg hover:bg-sunset-800 transition shadow-sm flex items-center justify-center gap-1"
+                                                        >
+                                                            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span> 查订单
+                                                        </button>
+                                                        <button
+                                                            @click="goToPage('contact.html')"
+                                                            class="px-2 py-2.5 bg-white text-ink-700 text-xs font-semibold rounded-lg border border-brand-100 hover:border-brand-400 hover:text-brand-600 transition flex items-center justify-center gap-1"
+                                                        >
+                                                            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> 联系客服
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- 输入区 -->
+                            <div class="px-5 py-4 bg-white border-t border-brand-100 flex gap-3">
+                                <input
+                                    v-model="inputText"
+                                    class="chat-input flex-1 px-4 py-3 bg-brand-50/50 border border-brand-100 rounded-xl text-sm focus:outline-none transition"
+                                    type="text"
+                                    placeholder="想问点什么？比如「红虫颗粒还有货吗」..."
+                                    :disabled="loading"
+                                    @keydown.enter="sendMessage"
+                                >
+                                <button
+                                    class="px-6 py-3 bg-gradient-to-r from-brand-600 to-lake-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-brand-500/30 hover:-translate-y-0.5 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                    :disabled="loading"
+                                    @click="sendMessage"
+                                >
+                                    {{ loading ? '思考中...' : '发送' }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ====== 页脚 ====== -->
+    <footer class="bg-slate-900 text-stone-300">
+    <div class="max-w-7xl mx-auto px-6 py-16">
+        <div class="grid md:grid-cols-4 gap-10">
+            <div>
+                <h4 class="text-lg font-bold text-white mb-4">中渔天下</h4>
+                <p class="text-stone-400 text-sm leading-relaxed">山东济南 · 饵料生产批发<br>自有工厂 · 服务 500+ 经销商</p>
+            </div>
+            <div>
+                <h4 class="text-lg font-bold text-white mb-4">快速导航</h4>
+                <ul class="space-y-2 text-sm">
+                    <li><a href="index.html" class="hover:text-brand-400 transition">首页</a></li>
+                    <li><a href="products.html" class="hover:text-brand-400 transition">产品中心</a></li>
+                    <li><a href="factory.html" class="hover:text-brand-400 transition">工厂介绍</a></li>
+                    <li><a href="order_query.html" class="hover:text-brand-400 transition">订单查询</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="text-lg font-bold text-white mb-4">服务</h4>
+                <ul class="space-y-2 text-sm">
+                    <li><a href="custom.html" class="hover:text-brand-400 transition">定制服务</a></li>
+                    <li><a href="order.html" class="hover:text-brand-400 transition">在线下单</a></li>
+                    <li><a href="contact.html" class="hover:text-brand-400 transition">联系我们</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="text-lg font-bold text-white mb-4">联系方式</h4>
+                <ul class="space-y-2 text-sm text-stone-400">
+                    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.9a2 2 0 0 1-.4 2.1L8.1 9.9a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.4c.9.3 1.9.6 2.9.7a2 2 0 0 1 1.7 2z"/></svg> 400-888-8888</li>
+                    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/></svg> service@zhongyutianxia.com</li>
+                    <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg> 山东省济南市天桥区</li>
+                </ul>
+            </div>
+        </div>
+        <div class="mt-12 pt-8 border-t border-slate-800 text-center text-sm text-stone-400">
+            © 2026 中渔天下 · 专注好饵料，助你连竿爆护
+        </div>
+    </div>
+</footer>
+</div>
+
+<!-- ====== 右下角悬浮 AI 按钮 ====== -->
+<div class="fixed bottom-6 right-6 z-50 fab-enter">
+    <button onclick="openModal()" class="relative w-14 h-14 bg-gradient-to-br from-brand-600 to-lake-600 hover:shadow-xl hover:shadow-brand-500/40 hover:scale-110 text-white rounded-full shadow-2xl transition flex items-center justify-center text-2xl" aria-label="打开 AI 客服">
+        <span class="ripple-ring absolute inset-0 rounded-full border-2 border-brand-400/50"></span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/><circle cx="11" cy="11" r="1" fill="currentColor" stroke="none"/></svg>
+    </button>
+</div>
+
+<!-- ====== AI 弹窗 ====== -->
+<div id="aiModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+    <div class="modal-enter bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col h-[600px]">
+        <div class="px-5 py-4 bg-gradient-to-r from-brand-600 via-brand-500 to-lake-600 text-white flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center text-lg backdrop-blur-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></div>
+                <div>
+                    <div class="font-semibold text-sm">中渔小助</div>
+                    <div class="text-xs text-white/80 flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 bg-emerald-300 rounded-full animate-pulse"></span>
+                        江畔在线 · 随时开钓
+                    </div>
+                </div>
+            </div>
+            <div class="flex items-center gap-1">
+                <button onclick="modalNewChat()" class="px-2.5 py-1.5 text-xs rounded-full hover:bg-white/20 transition flex items-center gap-1" aria-label="新对话">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    新对话
+                </button>
+                <button onclick="document.getElementById('aiModal').classList.add('hidden')" aria-label="关闭 AI 客服" class="w-8 h-8 rounded-full hover:bg-white/20 flex items-center justify-center transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
         </div>
+        <div id="modalMessages" class="water-surface flex-1 overflow-y-auto p-4 space-y-3"></div>
+        <div class="px-4 py-3 bg-white border-t border-brand-100 flex gap-2">
+            <input id="modalInput" class="chat-input flex-1 px-3 py-2.5 bg-brand-50/50 border border-brand-100 rounded-xl text-sm focus:outline-none transition" placeholder="想问点什么？...">
+            <button id="modalSend" class="px-4 py-2.5 bg-gradient-to-r from-brand-600 to-lake-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-brand-500/30 transition">发送</button>
+        </div>
     </div>
+</div>
 
-    <script>
-        const { createApp, ref, nextTick } = Vue;
+<!-- Vue 逻辑 -->
+<script src="app.js"></script>
+<script>
+    // ====== 导航栏滚动效果 ======
+    const navbar = document.getElementById('navbar');
+    window.addEventListener('scroll', () => {
+        if (window.scrollY > 10) navbar.classList.add('nav-scrolled');
+        else navbar.classList.remove('nav-scrolled');
+    });
 
-        createApp({
-            setup() {
-                const messages = ref([
-                    { role: 'ai', content: '您好！我是中渔小助 🎣\n可以帮您查询产品、库存、订单等信息，请问有什么可以帮您的？' }
-                ]);
-                const inputText = ref('');
-                const loading = ref(false);
-                const messageBox = ref(null);
+    // ====== 弹窗会话管理 ======
+    const SESSION_KEY = 'zyt_session_id';
+    const MODAL_WELCOME = '您好，我是「中渔小助」\n中渔天下的专属饵料顾问，全天在线。\n\n产品、库存、报价、订单、售后、钓鱼技巧都能问我，试试看～';
 
-                const scrollToBottom = () => {
-                    nextTick(() => {
-                        if (messageBox.value) {
-                            messageBox.value.scrollTop = messageBox.value.scrollHeight;
-                        }
-                    });
-                };
+    function getSid() {
+        let sid = localStorage.getItem(SESSION_KEY);
+        if (!sid) {
+            sid = Math.random().toString(36).substring(2) + Date.now().toString(36);
+            localStorage.setItem(SESSION_KEY, sid);
+        }
+        return sid;
+    }
 
-                const sendMessage = async () => {
-                    const text = inputText.value.trim();
-                    if (!text || loading.value) return;
+    function newSid() {
+        const sid = Math.random().toString(36).substring(2) + Date.now().toString(36);
+        localStorage.setItem(SESSION_KEY, sid);
+        return sid;
+    }
 
-                    messages.value.push({ role: 'user', content: text });
-                    inputText.value = '';
-                    loading.value = true;
-                    scrollToBottom();
+    const modalMessages = document.getElementById('modalMessages');
 
-                    // 添加"正在思考"占位
-                    const typingIdx = messages.value.length;
-                    messages.value.push({ role: 'ai', content: '正在思考', typing: true });
-                    scrollToBottom();
+    // 渲染一条消息气泡（返回气泡元素，供流式追加）
+    function appendBubble(role, content, streaming) {
+        const wrap = document.createElement('div');
+        wrap.className = 'flex items-end gap-2 ' + (role === 'user' ? 'justify-end' : 'justify-start');
+        if (role !== 'user') {
+            const av = document.createElement('div');
+            av.className = 'w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-lake-600 text-white flex items-center justify-center text-sm flex-shrink-0 shadow-sm';
+            av.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg>';
+            wrap.appendChild(av);
+        }
+        const b = document.createElement('div');
+        b.className = 'max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm ';
+        if (role === 'user') {
+            b.className += 'bg-gradient-to-br from-sunset-700 to-sunset-800 text-white rounded-br-sm';
+        } else if (role === 'error') {
+            b.className += 'bg-amber-50 text-amber-800 border border-amber-200';
+        } else {
+            b.className += 'bg-white text-ink-800 border border-brand-100 rounded-bl-sm';
+        }
+        b.textContent = content || '';
+        if (streaming) b.innerHTML += '<span class="cursor-blink text-brand-500 font-bold">|</span>';
+        wrap.appendChild(b);
+        modalMessages.appendChild(wrap);
+        modalMessages.scrollTop = modalMessages.scrollHeight;
+        return b;
+    }
 
-                    try {
-                        const resp = await axios.post('http://localhost:8000/api/agent/chat/', {
-                            message: text
-                        }, {
-                            timeout: 30000
-                        });
-                        // 替换掉占位消息
-                        messages.value[typingIdx] = { role: 'ai', content: resp.data.reply };
-                    } catch (err) {
-                        messages.value[typingIdx] = {
-                            role: 'error',
-                            content: '⚠️ 连接后端失败，请检查后端服务是否启动。'
-                        };
-                    }
+    // 渲染订单成功卡片
+    function appendCard(orderNo) {
+        const wrap = document.createElement('div');
+        wrap.className = 'flex justify-start items-end gap-2';
+        const av = document.createElement('div');
+        av.className = 'w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-lake-600 text-white flex items-center justify-center text-sm flex-shrink-0 shadow-sm';
+        av.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg>';
+        wrap.appendChild(av);
+        const card = document.createElement('div');
+        card.className = 'max-w-[85%] overflow-hidden rounded-2xl border border-brand-200 shadow-lg';
+        card.innerHTML = `
+            <div class="px-4 py-2 bg-gradient-to-r from-brand-600 to-lake-600 text-white flex items-center gap-2">
+                <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></span><span class="font-semibold text-sm">订单创建成功</span>
+            </div>
+            <div class="px-4 py-3 space-y-2 bg-white">
+                ${orderNo ? `<div class="text-xs"><span class="text-ink-500">订单号：</span><span class="font-mono font-semibold text-brand-700">${orderNo}</span></div>` : ''}
+                <p class="text-xs text-ink-600">您的订单已提交成功！客服会尽快联系您。</p>
+                <div class="grid grid-cols-3 gap-2 pt-1">
+                    <a href="custom.html" class="text-center px-2 py-2 bg-brand-600 text-white text-xs font-semibold rounded-lg hover:bg-brand-700 transition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg> 去定制</a>
+                    <a href="order_query.html" class="text-center px-2 py-2 bg-sunset-700 text-white text-xs font-semibold rounded-lg hover:bg-sunset-800 transition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> 查订单</a>
+                    <a href="contact.html" class="text-center px-2 py-2 bg-white text-ink-700 text-xs font-semibold rounded-lg border border-brand-100 hover:border-brand-400 transition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 联系客服</a>
+                </div>
+            </div>
+        `;
+        wrap.appendChild(card);
+        modalMessages.appendChild(wrap);
+        modalMessages.scrollTop = modalMessages.scrollHeight;
+    }
 
-                    loading.value = false;
-                    scrollToBottom();
-                };
+    // 渲染引导转化卡片（去定制服务 / 联系我们，AI 客服收尾）
+    function appendGuideCard() {
+        const wrap = document.createElement('div');
+        wrap.className = 'flex justify-start items-end gap-2';
+        const av = document.createElement('div');
+        av.className = 'w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-lake-600 text-white flex items-center justify-center text-sm flex-shrink-0 shadow-sm';
+        av.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg>';
+        wrap.appendChild(av);
+        const card = document.createElement('div');
+        card.className = 'max-w-[85%] overflow-hidden rounded-2xl border border-brand-200 shadow-lg';
+        card.innerHTML = `
+            <div class="px-4 py-2 bg-gradient-to-r from-brand-600 to-lake-600 text-white flex items-center gap-2">
+                <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg></span><span class="font-semibold text-sm">下一步：定制或联系我们</span>
+            </div>
+            <div class="px-4 py-3 space-y-2 bg-white">
+                <p class="text-xs text-ink-600">我们的业务员会为您一对一服务，提交您的具体需求（配方、规格、数量、联系方式），我们会尽快与您对接。</p>
+                <div class="grid grid-cols-3 gap-2 pt-1">
+                    <a href="custom.html" class="text-center px-2 py-2 bg-brand-600 text-white text-xs font-semibold rounded-lg hover:bg-brand-700 transition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg> 定制服务</a>
+                    <a href="order.html" class="text-center px-2 py-2 bg-sunset-700 text-white text-xs font-semibold rounded-lg hover:bg-sunset-800 transition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg> 立即下单</a>
+                    <a href="contact.html" class="text-center px-2 py-2 bg-white text-ink-700 text-xs font-semibold rounded-lg border border-brand-100 hover:border-brand-400 transition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 联系我们</a>
+                </div>
+            </div>
+        `;
+        wrap.appendChild(card);
+        modalMessages.appendChild(wrap);
+        modalMessages.scrollTop = modalMessages.scrollHeight;
+    }
 
-                return { messages, inputText, loading, messageBox, sendMessage };
+    // 从后端恢复历史消息
+    async function loadModalHistory() {
+        modalMessages.innerHTML = '';
+        const sid = getSid();
+        try {
+            const resp = await fetch(`/api/agent/history/${sid}/`);
+            const data = await resp.json();
+            if (data.success && Array.isArray(data.messages) && data.messages.length > 0) {
+                data.messages.forEach(m => {
+                    appendBubble(m.role === 'assistant' ? 'ai' : 'user', (m.content || '').replace(/\*\*/g, ''));
+                });
+            } else {
+                appendBubble('ai', MODAL_WELCOME);
             }
-        }).mount('#app');
-    </script>
+        } catch (e) {
+            appendBubble('ai', MODAL_WELCOME);
+        }
+    }
+
+    // 打开弹窗：先加载历史再显示
+    function openModal() {
+        document.getElementById('aiModal').classList.remove('hidden');
+        loadModalHistory();
+    }
+
+    // 新对话
+    function modalNewChat() {
+        newSid();
+        modalMessages.innerHTML = '';
+        appendBubble('ai', MODAL_WELCOME);
+    }
+
+    // ====== 弹窗发送逻辑 ======
+    document.getElementById('modalSend').addEventListener('click', sendModalMessage);
+    document.getElementById('modalInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendModalMessage(); });
+
+    async function sendModalMessage() {
+        const input = document.getElementById('modalInput');
+        const text = input.value.trim();
+        if (!text) return;
+        input.value = '';
+
+        appendBubble('user', text);
+        const bubble = appendBubble('ai', '', true);
+
+        const sid = getSid();
+        let orderCardData = null;
+        let guideCard = false;
+
+        try {
+            const resp = await fetch('/api/agent/chat/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text, session_id: sid }),
+            });
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let done = false;
+            while (!done) {
+                const { done: d, value } = await reader.read();
+                if (d) break;
+                buffer += decoder.decode(value, { stream: true });
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop();
+                for (const part of parts) {
+                    const lines = part.split('\n');
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed.startsWith('data:')) continue;
+                        try {
+                            const data = JSON.parse(trimmed.substring(5).trim());
+                            if (data.session_id) localStorage.setItem(SESSION_KEY, data.session_id);
+                            if (data.type === 'order_success') { orderCardData = data; continue; }
+                            if (data.type === 'guide_card') { guideCard = true; continue; }
+                            if (data.done) { done = true; break; }
+                            if (data.content) { bubble.textContent += data.content; modalMessages.scrollTop = modalMessages.scrollHeight; }
+                        } catch (e) {}
+                    }
+                }
+            }
+            // 去除流式光标
+            bubble.innerHTML = bubble.textContent;
+
+            if (orderCardData) appendCard(orderCardData.order_no);
+            if (guideCard) appendGuideCard();
+            // 兜底：AI 未走工具但回复含引导词时，也渲染引导卡片
+            else if (/(定制服务|联系我们|提交需求|联系客服)/.test(bubble.textContent)) appendGuideCard();
+        } catch (err) {
+            bubble.innerHTML = '';
+            bubble.textContent = '连接后端失败，请检查后端服务。';
+            bubble.className += ' bg-amber-50 text-amber-800 border border-amber-200';
+        }
+    }
+</script>
+
+<script>document.addEventListener('DOMContentLoaded', function(){ if (window.AUTH) AUTH.syncNav(); });</script>
 </body>
 </html>

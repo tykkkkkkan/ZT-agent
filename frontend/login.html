@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - 中渔天下</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/theme.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        paper: { DEFAULT: '#F6F1E7', deep: '#ECE4D4', card: '#FBF8F1' },
+                        brand: { 50: '#EAF4EF', 100: '#DCEDE6', 200: '#BFE0D3', 300: '#8FC4B1', 400: '#4FA386', 500: '#2C8466', 600: '#1F6B54', 700: '#185647', 800: '#124037', 900: '#0C2A24' },
+                        sunset: { 50: '#FCEFE6', 100: '#FBE6D8', 200: '#F7CBB2', 300: '#F4B495', 400: '#ED935F', 500: '#E2703A', 600: '#D65F2A', 700: '#B5481C', 800: '#9A3A18' },
+                        lake: { 50: '#EBF5F7', 100: '#D2E9ED', 200: '#A6D4DC', 300: '#6FBAC6', 400: '#3E9AA9', 500: '#2C7C8C', 600: '#236472', 700: '#1B4E5A', 800: '#143B44' },
+                        ink: { 900: '#15211D', 800: '#243029', 700: '#3A473F', 600: '#54615A', 500: '#738079', 400: '#9AA89F', 300: '#C3CCC4' },
+                        white: '#FBF8F1',
+                        stone: { 50:'#F6F1E7',100:'#ECE4D4',200:'#E2D8C6',300:'#C9BBA3',400:'#9AA89F',500:'#738079',600:'#54615A',700:'#3A473F',800:'#243029',900:'#15211D' },
+                        slate: { 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
+                        emerald:{ 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
+                        green: { 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
+                        blue:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        sky:    { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        cyan:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        teal:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        indigo: { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
+                        orange: { 50:'#FCEFE6',100:'#FBE6D8',200:'#F7CBB2',300:'#F4B495',400:'#ED935F',500:'#E2703A',600:'#D65F2A',700:'#B5481C',800:'#9A3A18',900:'#7E3013' },
+                        amber:  { 50:'#FCEFE6',100:'#FBE6D8',200:'#F7CBB2',300:'#F4B495',400:'#ED935F',500:'#E2703A',600:'#D65F2A',700:'#B5481C',800:'#9A3A18',900:'#7E3013' },
+                        red:    { 50:'#FDECEA',100:'#FAD2CC',200:'#F4A89C',300:'#EA7A6B',400:'#DC5240',500:'#C73320',600:'#A8281A',700:'#821E14',800:'#5E160F',900:'#43100B' }
+                    },
+                    fontFamily: {
+                        sans: ['Noto Sans SC', '-apple-system', 'BlinkMacSystemFont', 'PingFang SC', 'Microsoft YaHei', 'sans-serif'],
+                        display: ['Noto Serif SC', 'Noto Sans SC', 'serif'],
+                    }
+                }
+            }
+        };
+    </script>
+    <script src="auth.js"></script>
+</head>
+<body class="bg-stone-50 font-sans text-ink-800 antialiased">
+    <a class="skip-link" href="#main">跳到主内容</a>
+
+    <!-- 顶部导航 -->
+    <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-stone-100">
+        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <a href="index.html" class="flex items-center gap-2 text-xl font-bold text-ink-900">
+                <span class="text-brand-600" style="display:inline-flex"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.5em;height:1.5em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></span>
+                <span>中渔天下</span>
+            </a>
+            <a href="index.html" class="text-sm text-ink-600 hover:text-brand-600 transition">返回首页</a>
+        </div>
+    </nav>
+
+    <main id="main" tabindex="-1" class="min-h-[calc(100vh-4rem)] flex items-center justify-center px-6 py-12">
+        <div class="w-full max-w-md">
+            <div class="bg-white rounded-2xl border border-brand-100 shadow-xl shadow-brand-500/5 p-8">
+                <div class="text-center mb-8">
+                    <div class="w-14 h-14 mx-auto bg-gradient-to-br from-brand-500 to-lake-600 rounded-2xl flex items-center justify-center text-white mb-4 shadow-lg shadow-brand-500/30">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.8em;height:1.8em" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg>
+                    </div>
+                    <h1 class="text-2xl font-bold text-ink-900">欢迎回来</h1>
+                    <p class="text-sm text-ink-500 mt-1">登录中渔天下，查看您的订单与报价</p>
+                </div>
+
+                <!-- 全局错误 -->
+                <div id="loginError" class="hidden mb-5 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm"></div>
+
+                <form id="loginForm" class="space-y-4" novalidate>
+                    <div>
+                        <label for="f-username" class="block text-sm font-semibold text-ink-800 mb-2">用户名 / 邮箱</label>
+                        <input id="f-username" name="username" type="text" required autocomplete="username"
+                               aria-invalid="false" aria-describedby="f-username-error"
+                               class="form-input w-full px-4 py-3 border border-stone-200 rounded-xl text-sm transition" placeholder="请输入用户名或邮箱" />
+                        <p id="f-username-error" class="field-error hidden"></p>
+                    </div>
+                    <div>
+                        <label for="f-password" class="block text-sm font-semibold text-ink-800 mb-2">密码</label>
+                        <input id="f-password" name="password" type="password" required autocomplete="current-password"
+                               aria-invalid="false" aria-describedby="f-password-error"
+                               class="form-input w-full px-4 py-3 border border-stone-200 rounded-xl text-sm transition" placeholder="请输入密码" />
+                        <p id="f-password-error" class="field-error hidden"></p>
+                    </div>
+                    <button type="submit" id="submitBtn" class="w-full py-3.5 bg-gradient-to-r from-brand-600 to-lake-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-brand-500/30 transition flex items-center justify-center gap-2">
+                        <span id="submitBtnIcon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></svg></span> <span id="submitBtnText">登录</span>
+                    </button>
+                </form>
+
+                <p class="text-sm text-center text-ink-500 mt-6">
+                    还没有账号？<a href="register.html" class="text-brand-600 font-semibold hover:text-brand-700 transition">立即注册</a>
+                </p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        (function () {
+            // 已登录直接跳首页
+            if (AUTH.redirectIfLoggedIn()) return;
+
+            const form = document.getElementById('loginForm');
+            const SPINNER = '<svg class="animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.2-8.56"/></svg>';
+            const LOGIN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></svg>';
+
+            function setFieldError(el, msg) {
+                const tip = document.getElementById(el.id + '-error');
+                el.setAttribute('aria-invalid', msg ? 'true' : 'false');
+                if (tip) { tip.textContent = msg || ''; tip.classList.toggle('hidden', !msg); }
+            }
+
+            async function doLogin() {
+                const btn = document.getElementById('submitBtn');
+                const icon = document.getElementById('submitBtnIcon');
+                const text = document.getElementById('submitBtnText');
+                const err = document.getElementById('loginError');
+
+                const username = document.getElementById('f-username');
+                const password = document.getElementById('f-password');
+                err.classList.add('hidden');
+
+                // 字段级校验
+                let firstInvalid = null;
+                if (!username.value.trim()) { setFieldError(username, '请输入用户名或邮箱'); firstInvalid = username; }
+                else setFieldError(username, '');
+                if (!password.value) { setFieldError(password, '请输入密码'); if (!firstInvalid) firstInvalid = password; }
+                else setFieldError(password, '');
+                if (firstInvalid) { firstInvalid.focus(); return; }
+
+                btn.disabled = true;
+                icon.innerHTML = SPINNER;
+                text.textContent = '登录中…';
+
+                try {
+                    const resp = await fetch('/api/auth/login/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: username.value.trim(), password: password.value })
+                    });
+                    const d = await resp.json();
+                    if (resp.ok) {
+                        AUTH.setTokens(d.access, d.refresh);
+                        AUTH.setUser(d.user);
+                        // 跳转：next 参数优先，否则首页
+                        const next = new URLSearchParams(location.search).get('next');
+                        location.href = next ? decodeURIComponent(next) : '/index.html';
+                    } else {
+                        err.textContent = d.detail || (typeof d === 'object' ? JSON.stringify(d) : '登录失败');
+                        err.classList.remove('hidden');
+                    }
+                } catch (e) {
+                    err.textContent = '网络异常，请稍后重试';
+                    err.classList.remove('hidden');
+                } finally {
+                    btn.disabled = false;
+                    icon.innerHTML = LOGIN_ICON;
+                    text.textContent = '登录';
+                }
+            }
+
+            form.addEventListener('submit', (e) => { e.preventDefault(); doLogin(); });
+            document.getElementById('f-username').addEventListener('input', function () { setFieldError(this, ''); });
+            document.getElementById('f-password').addEventListener('input', function () { setFieldError(this, ''); });
+        })();
+    </script>
+</body>
+</html>

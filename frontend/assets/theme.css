@@ -1,0 +1,375 @@
+/* ============================================================
+   中渔天下 · 统一设计系统 (Design System)  —  唯一样式源
+   母题：水 / 鱼 / 浮漂 / 波浪 / 饵料（钓鱼江湖 · 匠心饵料）
+   字体：Noto Serif SC（标题） + Noto Sans SC（正文）
+   配色：宣纸暖白底 + 潭绿主色 + 湖蓝次级 + 渔火橙强调 + 墨绿黑
+   动效：浮漂轻晃 / 水波涟漪 / 鱼游动 / 波浪流动 / 打字机 / 卡片浮起
+   说明：Tailwind 默认色板已在各页 tailwind.config 重映射为本体系，
+        本文件定义 token、组件、状态、a11y、动效、响应式节奏。
+   ============================================================ */
+
+:root {
+    /* —— 色彩 token —— */
+    --paper:      #F6F1E7;
+    --paper-deep: #ECE4D4;
+    --paper-card: #FBF8F1;
+
+    --jade:       #1F6B54;
+    --jade-700:   #185647;
+    --jade-500:   #2C8466;
+    --jade-300:   #8FC4B1;
+    --jade-100:   #DCEDE6;
+
+    --lake:       #2C7C8C;
+    --lake-300:   #6FBAC6;
+
+    --fire:       #E2703A;
+    --fire-700:   #B5481C;   /* 实心 CTA 背景（白字 AA） */
+    --fire-300:   #F4B495;
+
+    --ink:        #15211D;
+    --ink-soft:   #3A473F;
+    --ink-mute:   #738079;
+    --ink-faint:  #9AA89F;
+
+    --wave:       #DCEDE6;
+    --focus-ring: #1F6B54;
+
+    /* —— 间距 token（8px 基准） —— */
+    --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+    --space-6: 24px; --space-8: 32px; --space-12: 48px; --space-16: 64px;
+
+    /* —— 圆角 / 阴影 —— */
+    --radius-sm: 8px;  --radius-lg: 16px; --radius-xl: 20px;
+    --shadow-sm: 0 1px 2px rgba(21, 33, 29, .06);
+    --shadow-md: 0 4px 14px rgba(31, 107, 84, .10);
+    --shadow-lg: 0 16px 40px rgba(31, 107, 84, .16);
+
+    /* —— 字体 —— */
+    --font-display: 'Noto Serif SC', 'Noto Sans SC', serif;
+    --font-sans: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+/* ============ 基础 ============ */
+* { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+html { scroll-behavior: smooth; }
+
+body {
+    background-color: var(--paper) !important;
+    color: var(--ink) !important;
+    font-family: var(--font-sans);
+}
+
+::selection { background: rgba(226, 112, 58, .22); color: var(--ink); }
+
+/* 标题统一宋体（匠人/江湖气质） */
+h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    letter-spacing: .01em;
+}
+
+/* ============ 可访问性基础 ============ */
+/* 跳转主内容链接 */
+.skip-link {
+    position: absolute;
+    left: -9999px; top: 0;
+    z-index: 100;
+    background: var(--jade);
+    color: #fff;
+    padding: 10px 16px;
+    border-radius: var(--radius-sm);
+    font-weight: 600;
+}
+.skip-link:focus { left: 12px; top: 12px; }
+
+/* 仅供屏幕阅读器 */
+.sr-only {
+    position: absolute; width: 1px; height: 1px;
+    padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* 统一键盘焦点环 */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* main 锚点不被固定导航遮挡 */
+main:focus { outline: none; }
+
+/* ============ 布局工具类 ============ */
+.container-x {
+    width: 100%;
+    max-width: 80rem;   /* 1280px */
+    margin-inline: auto;
+    padding-inline: 1.5rem;
+}
+.section { padding-block: 3rem; }
+@media (min-width: 768px) { .section { padding-block: 5rem; } }
+
+/* 移动端段落节奏归一化（原 py-16/py-20 在手机端略减） */
+@media (max-width: 639px) {
+    .py-20 { padding-top: 3rem; padding-bottom: 3rem; }
+    .py-16 { padding-top: 2.5rem; padding-bottom: 2.5rem; }
+    .py-12 { padding-top: 2rem; padding-bottom: 2rem; }
+}
+
+/* ============ 导航（配色覆盖，保留结构与路由） ============ */
+.nav-link { position: relative; }
+.nav-link::after {
+    content: '';
+    position: absolute; left: 0; bottom: -4px;
+    width: 0; height: 2px;
+    background: var(--jade) !important;
+    border-radius: 2px;
+    transition: width .25s ease;
+}
+.nav-link:hover::after,
+.nav-link.active::after,
+.nav-link[aria-current="page"]::after { width: 100%; }
+
+.nav-link:hover,
+.nav-link.active,
+.nav-link[aria-current="page"] { color: var(--jade) !important; }
+
+.nav-scrolled { border-bottom: 1px solid var(--jade-100) !important; }
+
+/* ============ 表单字段（渔火橙→潭绿，保留功能 + 全状态） ============ */
+.form-input {
+    background: #fff;
+    transition: border-color .2s ease, box-shadow .2s ease;
+}
+.form-input:focus,
+.chat-input:focus {
+    border-color: var(--jade) !important;
+    box-shadow: 0 0 0 4px rgba(31, 107, 84, .14) !important;
+    outline: none;
+}
+.form-input[aria-invalid="true"],
+.form-input.is-error {
+    border-color: #C73320 !important;
+}
+.form-input[aria-invalid="true"]:focus {
+    box-shadow: 0 0 0 4px rgba(199, 51, 32, .10) !important;
+}
+.field-error {
+    display: block;
+    margin-top: .375rem;
+    color: #C73320;
+    font-size: .75rem;
+    line-height: 1.4;
+}
+.field-error.hidden { display: none; }
+.product-option:hover { background: #EFF6F2; }
+
+/* ============ 聊天气泡（用户=渔火橙深，AI=宣纸） ============ */
+.bubble-user {
+    background: linear-gradient(135deg, #B5481C, #9A3A18) !important;
+    color: #fff !important;
+    border-bottom-right-radius: 4px;
+    animation: bubble-in .25s ease;
+    box-shadow: 0 2px 10px rgba(181, 72, 28, .28) !important;
+}
+.bubble-ai {
+    background: var(--paper-card) !important;
+    color: var(--ink) !important;
+    border: 1px solid var(--jade-100) !important;
+    border-bottom-left-radius: 4px;
+    animation: bubble-in .25s ease;
+    box-shadow: 0 1px 4px rgba(31, 107, 84, .06) !important;
+}
+.bubble-error {
+    background: var(--paper-deep) !important;
+    color: var(--fire-700) !important;
+    border: 1px solid var(--fire-300) !important;
+}
+.cursor-blink { color: var(--jade) !important; animation: blink .8s step-end infinite; }
+
+/* 聊天消息区：宣纸水面（暖调水波） */
+.water-surface {
+    background:
+        radial-gradient(circle at 18% 12%, rgba(31, 107, 84, .07), transparent 45%),
+        radial-gradient(circle at 86% 82%, rgba(44, 124, 140, .07), transparent 40%),
+        linear-gradient(180deg, #F1EBDD 0%, #EAF1EC 100%) !important;
+}
+
+/* ============ 饵料标签 hover：潭绿浮起 ============ */
+.bait-chip {
+    transition: all .2s ease;
+    position: relative;
+    cursor: pointer;
+}
+.bait-chip:hover {
+    transform: translateY(-2px);
+    border-color: var(--jade) !important;
+    background: #EFF6F2 !important;
+    box-shadow: 0 6px 16px rgba(31, 107, 84, .16);
+}
+.bait-chip:hover .chip-fish { transform: translateX(3px); }
+.chip-fish { transition: transform .2s ease; }
+
+/* 聊天输入框聚焦发光 */
+.chat-input:focus {
+    border-color: var(--jade) !important;
+    box-shadow: 0 0 0 4px rgba(31, 107, 84, .14) !important;
+}
+
+/* ============ 组件：卡片 / 徽标 / 头像 ============ */
+.product-card { transition: all .25s ease; }
+.product-card:hover { transform: translateY(-4px); box-shadow: 0 16px 40px rgba(31, 107, 84, .15); }
+
+.order-card { transition: all .2s ease; cursor: pointer; }
+.order-card:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(31, 107, 84, .12); }
+
+.step-card { position: relative; overflow: hidden; }
+.step-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; width: 4px; height: 100%;
+    background: linear-gradient(180deg, var(--jade-500), var(--lake));
+    border-radius: 4px 0 0 4px;
+}
+
+.fishery-card {
+    background: linear-gradient(135deg, #ffffff, #EAF4EF);
+    border: 1px solid var(--jade-100);
+    position: relative;
+}
+.fishery-card::before {
+    content: '';
+    position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    background: linear-gradient(180deg, var(--jade), var(--lake));
+    border-radius: 4px 0 0 4px;
+}
+
+.fish-icon-bg {
+    background:
+        radial-gradient(circle at 30% 20%, rgba(31, 107, 84, .15), transparent 60%),
+        linear-gradient(135deg, #EBF5F7, #EAF4EF);
+}
+
+/* 金额数字突显（渔火橙，仅大号） */
+.total-shine {
+    background: linear-gradient(135deg, var(--fire-700), var(--fire));
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+}
+
+/* 在线状态点 */
+.status-dot { width: .375rem; height: .375rem; border-radius: 9999px; background: var(--jade-300); }
+
+/* ============ 页脚：深潭墨绿（夜钓水面） ============ */
+body footer {
+    background: #0C2A24 !important;
+    color: #C3CCC4 !important;
+}
+body footer .border-t,
+body footer .border-slate-800 { border-color: rgba(255, 255, 255, .08) !important; }
+body footer a { color: rgba(255, 255, 255, .7); }
+body footer a:hover { color: #fff; }
+
+/* ============ 动效（全与钓鱼相关） ============ */
+@keyframes bob {
+    0%, 100% { transform: translateY(0) rotate(0); }
+    50%      { transform: translateY(-4px) rotate(2.5deg); }
+}
+.bobber { animation: bob 3.2s ease-in-out infinite; }
+
+@keyframes swim {
+    0%, 100% { transform: translateX(0) translateY(0) rotate(-3deg); }
+    50%      { transform: translateX(9px) translateY(-3px) rotate(3deg); }
+}
+.fish-swim { animation: swim 5.5s ease-in-out infinite; }
+
+@keyframes ripple {
+    0%   { transform: scale(.55); opacity: .55; }
+    100% { transform: scale(1.7); opacity: 0; }
+}
+.ripple-ring { animation: ripple 3s ease-out infinite; }
+
+@keyframes wave-move {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+.wave-flow { animation: wave-move 14s linear infinite; }
+
+@keyframes float-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.float-up { animation: float-up .5s cubic-bezier(.22, .61, .36, 1) both; }
+
+@keyframes blink { 50% { opacity: 0; } }
+.cursor-blink { animation: blink .8s step-end infinite; }
+
+@keyframes bubble-in {
+    from { transform: translateY(8px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes card-in {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.card-enter { animation: card-in .4s ease; }
+
+@keyframes modal-in {
+    from { transform: scale(.95) translateY(12px); opacity: 0; }
+    to   { transform: scale(1) translateY(0); opacity: 1; }
+}
+.modal-enter { animation: modal-in .3s ease; }
+
+@keyframes fab-in {
+    from { transform: scale(0); }
+    to   { transform: scale(1); }
+}
+.fab-enter { animation: fab-in .4s ease; }
+
+/* ============ 波浪分隔线（水面母题） ============ */
+.wave-divider {
+    position: absolute; left: 0; right: 0; bottom: -1px;
+    width: 100%; line-height: 0; pointer-events: none; z-index: 1;
+}
+.wave-divider svg { display: block; width: 100%; height: 46px; }
+
+/* ============ 首页签名：江面浮漂 + 涟漪 ============ */
+.hero-float {
+    position: absolute; z-index: 2; pointer-events: none;
+    width: 14px; height: 46px; border-radius: 8px 8px 10px 10px;
+    background: linear-gradient(180deg, #F4B495 0 14%, var(--fire) 14% 60%, #C9431B 60% 100%);
+    box-shadow: 0 6px 14px rgba(181, 72, 28, .35);
+    transform-origin: top center;
+}
+.hero-float::before {
+    content: ''; position: absolute; top: -10px; left: 50%; transform: translateX(-50%);
+    width: 2px; height: 12px; background: #6b4a2a; border-radius: 2px;
+}
+.hero-ripple {
+    position: absolute; z-index: 1; pointer-events: none;
+    width: 130px; height: 130px; border-radius: 50%;
+    border: 1.5px solid rgba(31, 107, 84, .30);
+    margin: -65px 0 0 -65px;
+    animation: ripple 3.2s ease-out infinite;
+}
+.hero-ripple.r2 { animation-delay: 1.05s; }
+.hero-ripple.r3 { animation-delay: 2.1s; }
+
+/* ============ 聊天滚动条（潭绿） ============ */
+.chat-messages::-webkit-scrollbar-thumb { background: var(--jade-300) !important; }
+.chat-messages::-webkit-scrollbar-track { background: #EDE6D8 !important; }
+
+/* ============ 减少动画偏好 ============ */
+@media (prefers-reduced-motion: reduce) {
+    .bobber, .fish-swim, .ripple-ring, .wave-flow,
+    .float-up, .card-enter, .bubble-in, .modal-enter, .fab-enter {
+        animation: none !important;
+    }
+    html { scroll-behavior: auto; }
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="中渔天下">
+  <rect width="120" height="120" fill="#EAF4EF"/>
+  <g fill="#1F6B54">
+    <path d="M26 60c12-16 34-16 46 0-12 16-34 16-46 0z"/>
+    <path d="M72 60l16-11v22z"/>
+  </g>
+  <circle cx="45" cy="55" r="3" fill="#ffffff"/>
+  <path d="M38 88c20-6 42-6 58 0" stroke="#2C7C8C" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.55"/>
+</svg>
