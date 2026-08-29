@@ -1,14 +1,24 @@
 """
-agent/tools.py
+agent/tools.py — Agent 工具函数 + 结构化工具 Schema
 
-Day5: Agent 工具函数，真正查询 agent_db 数据库。
-工具名与 system_prompt.md 中的描述一致。
+对齐实习 JD「Function Calling / Tool Use」：
+- TOOL_SCHEMAS：标准 JSON Schema，供 LLM 的 function calling 使用（tool_choice=auto）
+- TOOL_REGISTRY + call_tool：本地执行入口，统一参数校验与异常兜底
+- search_knowledge 已接入 RAG 引擎（见 agent/knowledge_data.py）
+
+产品定位：AI 客服 = 咨询顾问 + 引导转化（不代客下单）。
+顾客购买 / 定制意向 → 调用 guide_to_contact 引导到定制服务页 / 联系我们页。
+
+所有工具返回中文自然语言字符串，由上层 Agent 消化后组织回答。
 """
 from agent.models import Products, Inventory, Orders
 
 
+# ──────────────────────────────────────────────────────────────
+# 产品查询
+# ──────────────────────────────────────────────────────────────
 def query_product(name: str) -> str:
-    """按产品名查询，返回中文描述。"""
+    """按产品名查询，返回中文描述（含 SKU 与可用库存）。"""
     try:
         product = Products.objects.filter(name__icontains=name).first()
     except Exception as e:
@@ -17,18 +27,25 @@ def query_product(name: str) -> str:
     if not product:
         return f"没找到叫「{name}」的产品，麻烦确认下名字？"
 
+    inv = Inventory.objects.filter(product=product).first()
     lines = [
         f"产品：{product.name}",
+        f"编码：{product.sku or '（未设置）'}",                 # P0 新增：AI 引用时带 SKU
         f"规格：{product.spec or '无'}",
         f"适用鱼种：{product.target_fish or '无'}",
         f"零售价：{product.retail_price} 元/包",
         f"批发价：{product.wholesale_price} 元/包",
     ]
+    if inv:
+        lines.append(f"可用库存：{inv.available_stock} 包（已预占 {inv.reserved_stock}）")
     if product.description:
         lines.append(f"描述：{product.description}")
     return "\n".join(lines)
 
 
+# ──────────────────────────────────────────────────────────────
+# 库存查询
+# ──────────────────────────────────────────────────────────────
 def check_inventory(name: str) -> str:
     """按产品名查库存，低于预警线要预警。"""
     try:
@@ -56,6 +73,9 @@ def check_inventory(name: str) -> str:
     return "\n".join(lines)
 
 
+# ──────────────────────────────────────────────────────────────
+# 订单状态查询
+# ──────────────────────────────────────────────────────────────
 def get_order_status(order_no: str) -> str:
     """按订单号查询订单状态。"""
     try:
@@ -75,20 +95,298 @@ def get_order_status(order_no: str) -> str:
         f"状态：{order.status or '未知'}",
         f"下单时间：{order.created_at or '未知'}",
     ]
+    # 已发货且录入物流信息时，附上物流详情
+    if order.status == '已发货':
+        if order.ship_company:
+            lines.append(f"物流公司：{order.ship_company}")
+        if order.tracking_no:
+            lines.append(f"运单号：{order.tracking_no}")
+        if order.shipped_at:
+            lines.append(f"发货时间：{order.shipped_at}")
     return "\n".join(lines)
 
 
-# 工具注册表：AI 输出 {"tool": "xxx", "arg": "xxx"} 时，映射到对应函数
+# ──────────────────────────────────────────────────────────────
+# 按手机号查询订单（含发货情况）
+# ──────────────────────────────────────────────────────────────
+def query_orders_by_phone(phone: str) -> str:
+    """按手机号查询该号码名下的所有订单与发货状态。
+
+    隐私保护：工具结果只返回订单号/商品/数量/金额/状态/时间，
+    不返回客户姓名与完整手机号（与 query_orders 视图的脱敏口径一致）。
+    """
+    phone = (phone or "").strip()
+    if not phone:
+        return "请提供要查询的手机号。"
+
+    try:
+        orders = list(Orders.objects.filter(phone=phone).order_by("-created_at")[:20])
+    except Exception as e:
+        return f"查询订单出错：{e}"
+
+    if not orders:
+        return f"没有找到手机号 {phone} 名下的订单，请确认号码是否正确，或确认是否已下单。"
+
+    masked = phone[:3] + "****" + phone[-4:] if len(phone) >= 7 else phone
+    lines = [f"手机号 {masked} 名下共 {len(orders)} 笔订单："]
+    for o in orders:
+        status = o.status or "未知"
+        dt = o.created_at.strftime("%Y-%m-%d") if o.created_at else "未知"
+        line = (
+            f"订单号 {o.order_no}｜{o.product_name or '商品'} × {o.quantity or 0}｜"
+            f"{o.total_price or 0} 元｜{status}｜下单 {dt}"
+        )
+        # 已发货且录入物流信息时，附上物流详情
+        if o.status == '已发货':
+            ship_parts = []
+            if o.ship_company:
+                ship_parts.append(f"物流 {o.ship_company}")
+            if o.tracking_no:
+                ship_parts.append(f"运单号 {o.tracking_no}")
+            if o.shipped_at:
+                ship_parts.append(f"发货 {o.shipped_at.strftime('%Y-%m-%d')}")
+            if ship_parts:
+                line += "｜" + "，".join(ship_parts)
+        lines.append(line)
+    return "\n".join(lines)
+
+
+# ──────────────────────────────────────────────────────────────
+# 报价计算
+# ──────────────────────────────────────────────────────────────
+def calculate_quote(items: list) -> str:
+    """根据商品列表计算报价。
+
+    items: [{"name": "红虫颗粒", "qty": 5}, ...]
+    """
+    if not items or not isinstance(items, list):
+        return "报价参数错误，需要商品列表。"
+
+    lines = ["📋 报价清单："]
+    total = 0
+
+    for item in items:
+        name = item.get("name", "")
+        try:
+            qty = int(item.get("qty", 0))
+        except (TypeError, ValueError):
+            qty = 0
+        if not name or qty <= 0:
+            continue
+
+        try:
+            product = Products.objects.filter(name__icontains=name).first()
+            if not product:
+                lines.append(f"  {name} × {qty} — ❌ 未找到该产品")
+                continue
+
+            unit_price = float(product.wholesale_price or product.retail_price or 0)
+            subtotal = round(unit_price * qty, 2)
+            total += subtotal
+            lines.append(
+                f"  {product.name} × {qty} — 单价 {unit_price} 元 — 小计 {subtotal} 元"
+            )
+        except Exception as e:
+            lines.append(f"  {name} × {qty} — 查询出错：{e}")
+
+    if total == 0:
+        lines.append("  （无有效商品）")
+    else:
+        lines.append(f"\n💰 合计：{total:.2f} 元")
+
+    return "\n".join(lines)
+
+
+# ──────────────────────────────────────────────────────────────
+# 引导转化（新增）
+# ──────────────────────────────────────────────────────────────
+def guide_to_contact() -> str:
+    """当顾客表达购买 / 定制意向时调用，引导其前往定制服务页或联系我们页。
+
+    本工具是 AI 客服对话的「收尾动作」：AI 不代客下单，
+    顾客的下一步行动由前端按钮卡片承接（去定制服务 / 联系我们）。
+    """
+    return (
+        "好的，产品情况就介绍到这里啦。\n"
+        "如果您确定了意向，可以前往【定制服务】页提交具体需求（配方、规格、数量、联系方式），"
+        "我们的业务员会第一时间和您对接；"
+        "也可以到【联系我们】页留言，留下您的电话，我们会尽快回电沟通。"
+    )
+
+
+# ──────────────────────────────────────────────────────────────
+# 知识库问答（RAG 检索增强）
+# ──────────────────────────────────────────────────────────────
+def search_knowledge(query: str) -> str:
+    """基于企业知识库做 RAG 检索，返回相关答案片段（含来源标题）。"""
+    if not query:
+        return "请告诉我您想了解什么？"
+
+    try:
+        from agent.knowledge_data import get_knowledge_rag
+        rag = get_knowledge_rag()
+        # min_score=1.5：过滤无关查询的低分噪声（如"今天天气"误命中"春季钓法"约 1.29 分）
+        hits = rag.retrieve(query, top_k=3, min_score=1.5)
+    except Exception as e:
+        return f"知识库检索出错：{e}"
+
+    if not hits:
+        return (
+            "抱歉，这个问题我暂时没有记录。"
+            "您可以告诉我更多细节，或者拨打客服热线 400-xxx-xxxx 咨询。"
+        )
+
+    lines = ["[知识库检索结果]"]
+    for chunk, _score in hits:
+        answer = chunk.meta.get("answer") or chunk.text
+        title = chunk.meta.get("title", "")
+        label = f"【{title}】" if title else ""
+        lines.append(f"{label}{answer}")
+    return "\n".join(lines)
+
+
+# ──────────────────────────────────────────────────────────────
+# 工具注册表 & 统一调用
+# ──────────────────────────────────────────────────────────────
 TOOL_REGISTRY = {
     "query_product": query_product,
     "check_inventory": check_inventory,
     "get_order_status": get_order_status,
+    "query_orders_by_phone": query_orders_by_phone,
+    "calculate_quote": calculate_quote,
+    "search_knowledge": search_knowledge,
+    "guide_to_contact": guide_to_contact,
 }
 
+# 标准 JSON Schema，供 LLM Function Calling（tool_choice=auto）使用
+TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "query_product",
+            "description": "查询中渔天下某款产品的规格、适用鱼种、零售价、批发价等信息",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "产品名称，如「红虫颗粒」"},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_inventory",
+            "description": "查询某款产品的当前库存、预警线，判断是否有货",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "产品名称，如「螺鲤3号」"},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_order_status",
+            "description": "按订单号查询订单状态、金额、下单时间",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_no": {"type": "string", "description": "订单号，如「DD20240801」"},
+                },
+                "required": ["order_no"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_orders_by_phone",
+            "description": "按顾客下单时的手机号查询其名下所有订单，返回每笔订单的订单号、商品、数量、金额、发货状态（未发货/已发货）与下单时间。当顾客想查自己的订单或发货情况但只记得手机号、不记得订单号时，优先用这个工具",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "phone": {"type": "string", "description": "顾客的下单手机号，如「13800138000」"},
+                },
+                "required": ["phone"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate_quote",
+            "description": "根据商品清单计算总价（批发价优先），返回报价清单",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "description": "商品列表",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string", "description": "产品名称"},
+                                "qty": {"type": "integer", "description": "数量"},
+                            },
+                            "required": ["name", "qty"],
+                        },
+                    },
+                },
+                "required": ["items"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_knowledge",
+            "description": "检索企业知识库，回答政策、售后、退换货、发货、运费、钓鱼技巧等问题",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "用户的问题原文"},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "guide_to_contact",
+            "description": "当顾客表达购买、定制、下单意向时调用：引导顾客前往「定制服务」页提交需求或「联系我们」页留言，结束本轮咨询（AI 不代客下单）",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    },
+]
 
-def call_tool(tool_name: str, arg: str) -> str:
-    """根据工具名和参数执行对应函数，返回结果字符串。"""
+
+def call_tool(tool_name: str, **kwargs) -> str:
+    """统一工具调用入口。
+
+    - 按 tool_name 查找注册函数并执行
+    - 兼容旧版单参数调用（input）
+    - 统一参数错误 / 执行异常兜底
+    """
     func = TOOL_REGISTRY.get(tool_name)
     if not func:
         return f"未知工具：{tool_name}，支持的工具：{list(TOOL_REGISTRY.keys())}"
-    return func(arg)
+
+    # 旧版兼容：仅传 input 时按位置参数传入
+    if "input" in kwargs and len(kwargs) == 1:
+        return func(kwargs["input"])
+
+    try:
+        return func(**kwargs)
+    except TypeError as e:
+        return f"工具 {tool_name} 参数错误：{e}"
+    except Exception as e:
+        return f"工具 {tool_name} 执行出错：{e}"
