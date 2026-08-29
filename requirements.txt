@@ -27,3 +27,9 @@ python-dotenv==1.2.3
 
 # 向量数据库（可选依赖：仅启用 RAG_BACKEND=embedding 语义检索时需要）
 chromadb>=0.5.0
+
+# Swagger/OpenAPI 文档
+drf-spectacular==0.30.0
+
+# LlamaIndex 对照 demo（可选：仅 demo_llamaindex.py 需要）
+llama-index==0.14.24

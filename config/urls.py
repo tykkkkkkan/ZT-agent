@@ -23,6 +23,7 @@ from agent import views as views_agent
 from agent import auth_views
 from agent.views_admin import admin_dashboard
 from rest_framework_simplejwt.views import TokenRefreshView
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
 FRONTEND_DIR = Path(settings.BASE_DIR) / "frontend"
 
@@ -86,6 +87,10 @@ def test_ai(request):
 
 
 urlpatterns = [
+    # Swagger / OpenAPI 文档
+    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    path("api/schema/swagger-ui/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+    path("api/schema/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
     # 后台数据看板（须放在 admin/ 之前，避免被 admin.site.urls 抢匹配）
     path("admin/dashboard/", admin_dashboard, name="admin_dashboard"),
     path("admin/", admin.site.urls),

@@ -20,6 +20,7 @@ from rest_framework import serializers, status, views
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
+from drf_spectacular.utils import extend_schema, inline_serializer
 
 User = get_user_model()
 
@@ -103,6 +104,14 @@ class RegisterSerializer(serializers.ModelSerializer):
 class RegisterView(views.APIView):
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        request=RegisterSerializer,
+        responses={201: inline_serializer(
+            name='RegisterResponse',
+            fields={'message': serializers.CharField(), 'access': serializers.CharField(),
+                    'refresh': serializers.CharField(), 'user': serializers.DictField()}),
+        },
+    )
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
         if not serializer.is_valid():
@@ -126,6 +135,17 @@ class RegisterView(views.APIView):
 class LoginView(views.APIView):
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        request=inline_serializer(
+            name='LoginRequest',
+            fields={'username': serializers.CharField(help_text='用户名或邮箱'),
+                    'password': serializers.CharField()}),
+        responses={200: inline_serializer(
+            name='LoginResponse',
+            fields={'message': serializers.CharField(), 'access': serializers.CharField(),
+                    'refresh': serializers.CharField(), 'user': serializers.DictField()}),
+        },
+    )
     def post(self, request):
         identifier = (request.data.get("username") or "").strip()
         password = request.data.get("password") or ""
@@ -161,6 +181,10 @@ class LoginView(views.APIView):
 class LogoutView(views.APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        request=inline_serializer(name='LogoutRequest', fields={'refresh': serializers.CharField()}),
+        responses={200: inline_serializer(name='LogoutResponse', fields={'message': serializers.CharField()})},
+    )
     def post(self, request):
         refresh = request.data.get("refresh", "")
         if refresh:
@@ -177,5 +201,12 @@ class LogoutView(views.APIView):
 class MeView(views.APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        responses={200: inline_serializer(
+            name='MeResponse',
+            fields={'id': serializers.IntegerField(), 'username': serializers.CharField(),
+                    'email': serializers.CharField()}),
+        },
+    )
     def get(self, request):
         return Response(_user_payload(request.user))
