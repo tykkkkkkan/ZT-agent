@@ -56,12 +56,19 @@ CREATE TABLE `orders`  (
   `id` int NOT NULL AUTO_INCREMENT,
   `order_no` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '订单号',
   `customer_name` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT '客户名',
-  `product_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT '产品名',
+  `phone` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '联系电话',
+  `product_id` int NULL DEFAULT NULL COMMENT '关联产品ID',
+  `product_name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT '产品名(冗余)',
   `quantity` int NULL DEFAULT 0 COMMENT '数量',
   `total_price` decimal(10, 2) NULL DEFAULT 0.00 COMMENT '总价',
-  `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '待发货' COMMENT '状态',
+  `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '未发货' COMMENT '状态(未发货/已发货)',
+  `ship_company` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT '物流公司',
+  `tracking_no` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT '运单号',
+  `shipped_at` datetime NULL DEFAULT NULL COMMENT '发货时间',
   `created_at` datetime NULL DEFAULT CURRENT_TIMESTAMP COMMENT '下单时间',
-  PRIMARY KEY (`id`) USING BTREE
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `product_id`(`product_id` ASC) USING BTREE,
+  CONSTRAINT `orders_ibfk_1` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE = InnoDB AUTO_INCREMENT = 6 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
@@ -77,6 +84,18 @@ CREATE TABLE `conversations`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 SET FOREIGN_KEY_CHECKS = 1;
+
+-- ============================================
+-- 升级脚本（已有库的增量迁移）：
+-- 若已存在 `orders` 表，可执行以下 ALTER 升级结构
+-- ============================================
+ALTER TABLE `orders`
+    ADD COLUMN IF NOT EXISTS `phone` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT '联系电话' AFTER `customer_name`,
+    ADD COLUMN IF NOT EXISTS `product_id` int NULL DEFAULT NULL COMMENT '关联产品ID' AFTER `product_name`,
+    ADD INDEX IF NOT EXISTS `product_id`(`product_id` ASC) USING BTREE,
+    ADD CONSTRAINT `orders_product_fk` FOREIGN KEY (`product_id`) REFERENCES `products` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+ALTER TABLE `orders` MODIFY COLUMN `status` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '未发货' COMMENT '状态(未发货/已发货)';
 
 -- ----------------------------
 -- 初始数据
