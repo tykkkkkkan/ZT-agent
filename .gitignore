@@ -92,3 +92,7 @@ logs/
 *.pid.lock
 tmp/
 temp/
+
+# 临时脚本与备份
+frontend/_backup_20260829/
+frontend/_*.py
