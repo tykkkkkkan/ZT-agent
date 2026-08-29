@@ -1,0 +1,46 @@
+/* ══════════════════════════════════════════════════════════════
+   中渔天下 · Django Unfold 后台品牌补充样式
+   设计源：前端「江畔渔火」— 湖青 #1F6B54（主色，已由 UNFOLD.COLORS 注入）
+            渔火橙 #E2703A（强调色，用于次要行动点）
+   ══════════════════════════════════════════════════════════════ */
+:root {
+  --jade: #1F6B54;
+  --jade-700: #185647;
+  --jade-500: #2C8466;
+  --jade-100: #DCEDE6;
+  --lake: #2C7C8C;
+  --lake-300: #6FBAC6;
+  --fire: #E2703A;
+  --fire-700: #B5481C;
+  --fire-300: #F4B495;
+  --paper: #F6F1E7;
+  --paper-card: #FBF8F1;
+  --ink: #15211D;
+  --ink-soft: #3A473F;
+  --ink-mute: #738079;
+  --radius: 16px;
+  --shadow: 0 4px 14px rgba(31, 107, 84, .10);
+}
+
+/* 侧栏品牌标识：用湖青描边强调当前站点 */
+#nav-sidebar .bg-base-50 .border-b,
+#nav-sidebar-inner .border-b {
+  border-color: color-mix(in srgb, var(--jade) 22%, transparent);
+}
+
+/* 侧栏激活项左侧色条（在 Unfold 主色之外叠加渔火橙提示色） */
+#nav-sidebar-inner a.active {
+  box-shadow: inset 3px 0 0 var(--jade);
+}
+
+/* 顶部「保存」等主操作按钮已继承 --color-primary（湖青）；
+   将次要强调（如导出/标记）以渔火橙呈现，提升操作层次 */
+button[name="_save"].bg-primary-600,
+input[type="submit"].bg-primary-600 {
+  border-radius: 10px;
+}
+
+/* 通用：让看板等自定义页的标题使用品牌衬线字体（与前端一致） */
+.zy-serif {
+  font-family: "Noto Serif SC", "Songti SC", serif;
+}

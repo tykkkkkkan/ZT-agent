@@ -1,0 +1,69 @@
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls %}
+
+{# 在右上角工具栏加一个「➕ 新增产品」按钮，跳当前页内弹窗（iframe add 页） #}
+{% block object-tools-items %}
+  {{ block.super }}
+  <li>
+    <a href="#" id="zy-inline-add-trigger"
+       style="display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:8px;
+              background:#1F6B54;color:#fff;font-weight:600;font-size:13px;text-decoration:none;
+              box-shadow:0 2px 6px rgba(31,107,84,.25);">
+      <span class="material-symbols-outlined" style="font-size:18px;">add</span>
+      新增产品
+    </a>
+  </li>
+{% endblock %}
+
+{# 弹窗：内嵌标准 add 页 iframe，避免重写表单/重复校验；保存后自动关窗+刷新列表 #}
+{% block content %}
+  {{ block.super }}
+
+  <div id="zy-inline-add-modal" style="display:none;position:fixed;inset:0;z-index:9999;
+       background:rgba(15,33,29,.55);backdrop-filter:blur(2px);
+       align-items:flex-start;justify-content:center;padding:48px 16px;overflow:auto;">
+    <div style="background:#fff;border-radius:14px;width:min(960px,96vw);max-height:90vh;
+                display:flex;flex-direction:column;box-shadow:0 18px 48px rgba(0,0,0,.22);overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;
+                  padding:14px 20px;background:#1F6B54;color:#fff;">
+        <div style="font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px;">
+          <span class="material-symbols-outlined">add_circle</span> 新增产品
+        </div>
+        <button type="button" id="zy-inline-add-close" aria-label="关闭"
+                style="background:transparent;border:0;color:#fff;font-size:22px;cursor:pointer;line-height:1;">×</button>
+      </div>
+      <iframe id="zy-inline-add-iframe" src="" title="新增产品"
+              style="flex:1;width:100%;border:0;background:#fff;"></iframe>
+      <div style="padding:10px 20px;background:#F6F1E7;color:#738079;font-size:12px;text-align:right;">
+        保存后此窗口自动关闭并刷新列表
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    var modal = document.getElementById('zy-inline-add-modal');
+    var iframe = document.getElementById('zy-inline-add-iframe');
+    var trigger = document.getElementById('zy-inline-add-trigger');
+    var closeBtn = document.getElementById('zy-inline-add-close');
+    if (!trigger) return;
+    var addUrl = "{% url 'admin:agent_products_add' %}";
+    function open(){ modal.style.display='flex'; iframe.src = addUrl; }
+    function close(){ modal.style.display='none'; iframe.src = 'about:blank'; }
+    trigger.addEventListener('click', function(e){ e.preventDefault(); open(); });
+    closeBtn.addEventListener('click', close);
+    modal.addEventListener('click', function(e){ if (e.target===modal) close(); });
+    document.addEventListener('keydown', function(e){ if (e.key==='Escape') close(); });
+    // 监听 iframe：URL 不再含 /add/ → 已保存（跳到了 change 页）→ 关窗+刷新
+    iframe.addEventListener('load', function(){
+      try {
+        var href = iframe.contentWindow.location.pathname;
+        if (href && href.indexOf('/add/') === -1 && href.indexOf('/products/') !== -1) {
+          close();
+          window.location.reload();
+        }
+      } catch(e) { /* 跨域等异常忽略 */ }
+    });
+  })();
+  </script>
+{% endblock %}

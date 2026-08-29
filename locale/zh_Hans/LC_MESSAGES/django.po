@@ -1,0 +1,232 @@
+# 中渔天下 Django Admin 中文翻译覆盖
+# 作用：补齐 django-unfold 模板中未被 Django 自带 zh-hans 目录覆盖的英文字符串，
+#       并修正个别错误译文（如 "Delete selected" 被误译为 "取消选中"）。
+msgid ""
+msgstr ""
+"Project-Id-Version: 中渔天下\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-29 15:40+0800\n"
+"PO-Revision-Date: 2026-08-29 15:40+0800\n"
+"Last-Translator: WorkBuddy\n"
+"Language-Team: zh-hans\n"
+"Language: zh-hans\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+# ── 动作/按钮 ──────────────────────────────────────────────
+msgid "Run"
+msgstr "运行"
+
+msgid "Select"
+msgstr "选择"
+
+msgid "Add row"
+msgstr "添加行"
+
+msgid "Create new record"
+msgstr "创建新记录"
+
+msgid "Apply Filters"
+msgstr "应用筛选"
+
+msgid "Reset filters"
+msgstr "重置筛选"
+
+msgid "Cancel"
+msgstr "取消"
+
+msgid "Go back"
+msgstr "返回"
+
+msgid "Return to site"
+msgstr "返回站点"
+
+msgid "Click to cancel"
+msgstr "点击取消"
+
+msgid "Click to download"
+msgstr "点击下载"
+
+msgid "Choose file to upload"
+msgstr "选择要上传的文件"
+
+msgid "Open command tool"
+msgstr "打开命令工具"
+
+msgid "Open selection"
+msgstr "打开所选"
+
+msgid "Open selection in new tab"
+msgstr "在新标签页打开所选"
+
+msgid "Open shortcuts list"
+msgstr "打开快捷键列表"
+
+msgid "Toggle filter"
+msgstr "切换筛选"
+
+msgid "Toggle sidebar"
+msgstr "切换侧边栏"
+
+msgid "Toggle password visibility"
+msgstr "切换密码可见性"
+
+msgid "Toggle dark/light mode"
+msgstr "切换深色/浅色模式"
+
+# ── 筛选/搜索/结果 ─────────────────────────────────────────
+msgid "Filters"
+msgstr "筛选"
+
+msgid "Recent searches"
+msgstr "最近搜索"
+
+msgid "Type to search"
+msgstr "输入以搜索"
+
+msgid "Search apps and models..."
+msgstr "搜索应用和模型…"
+
+msgid "No results found"
+msgstr "未找到结果"
+
+msgid "No data"
+msgstr "暂无数据"
+
+msgid "This page yielded into no results. Create a new item or reset your filters."
+msgstr "此页面没有返回结果。请创建新项目或重置筛选。"
+
+# ── 快捷键面板 ─────────────────────────────────────────────
+msgid "Available shortcuts"
+msgstr "可用快捷键"
+
+msgid "Changelist shortcuts"
+msgstr "列表页快捷键"
+
+msgid "Command tool shortcuts"
+msgstr "命令工具快捷键"
+
+msgid "Global shortcuts"
+msgstr "全局快捷键"
+
+msgid "General"
+msgstr "通用"
+
+msgid "Navigate"
+msgstr "导航"
+
+msgid "System"
+msgstr "系统"
+
+# ── 主题/杂项 ─────────────────────────────────────────────
+msgid "Dark"
+msgstr "深色"
+
+msgid "Light"
+msgstr "浅色"
+
+msgid "Image preview"
+msgstr "图片预览"
+
+msgid "Record picture"
+msgstr "记录图片"
+
+msgid "All applications"
+msgstr "所有应用"
+
+msgid "Next"
+msgstr "下一页"
+
+msgid "Previous"
+msgstr "上一页"
+
+msgid "True"
+msgstr "是"
+
+msgid "False"
+msgstr "否"
+
+msgid "This item will be deleted."
+msgstr "此项将被删除。"
+
+msgid "You have been successfully logged out from the administration"
+msgstr "您已成功退出后台管理"
+
+# ── 修正错误译文 ──────────────────────────────────────────
+# Django 自带 zh-hans 将 "Delete selected" 误译为 "取消选中"（实为"删除所选"）
+msgid "Delete selected %(model)s"
+msgstr "删除所选 %(model)s"
+
+# ── 带变量的复数/短语 ─────────────────────────────────────
+msgid "By %(filter_title)s"
+msgstr "按 %(filter_title)s"
+
+msgid "%(counter)s result"
+msgid_plural "%(counter)s results"
+msgstr[0] "%(counter)s 个结果"
+
+msgid "entry"
+msgid_plural "entries"
+msgstr[0] "条"
+
+msgid "Found <span class=\"font-medium text-important\">%(counter)s</span> result in %(time)s seconds"
+msgid_plural "Found <span class=\"font-medium text-important\">%(counter)s</span> results in %(time)s seconds"
+msgstr[0] "在 %(time)s 秒内找到 <span class=\"font-medium text-important\">%(counter)s</span> 个结果"
+
+msgid "Please correct the error below."
+msgid_plural "Please correct the errors below."
+msgstr[0] "请更正下面的错误。"
+
+msgid "You are authenticated as %(username)s, but are not authorized to access this page. Would you like to login to a different account?"
+msgstr "您已认证为 %(username)s，但无权访问此页面。是否要登录其他账户？"
+
+# ── unfold Python 侧字符串 ──────────────────────────────────
+msgid "Select action"
+msgstr "选择操作"
+
+msgid "Select action to run"
+msgstr "选择要执行的操作"
+
+msgid "Select record"
+msgstr "选择记录"
+
+msgid "Select value"
+msgstr "选择值"
+
+msgid "Select currency"
+msgstr "选择货币"
+
+msgid "Select format"
+msgstr "选择格式"
+
+msgid "Date"
+msgstr "日期"
+
+msgid "Date from"
+msgstr "开始日期"
+
+msgid "Date to"
+msgstr "结束日期"
+
+msgid "From"
+msgstr "从"
+
+msgid "To"
+msgstr "至"
+
+msgid "Value"
+msgstr "值"
+
+msgid "Welcome"
+msgstr "欢迎"
+
+msgid "Dataset not found. No action performed."
+msgstr "未找到数据集。未执行任何操作。"
+
+msgid "You can not create nested object without parent"
+msgstr "无法创建没有父级的嵌套对象"
+
+msgid "Field <strong class=\"font-semibold\">{field_name}</strong> is not an autocomplete field. Please add it to the `autocomplete_fields` list."
+msgstr "字段 <strong class=\"font-semibold\">{field_name}</strong> 不是自动补全字段。请将其添加到 `autocomplete_fields` 列表中。"

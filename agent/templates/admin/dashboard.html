@@ -1,0 +1,111 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content_title %}运营看板{% endblock %}
+
+{% block content %}
+<div class="zy-dash">
+  <style>
+    .zy-dash{ --jade:#1F6B54; --jade-700:#185647; --jade-500:#2C8466; --jade-100:#DCEDE6;
+      --lake:#2C7C8C; --lake-300:#6FBAC6; --fire:#E2703A; --fire-700:#B5481C; --fire-300:#F4B495;
+      --paper:#F6F1E7; --paper-card:#FBF8F1; --ink:#15211D; --ink-soft:#3A473F; --ink-mute:#738079;
+      --radius:16px; --shadow:0 4px 14px rgba(31,107,84,.10); }
+    .zy-dash *{box-sizing:border-box;}
+    .zy-dash .dash-head{display:flex;align-items:center;gap:14px;margin-bottom:22px;}
+    .zy-dash .dash-logo{width:46px;height:46px;border-radius:12px;background:var(--jade);
+      display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:var(--shadow);}
+    .zy-dash .dash-head h1{font-family:'Noto Serif SC',serif;font-size:22px;margin:0;color:var(--jade-700);}
+    .zy-dash .dash-head .sub{font-size:12px;color:var(--ink-mute);margin-top:2px;}
+    .zy-dash .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;}
+    .zy-dash .card{background:var(--paper-card);border-radius:var(--radius);padding:18px 20px;
+      box-shadow:var(--shadow);border:1px solid rgba(31,107,84,.08);position:relative;overflow:hidden;}
+    .zy-dash .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--jade);}
+    .zy-dash .card.tone-fire::before{background:var(--fire);}
+    .zy-dash .card.tone-lake::before{background:var(--lake);}
+    .zy-dash .card .ic{position:absolute;right:16px;top:16px;font-size:26px;opacity:.18;}
+    .zy-dash .card .ic.jade{color:var(--jade);} .zy-dash .card .ic.fire{color:var(--fire);} .zy-dash .card .ic.lake{color:var(--lake);}
+    .zy-dash .card .label{font-size:13px;color:var(--ink-mute);}
+    .zy-dash .card .value{font-size:30px;font-weight:700;color:var(--ink);margin:6px 0 2px;font-family:'Noto Serif SC',serif;}
+    .zy-dash .card .value .u{font-size:14px;color:var(--ink-mute);font-weight:500;margin-left:4px;}
+    .zy-dash .card .sub{font-size:12px;color:var(--ink-soft);}
+    .zy-dash .sec{margin-top:26px;}
+    .zy-dash .sec h2{font-family:'Noto Serif SC',serif;font-size:17px;color:var(--jade-700);
+      border-left:4px solid var(--fire);padding-left:10px;margin:0 0 12px;}
+    .zy-dash .tbl{width:100%;border-collapse:collapse;background:var(--paper-card);border-radius:var(--radius);
+      overflow:hidden;box-shadow:var(--shadow);}
+    .zy-dash .tbl th,.zy-dash .tbl td{padding:11px 14px;text-align:left;font-size:13px;border-bottom:1px solid var(--jade-100);}
+    .zy-dash .tbl th{background:var(--jade-100);color:var(--jade-700);font-weight:600;}
+    .zy-dash .tbl tr:last-child td{border-bottom:none;}
+    .zy-dash .badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;}
+    .zy-dash .badge.fire{background:var(--fire-300);color:var(--fire-700);}
+    .zy-dash .badge.jade{background:var(--jade-100);color:var(--jade-700);}
+    .zy-dash .muted{color:var(--ink-mute);}
+    .zy-dash .foot{margin-top:22px;font-size:12px;color:#9AA89F;text-align:right;}
+  </style>
+
+  <div class="dash-head">
+    <div class="dash-logo"><span class="material-symbols-outlined">set_meal</span></div>
+    <div>
+      <h1>中渔天下 · 运营看板</h1>
+      <div class="sub">AI 客服后台数据总览 · 更新于 {{ generated_at }}</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    {% for m in metrics %}
+    <div class="card tone-{{ m.tone }}">
+      <div class="ic {{ m.tone }}"><span class="material-symbols-outlined">{{ m.icon }}</span></div>
+      <div class="label">{{ m.label }}</div>
+      <div class="value">{{ m.value }}{% if m.unit %}<span class="u">{{ m.unit }}</span>{% endif %}</div>
+      <div class="sub">{{ m.sub }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="sec">
+    <h2>最近订单</h2>
+    <table class="tbl">
+      <thead><tr><th>订单号</th><th>客户</th><th>产品</th><th>数量</th><th>金额</th><th>状态</th><th>时间</th></tr></thead>
+      <tbody>
+      {% for o in recent_orders %}
+        <tr>
+          <td>{{ o.order_no }}</td>
+          <td>{{ o.customer_name|default:"—" }}</td>
+          <td>{{ o.product_name|default:"—" }}</td>
+          <td>{{ o.quantity|default:"—" }}</td>
+          <td>¥{{ o.total_price|default:"0" }}</td>
+          <td>
+            {% if o.status == "已发货" %}<span class="badge jade">已发货</span>
+            {% else %}<span class="badge fire">未发货</span>{% endif %}
+          </td>
+          <td class="muted">{{ o.created_at|date:"m-d H:i" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="muted">暂无订单数据</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="sec">
+    <h2>未读留言（客服待处理）</h2>
+    <table class="tbl">
+      <thead><tr><th>姓名</th><th>电话</th><th>留言</th><th>时间</th></tr></thead>
+      <tbody>
+      {% for c in unread_list %}
+        <tr>
+          <td>{{ c.name }}</td>
+          <td>{{ c.phone }}</td>
+          <td>{{ c.message|truncatechars:40 }}</td>
+          <td class="muted">{{ c.created_at|date:"m-d H:i" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="muted">暂无未读留言 🎉</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="foot">中渔天下 AI 助手 · 后台管理系统</div>
+</div>
+{% endblock %}
