@@ -8,6 +8,8 @@ P2 增强（RAG 知识库数据化）：
 - seed_knowledge_to_db()：幂等地把种子语料写入 DB（已存在跳过）
 """
 
+import os
+
 from agent.rag import RAGEngine
 
 # ──────────────────────────────────────────────────────────────
@@ -234,10 +236,20 @@ def get_knowledge_rag() -> RAGEngine:
 
     P2 增强：索引数据来自 DB（knowledge_chunks），可在线维护；
     DB 不可用时回退静态 KNOWLEDGE_BASE。
+
+    后端切换（环境变量 RAG_BACKEND）：
+    - 'tfidf'（默认）：TfidfEmbedder + InMemoryVectorStore（零依赖）
+    - 'embedding'：OpenaiEmbedder（语义向量）+ ChromaStore（持久化向量库）
     """
     global _rag_cache
     if _rag_cache is None:
-        engine = RAGEngine()
+        backend = os.getenv('RAG_BACKEND', 'tfidf').strip().lower()
+        if backend == 'embedding':
+            from agent.embeddings.openai_embedder import OpenaiEmbedder
+            from agent.vectorstores.chroma_store import ChromaStore
+            engine = RAGEngine(embedder=OpenaiEmbedder(), store_factory=ChromaStore)
+        else:
+            engine = RAGEngine()
         engine.ingest(_load_docs())
         _rag_cache = engine
     return _rag_cache

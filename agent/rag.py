@@ -221,12 +221,14 @@ class RAGEngine:
         embedder: Optional[TfidfEmbedder] = None,
         chunk_size: int = 200,
         chunk_overlap: int = 40,
+        store_factory=None,
     ) -> None:
         self.embedder = embedder or TfidfEmbedder()
+        self.store_factory = store_factory or InMemoryVectorStore
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.chunks: List[Chunk] = []
-        self._store = InMemoryVectorStore()
+        self._store = self.store_factory()
         self._bm25: Optional[BM25] = None
 
     def ingest(self, documents: List) -> int:
@@ -254,7 +256,7 @@ class RAGEngine:
 
         self.embedder.fit([c.text for c in new_chunks])
         self.chunks = new_chunks
-        self._store = InMemoryVectorStore()
+        self._store = self.store_factory()
         for c in new_chunks:
             self._store.add(self.embedder.transform(c.text))
         self._bm25 = BM25([c.tokens for c in new_chunks])
