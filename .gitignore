@@ -96,3 +96,6 @@ temp/
 # 临时脚本与备份
 frontend/_backup_20260829/
 frontend/_*.py
+
+# Chroma 向量库持久化数据
+chroma_data/
