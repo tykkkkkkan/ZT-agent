@@ -7,6 +7,7 @@ Day5: 安装 simpleui 后台框架 + 中文配置
 """
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -22,34 +23,45 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-*_kv_3iw+c(yq#k(#2tsap@tl!6ao%h$=t_4y=8l4y!0dbcm%f'
+# 生产环境必须在 .env 中配置 DJANGO_SECRET_KEY；此处 fallback 仅供本地开发。
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-local-dev-only-please-change-in-prod')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
-ALLOWED_HOSTS = ["*"]
+# 生产环境白名单，逗号分隔；本地开发默认仅允许本机访问
+ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',') if h.strip()]
 
-# CORS 配置 — 允许前端跨域请求
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS 配置 — 白名单模式（不放开所有来源）
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    o.strip() for o in os.getenv('CORS_ALLOWED_ORIGINS', 'http://127.0.0.1:8000,http://localhost:8000').split(',') if o.strip()
+]
 
 
 # Application definition
-# 注意：simpleui 必须放在 django.contrib.admin 之前
+# 注意：unfold 必须放在 django.contrib.admin 之前
 INSTALLED_APPS = [
     'corsheaders',
-    'simpleui',
+    'unfold',
+    'unfold.contrib.filters',
+    'unfold.contrib.forms',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'rest_framework_simplejwt.token_blacklist',
     'agent',
 ]
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
+    # SecurityMiddleware 会给 StreamingHttpResponse 注入 Content-Length，
+    # 导致 runserver 缓冲整个响应。放最前，让其他中间件无法注入长度。
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.locale.LocaleMiddleware',
@@ -58,14 +70,19 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # 注意：不要加 GZipMiddleware，会压缩 SSE 流导致逐字节变成大块
 ]
+
+# SSE 流式配置：跳过 SecurityMiddleware 的 Content-Length 注入
+SECURITY_MIDDLEWARE_SKIP_CONTENT_LENGTH = True
 
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # 项目级 templates 优先级最高，用于覆盖 SimpleUI 的 admin/base_site.html（注入品牌 CSS）
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -134,6 +151,10 @@ TIME_ZONE = 'Asia/Shanghai'
 
 USE_I18N = True
 
+# 说明：Django 5.0 起已移除 USE_L10N（本地化始终随 USE_I18N 开启）。
+# 保留此项仅为满足文档/旧配置要求，运行时无实际作用，不会报错。
+USE_L10N = True
+
 USE_TZ = False
 
 
@@ -144,16 +165,86 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 
-# SimpleUI 配置
-SIMPLEUI_CONFIG = {
-    'system_keep': True,
-    'menu_display': ['simpleui', '默认', '中渔天下 AI 助手'],
-    'theme': 'simpleui',
-    'language': 'zh-hans',
-    'header_logo': '中渔天下',
-    'header': True,
-    'footer': '中渔天下 AI 助手 后台管理系统',
-    'sidebar': True,
+# ════════════════════════════════════════════════════════════════
+# Django Unfold 后台主题（替代 SimpleUI）
+# 设计源：前端「江畔渔火」品牌系统 — 湖青 #1F6B54（主色）/ 渔火橙 #E2703A（强调）
+# ════════════════════════════════════════════════════════════════
+UNFOLD = {
+    # 站点标识（侧栏顶部）
+    'SITE_TITLE': '中渔天下',
+    'SITE_HEADER': '中渔天下 AI 助手',
+    'SITE_SUBHEADER': '后台管理系统',
+    'SITE_SYMBOL': 'set_meal',          # 品牌图标（Material Symbols）
+    'SITE_URL': '/admin/dashboard/',    # 点击 logo 进入运营看板
+    'SHOW_HISTORY': False,
+
+    # 主色（primary）套用品牌「湖青」色阶，覆盖 Unfold 默认紫色
+    'COLORS': {
+        'primary': {
+            '50': '#EAF6F1',
+            '100': '#D2E9E0',
+            '200': '#A9D4C5',
+            '300': '#6FB59E',
+            '400': '#3E9078',
+            '500': '#1F6B54',
+            '600': '#185441',
+            '700': '#134435',
+            '800': '#0E3328',
+            '900': '#09241C',
+            '950': '#04130F',
+        },
+    },
+
+    # 自定义左侧导航（替代 Django 默认 app 列表），与品牌业务分组一致
+    'SIDEBAR': {
+        'navigation': [
+            {
+                'title': '运营概览',
+                'items': [
+                    {'title': '数据看板', 'link': '/admin/dashboard/', 'icon': 'dashboard'},
+                ],
+            },
+            {
+                'title': '业务数据',
+                'items': [
+                    {'title': '产品管理', 'link': '/admin/agent/products/', 'icon': 'category'},
+                    {'title': '库存管理', 'link': '/admin/agent/inventory/', 'icon': 'inventory_2'},
+                    {'title': '订单管理', 'link': '/admin/agent/orders/', 'icon': 'shopping_cart'},
+                ],
+            },
+            {
+                'title': '财务管理',
+                'items': [
+                    {'title': '公司钱包', 'link': '/admin/agent/wallet/', 'icon': 'account_balance_wallet'},
+                    {'title': '收支流水', 'link': '/admin/agent/transaction/', 'icon': 'receipt_long'},
+                ],
+            },
+            {
+                'title': '客服与用户',
+                'items': [
+                    {'title': '用户留言', 'link': '/admin/agent/contactmessage/', 'icon': 'mail'},
+                    {'title': '对话记录', 'link': '/admin/agent/conversations/', 'icon': 'forum'},
+                    {'title': '定制需求', 'link': '/admin/agent/customrequest/', 'icon': 'playlist_add_check'},
+                ],
+            },
+            {
+                'title': '智能问答',
+                'items': [
+                    {'title': '知识库条目', 'link': '/admin/agent/knowledgechunk/', 'icon': 'menu_book'},
+                ],
+            },
+            {
+                'title': '认证与权限',
+                'items': [
+                    {'title': '用户', 'link': '/admin/auth/user/', 'icon': 'group'},
+                    {'title': '用户组', 'link': '/admin/auth/group/', 'icon': 'badge'},
+                ],
+            },
+        ],
+    },
+
+    # 注入品牌补充样式（渔火橙强调、看板卡片等）
+    'STYLES': ['admin/zy-unfold.css'],
 }
 
 
@@ -161,3 +252,29 @@ SIMPLEUI_CONFIG = {
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
 DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
 DEEPSEEK_MODEL = 'deepseek-chat'
+
+
+# ──────────────────────────────────────────────────────────────
+# 认证（JWT）配置
+# ──────────────────────────────────────────────────────────────
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+}
+
+SIMPLE_JWT = {
+    # access 短（默认 30 分钟）、refresh 长（默认 7 天），走环境变量
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=int(os.getenv('JWT_ACCESS_MINUTES', '30'))),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=int(os.getenv('JWT_REFRESH_DAYS', '7'))),
+    # refresh 旋转 + 旋转后旧 refresh 进黑名单（退出/刷新更安全）
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'UPDATE_LAST_LOGIN': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'SIGNING_KEY': os.getenv('JWT_SIGNING_KEY', SECRET_KEY),
+}
+
+# 登录失败次数限制（可选加分项）
+LOGIN_MAX_ATTEMPTS = int(os.getenv('LOGIN_MAX_ATTEMPTS', '5'))
+LOGIN_LOCKOUT_MINUTES = int(os.getenv('LOGIN_LOCKOUT_MINUTES', '15'))
