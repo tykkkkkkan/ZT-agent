@@ -2,6 +2,28 @@
 
 > 基于 Django + Vue + DeepSeek + MySQL 的企业智能客服 Demo，具备 **Agent Function Calling 工具调用、RAG 检索增强问答、真·流式输出、对话持久化、后台管理** 等能力。
 
+![Django](https://img.shields.io/badge/Django-5.2-092E20?logo=django&logoColor=white)
+![Vue](https://img.shields.io/badge/Vue-3-42b883?logo=vuedotjs&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-8.0-00758f?logo=mysql&logoColor=white)
+![DeepSeek](https://img.shields.io/badge/LLM-DeepSeek-4d6bfe)
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Commits](https://img.shields.io/badge/commits-21-2ea043)
+
+## 系统架构
+
+```mermaid
+flowchart LR
+    U[用户 / 前端 Vue3] -->|HTTP + SSE 真流式| API[Django REST API]
+    API --> JWT[JWT 鉴权]
+    API --> AG[Agent 编排<br/>ReAct + Function Calling]
+    AG -->|tool_calls| T[7 个业务工具]
+    T --> DB[(MySQL<br/>产品 / 库存 / 订单 / 钱包)]
+    AG --> LLM[DeepSeek]
+    AG --> RAG[RAG 双后端<br/>TF-IDF / bge-m3 + Chroma]
+    RAG --> KB[(企业知识库)]
+    API --> AD[Unfold 后台看板]
+```
+
 ---
 
 ## 技术栈
@@ -62,7 +84,7 @@ ZT-agent/
 │   ├── tools.py                # ★ 工具函数 + 工具 Schema（Function Calling 定义）
 │   ├── services.py             # ★ 订单状态机 + 库存联动 + 钱包记账
 │   ├── auth_views.py           # ★ JWT 注册/登录/刷新/退出/当前用户
-│   ├── response.py             # ★ 统一响应构造器 {code,message,data}
+│   ├── response.py             # ★ 统一响应构造器（约定 {success,message,data}，前端按 success 判定）
 │   ├── embeddings/             # ★ 可插拔 Embedder（OpenaiEmbedder 语义向量）
 │   ├── vectorstores/           # ★ 可插拔向量库（ChromaStore）
 │   ├── urls.py                 # ★ API 路由
@@ -102,6 +124,14 @@ ZT-agent/
 ```
 
 ---
+
+## 界面预览
+
+| 首页 / AI 客服 | 产品中心 | 工厂实力 |
+| --- | --- | --- |
+| ![首页](frontend/assets/images/index-lake.png) | ![产品](frontend/assets/images/products-hero.png) | ![工厂](frontend/assets/images/factory-workshop.png) |
+
+> 更多界面见 `frontend/`（首页 / 产品 / 工厂 / 定制 / 联系 共五个页面），后台看板见 `/admin/dashboard/`。
 
 ## 快速开始
 
