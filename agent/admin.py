@@ -18,6 +18,7 @@ from django.db.models import F, Sum, Q
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.utils import timezone
 from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from django.urls import path, reverse
 from django.contrib import admin
 from django.contrib.auth import get_user_model
@@ -35,10 +36,20 @@ from agent.services import transition_order, revert_shipped_to_pending, manual_w
 # 全局基类：注入「勾选即弹操作浮层」的批量操作弹窗（替代底部下拉+运行）
 # ══════════════════════════════════════════════════════════════
 class ZYModelAdmin(_UnfoldModelAdmin):
-    """所有列表页统一基类：注入批量操作弹窗 JS。"""
+    """所有列表页统一基类：注入批量操作弹窗 JS；changelist 标题中文化。"""
 
     class Media:
         js = ('admin/batch_actions.js',)
+
+    def changelist_view(self, request, extra_context=None):
+        # Django 默认 title 是 "Select <verbose_name> to change" → zh-hans 翻译成
+        # 生硬的 "选择 产品 来修改"。直接用 verbose_name_plural 当 title（更自然，且
+        # 避免 "订单管理管理" 之类重复）。例如 "产品" / "订单管理" / "用户留言"。
+        extra = extra_context or {}
+        if not extra.get('title'):
+            extra = dict(extra)
+            extra['title'] = self.model._meta.verbose_name_plural
+        return super().changelist_view(request, extra)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -429,10 +440,16 @@ class KnowledgeChunkAdmin(ZYModelAdmin):
 @admin.register(Wallet)
 class WalletAdmin(ZYModelAdmin):
     """公司钱包：始终只显示/编辑 id=1 那一条（singleton）。"""
-    list_display = ('id', 'balance_display', 'income_total_display', 'expense_total_display', 'updated_at')
-    # 不在 fields 里放 updated_at（auto_now，非可编辑字段）
-    fields = ('balance',)
-    readonly_fields = ('updated_at',)
+    list_display = ('id', 'balance_display', 'income_today_display', 'income_month_display',
+                    'income_total_display', 'expense_total_display', 'updated_at')
+    fieldsets = (
+        (None, {'fields': ('balance',)}),
+        ('📊 财务统计（今日/本月/分类汇总）', {'fields': ('stats_panel',)}),
+        ('📈 近 30 日收入趋势', {'fields': ('income_trend_panel',)}),
+        ('🕐 最近 10 笔流水', {'fields': ('recent_txs_panel',)}),
+        ('信息', {'fields': ('updated_at',)}),
+    )
+    readonly_fields = ('updated_at', 'stats_panel', 'income_trend_panel', 'recent_txs_panel')
 
     class Media:
         js = ('admin/wallet_actions.js',)   # 详情页「充值 / 扣款」按钮
@@ -492,10 +509,196 @@ class WalletAdmin(ZYModelAdmin):
         s = Transaction.objects.filter(wallet=obj, tx_type=TxType.INCOME).aggregate(t=Sum('amount'))['t'] or 0
         return format_html('<span style="color:#1F6B54;">¥{}</span>', f"{s:,.2f}")
 
+    @admin.display(description='今日收入')
+    def income_today_display(self, obj):
+        from datetime import date
+        s = Transaction.objects.filter(
+            wallet=obj, tx_type=TxType.INCOME, created_at__date=date.today()
+        ).aggregate(t=Sum('amount'))['t'] or 0
+        return format_html('<span style="color:#1F6B54;font-weight:600;">+¥{}</span>', f"{s:,.2f}")
+
+    @admin.display(description='本月收入')
+    def income_month_display(self, obj):
+        from datetime import date
+        s = Transaction.objects.filter(
+            wallet=obj, tx_type=TxType.INCOME,
+            created_at__date__gte=date.today().replace(day=1),
+        ).aggregate(t=Sum('amount'))['t'] or 0
+        return format_html('<span style="color:#2C7C8C;font-weight:600;">+¥{}</span>', f"{s:,.2f}")
+
     @admin.display(description='累计支出')
     def expense_total_display(self, obj):
         s = Transaction.objects.filter(wallet=obj, tx_type=TxType.EXPENSE).aggregate(t=Sum('amount'))['t'] or 0
         return format_html('<span style="color:#B5481C;">¥{}</span>', f"{s:,.2f}")
+
+    @admin.display(description='财务统计')
+    def stats_panel(self, obj):
+        from datetime import date, timedelta
+        today = date.today()
+        month_start = today.replace(day=1)
+        _in = Transaction.objects.filter(wallet=obj, tx_type=TxType.INCOME)
+        _out = Transaction.objects.filter(wallet=obj, tx_type=TxType.EXPENSE)
+        day_in = _in.filter(created_at__date=today).aggregate(t=Sum('amount'))['t'] or 0
+        yesterday_in = _in.filter(
+            created_at__date=today - timedelta(days=1)
+        ).aggregate(t=Sum('amount'))['t'] or 0
+        month_in = _in.filter(created_at__date__gte=month_start).aggregate(t=Sum('amount'))['t'] or 0
+        month_out = _out.filter(created_at__date__gte=month_start).aggregate(t=Sum('amount'))['t'] or 0
+        # 分类汇总
+        cat_rows_html = ''
+        for cat_value, cat_label in TxCategory.choices:
+            for tx_type in (TxType.INCOME, TxType.EXPENSE):
+                s = Transaction.objects.filter(
+                    wallet=obj, tx_type=tx_type, category=cat_value
+                ).aggregate(t=Sum('amount'))['t'] or 0
+                if s > 0:
+                    color = '#1F6B54' if tx_type == TxType.INCOME else '#B5481C'
+                    sign = '+' if tx_type == TxType.INCOME else '-'
+                    type_label = '收入' if tx_type == TxType.INCOME else '支出'
+                    cat_rows_html += (
+                        f'<tr><td style="padding:6px 10px;">{cat_label}</td>'
+                        f'<td style="padding:6px 10px;color:{color};">{type_label}</td>'
+                        f'<td style="padding:6px 10px;text-align:right;color:{color};font-weight:600;">{sign}¥{s:,.2f}</td></tr>'
+                    )
+        if not cat_rows_html:
+            cat_rows_html = '<tr><td colspan="3" style="padding:8px;color:#999;text-align:center;">暂无流水</td></tr>'
+        net = (month_in or 0) - (month_out or 0)
+        net_color = '#1F6B54' if net >= 0 else '#B5481C'
+        bal = float(obj.balance or 0)
+        bal_color = '#1F6B54' if bal >= 0 else '#B5481C'
+        return format_html(
+            '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:6px 0 18px;">'
+            # 余额
+            '<div style="background:#F6F1E7;padding:12px 14px;border-radius:10px;border-left:4px solid {bc};">'
+            '<div style="color:#738079;font-size:12px;">当前余额</div>'
+            '<div style="color:{bc};font-size:22px;font-weight:700;line-height:1.4;">¥{bal}</div></div>'
+            # 今日收入
+            '<div style="background:#EAF6F1;padding:12px 14px;border-radius:10px;border-left:4px solid #1F6B54;">'
+            '<div style="color:#134435;font-size:12px;">今日收入</div>'
+            '<div style="color:#1F6B54;font-size:22px;font-weight:700;line-height:1.4;">+¥{ti}</div></div>'
+            # 昨日收入
+            '<div style="background:#E2F3F7;padding:12px 14px;border-radius:10px;border-left:4px solid #2C7C8C;">'
+            '<div style="color:#134435;font-size:12px;">昨日收入</div>'
+            '<div style="color:#2C7C8C;font-size:22px;font-weight:700;line-height:1.4;">+¥{yi}</div></div>'
+            # 本月收入
+            '<div style="background:#FFF3E5;padding:12px 14px;border-radius:10px;border-left:4px solid #E2703A;">'
+            '<div style="color:#7A2E0E;font-size:12px;">本月收入</div>'
+            '<div style="color:#E2703A;font-size:22px;font-weight:700;line-height:1.4;">+¥{mi}</div></div>'
+            # 本月支出
+            '<div style="background:#F7D9CF;padding:12px 14px;border-radius:10px;border-left:4px solid #B5481C;">'
+            '<div style="color:#7A2E0E;font-size:12px;">本月支出</div>'
+            '<div style="color:#B5481C;font-size:22px;font-weight:700;line-height:1.4;">-¥{mo}</div></div>'
+            # 本月净流
+            '<div style="background:#E2F3F7;padding:12px 14px;border-radius:10px;border-left:4px solid {nc};">'
+            '<div style="color:#134435;font-size:12px;">本月净流</div>'
+            '<div style="color:{nc};font-size:22px;font-weight:700;line-height:1.4;">¥{net}</div></div>'
+            '</div>'
+            '<div style="font-size:13px;font-weight:600;color:#15211D;margin:6px 0 4px;">📂 分类汇总</div>'
+            '<table style="width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #e8e4d8;border-radius:8px;overflow:hidden;">'
+            '<thead><tr style="background:#F3EFE4;color:#15211D;">'
+            '<th style="text-align:left;padding:8px 10px;">分类</th>'
+            '<th style="text-align:left;padding:8px 10px;">类型</th>'
+            '<th style="text-align:right;padding:8px 10px;">累计金额</th>'
+            '</tr></thead>'
+            '<tbody>{cat_rows}</tbody>'
+            '</table>',
+            bc=bal_color, bal=f"{bal:,.2f}", ti=f"{day_in or 0:,.2f}", yi=f"{yesterday_in or 0:,.2f}",
+            mi=f"{month_in or 0:,.2f}", mo=f"{month_out or 0:,.2f}",
+            net=f"{net:,.2f}", nc=net_color, cat_rows=mark_safe(cat_rows_html),
+        )
+
+    @admin.display(description='近 30 日收入趋势')
+    def income_trend_panel(self, obj):
+        """近 30 日收入柱状趋势（纯 CSS，无需图表库）+ 全部流水入口。"""
+        from datetime import date, timedelta
+        from django.db.models.functions import TruncDate
+        days = 30
+        today = date.today()
+        start = today - timedelta(days=days - 1)
+        rows = list(
+            Transaction.objects
+            .filter(wallet=obj, tx_type=TxType.INCOME, created_at__date__gte=start)
+            .annotate(d=TruncDate('created_at'))
+            .values('d').annotate(s=Sum('amount'))
+        )
+        by_day = {r['d']: float(r['s'] or 0) for r in rows}
+        series = [(start + timedelta(days=i), by_day.get(start + timedelta(days=i), 0.0)) for i in range(days)]
+        max_v = max((v for _, v in series), default=0) or 1.0
+        bars = ''.join(
+            f'<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;" '
+            f'title="{d.strftime("%m-%d")} 收入 +¥{v:,.2f}">'
+            f'<div style="height:{max(v / max_v * 100, 1.5):.1f}%;border-radius:3px 3px 0 0;'
+            f'background:{"linear-gradient(180deg,#2C8466,#1F6B54)" if v > 0 else "#ECE4D4"};"></div></div>'
+            for d, v in series
+        )
+        total_30 = sum(v for _, v in series)
+        link = reverse('admin:agent_transaction_changelist')
+        return format_html(
+            '<div style="margin:6px 0 18px;">'
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+            '<div style="font-size:12.5px;color:#738079;">'
+            '近 30 日收入合计 <b style="color:#1F6B54;font-size:15px;">+¥{total}</b>'
+            ' · 单日峰值 <b style="color:#2C7C8C;">¥{peak}</b></div>'
+            '<a href="{link}" style="font-size:12.5px;color:#2C7C8C;text-decoration:none;font-weight:600;">'
+            '查看全部收支流水 →</a></div>'
+            '<div style="display:flex;align-items:flex-end;gap:2px;height:110px;'
+            'background:#FBF8F1;border:1px solid #e8e4d8;border-radius:10px;padding:10px;">{bars}</div>'
+            '<div style="display:flex;justify-content:space-between;font-size:10.5px;color:#9AA89F;margin-top:4px;">'
+            '<span>{d0}</span><span>{dm}</span><span>{d1}</span></div></div>',
+            total=f"{total_30:,.2f}", peak=f"{max_v:,.2f}", link=link,
+            bars=mark_safe(bars), d0=start.strftime('%m-%d'),
+            dm=(start + timedelta(days=days // 2)).strftime('%m-%d'), d1=today.strftime('%m-%d'),
+        )
+
+    @admin.display(description='最近 10 笔流水')
+    def recent_txs_panel(self, obj):
+        txs = list(Transaction.objects.filter(wallet=obj).order_by('-created_at')[:10])
+        if not txs:
+            return format_html('<p style="color:#999;padding:8px;">暂无流水（订单已发货/退货会自动写入）</p>')
+        rows = []
+        for t in txs:
+            is_in = t.tx_type == TxType.INCOME
+            sign = '+' if is_in else '-'
+            color = '#1F6B54' if is_in else '#B5481C'
+            order_cell = '—'
+            if t.order:
+                order_cell = format_html(
+                    '<a href="{}" style="color:#2C7C8C;">{}</a>',
+                    reverse('admin:agent_orders_change', args=[t.order.pk]),
+                    t.order.order_no,
+                )
+            note = (t.note or '').replace('|', '｜')
+            op_name = t.operator.username if t.operator else '—'
+            rows.append(format_html(
+                '<tr>'
+                '<td style="padding:7px 10px;color:#738079;white-space:nowrap;">{}</td>'
+                '<td style="padding:7px 10px;white-space:nowrap;"><span style="color:{};font-weight:700;">{}¥{:,.2f}</span></td>'
+                '<td style="padding:7px 10px;">{}</td>'
+                '<td style="padding:7px 10px;color:#15211D;">{}</td>'
+                '<td style="padding:7px 10px;">{}</td>'
+                '<td style="padding:7px 10px;color:#738079;">{}</td>'
+                '</tr>',
+                t.created_at.strftime('%Y-%m-%d %H:%M'),
+                color, sign, float(t.amount),
+                t.category,
+                note or '—',
+                order_cell,
+                op_name,
+            ))
+        return format_html(
+            '<table style="width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #e8e4d8;border-radius:8px;overflow:hidden;">'
+            '<thead><tr style="background:#F3EFE4;color:#15211D;">'
+            '<th style="text-align:left;padding:8px 10px;">时间</th>'
+            '<th style="text-align:left;padding:8px 10px;">金额</th>'
+            '<th style="text-align:left;padding:8px 10px;">分类</th>'
+            '<th style="text-align:left;padding:8px 10px;">备注</th>'
+            '<th style="text-align:left;padding:8px 10px;">关联订单</th>'
+            '<th style="text-align:left;padding:8px 10px;">操作人</th>'
+            '</tr></thead>'
+            '<tbody>{}</tbody>'
+            '</table>',
+            mark_safe(''.join(str(r) for r in rows)),
+        )
 
 
 @admin.register(Transaction)
@@ -555,6 +758,26 @@ def activate_users(modeladmin, request, queryset):
 User = get_user_model()
 # 注销 Django 默认 UserAdmin，改用我们自己的
 admin.site.unregister(User)
+# 注销 Django 默认 GroupAdmin（它的 changelist 标题还是"选择 组 来修改"），换成继承 ZYModelAdmin 的版本
+try:
+    from django.contrib.auth.models import Group
+    from django.contrib.auth.admin import GroupAdmin as DjangoGroupAdmin
+    admin.site.unregister(Group)
+    @admin.register(Group)
+    class ZYGroupAdmin(ZYModelAdmin, DjangoGroupAdmin):
+        list_display = ('name',)
+        search_fields = ('name',)
+        ordering = ('id',)
+except Exception:
+    pass
+
+# 隐藏 token_blacklist（JWT 内部模块，业务后台不需要；模型仍可用，只是不在 admin 露出来）
+try:
+    from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+    admin.site.unregister(OutstandingToken)
+    admin.site.unregister(BlacklistedToken)
+except Exception:
+    pass
 
 
 @admin.register(User)

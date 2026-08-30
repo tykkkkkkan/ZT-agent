@@ -11,6 +11,8 @@ agent/tools.py — Agent 工具函数 + 结构化工具 Schema
 
 所有工具返回中文自然语言字符串，由上层 Agent 消化后组织回答。
 """
+import os
+
 from agent.models import Products, Inventory, Orders
 
 
@@ -225,8 +227,12 @@ def search_knowledge(query: str) -> str:
     try:
         from agent.knowledge_data import get_knowledge_rag
         rag = get_knowledge_rag()
-        # min_score=1.5：过滤无关查询的低分噪声（如"今天天气"误命中"春季钓法"约 1.29 分）
-        hits = rag.retrieve(query, top_k=3, min_score=1.5)
+        # 阈值随 RAG 后端自适应：
+        # - tfidf：召回+BM25 混合分数尺度较大（实测"今天天气"误命中"春季钓法"约 1.29 分），用 1.5 过滤噪声
+        # - embedding：语义余弦相似度仅 0~1，须用低阈值（0.2），否则永远过滤为空 → 知识库检索失效
+        backend = os.getenv("RAG_BACKEND", "tfidf").strip().lower()
+        min_score = 0.2 if backend == "embedding" else 1.5
+        hits = rag.retrieve(query, top_k=3, min_score=min_score)
     except Exception as e:
         return f"知识库检索出错：{e}"
 

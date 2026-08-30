@@ -230,6 +230,9 @@ class RAGEngine:
         self.chunks: List[Chunk] = []
         self._store = self.store_factory()
         self._bm25: Optional[BM25] = None
+        # 语义向量（稠密）与 TF-IDF 稀疏向量的召回/重排策略不同：
+        # 语义模式直接用语向量库的余弦相似度排序；TF-IDF 模式用余弦召回 + BM25 重排。
+        self._semantic = not isinstance(self.embedder, TfidfEmbedder)
 
     def ingest(self, documents: List) -> int:
         """写入文档并重建索引。
@@ -283,13 +286,19 @@ class RAGEngine:
         # 阶段一：余弦相似度召回
         recall = self._store.search(qvec, recall_k)
 
-        # 阶段二：BM25 重排（lexical rerank），与余弦分数合并
-        qtokens = tokenize(query)
-        reranked: List[Tuple[float, int]] = []
-        for idx, cos_s in recall:
-            bm = self._bm25.score(qtokens, idx) if self._bm25 else 0.0
-            final = cos_s + bm * 0.5
-            reranked.append((final, idx))
+        # 阶段二：重排
+        if self._semantic:
+            # 语义向量模式：向量库返回的已是余弦相似度（0~1），直接用它排序。
+            # BM25 是字面匹配，与语义尺度不匹配，介入后会用字面噪声主导排序，故此处不用。
+            reranked = [(cos_s, idx) for idx, cos_s in recall]
+        else:
+            # TF-IDF 模式：余弦召回 + BM25 字面重排（混合打分）
+            qtokens = tokenize(query)
+            reranked: List[Tuple[float, int]] = []
+            for idx, cos_s in recall:
+                bm = self._bm25.score(qtokens, idx) if self._bm25 else 0.0
+                final = cos_s + bm * 0.5
+                reranked.append((final, idx))
         reranked.sort(key=lambda x: -x[0])
 
         results = [(self.chunks[idx], s) for s, idx in reranked[:top_k] if s > 0]

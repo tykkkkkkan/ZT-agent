@@ -253,3 +253,9 @@ def get_knowledge_rag() -> RAGEngine:
         engine.ingest(_load_docs())
         _rag_cache = engine
     return _rag_cache
+
+
+def invalidate_rag_cache() -> None:
+    """使知识库 RAG 索引缓存失效（后台编辑知识库后调用，下次请求自动重建）。"""
+    global _rag_cache
+    _rag_cache = None

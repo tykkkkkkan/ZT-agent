@@ -11,10 +11,12 @@
 | 前端 | Vue 3 (CDN) + axios | 单页多页面企业官网，AI 客服聊天 |
 | 后端 | Django 5.2 + Django原生视图 | RESTful API，SSE 真流式输出 |
 | AI | DeepSeek API (deepseek-chat) | Function Calling 工具调用 + RAG 检索增强 |
-| RAG | 自研轻量引擎（纯标准库） | 切块 → TF-IDF 向量化 → 余弦召回 → BM25 重排 |
-| 数据库 | MySQL 8.0 + PyMySQL | 产品/库存/订单/对话/留言 |
-| 后台 | Django Admin + SimpleUI | 模型注册、列表展示、分组菜单 |
-| 部署 | 本地开发 | `python manage.py runserver` |
+| RAG | 自研可插拔引擎 + 真实语义向量可切换 | 切块 → 向量化 → 召回 → 重排；默认 TF-IDF，可切 OpenAI 兼容 Embedding + Chroma 向量库（环境变量 `RAG_BACKEND`） |
+| 数据库 | MySQL 8.0 + PyMySQL | 产品/库存/订单/对话/留言/钱包流水 |
+| 后台 | Django Admin + Unfold 主题 | 状态可视化、批量动作、知识库在线维护、钱包记账 |
+| 认证 | djangorestframework-simplejwt | 注册/登录/JWT（access+refresh 旋转+黑名单）/当前用户 |
+| 接口文档 | drf-spectacular | Swagger UI（`/api/schema/swagger-ui/`）自动从视图生成 |
+| 部署 | Docker（Django + MySQL） | `docker compose up` 一键起服务与数据库 |
 
 ---
 
@@ -31,8 +33,15 @@
 - [x] **钓鱼主题 UI**：「江畔渔火」湖青配色 + 落日橙点缀，水波背景、波浪头栏、小鱼头像、浮漂动画等定制元素，去模板化
 - [x] **用户留言系统**：前端联系表单 → 后端 API → MySQL `contact_messages` → Admin 后台管理
 - [x] **多页面企业官网**：首页 / 产品 / 工厂 / 定制 / 联系，5 个独立页面
-- [x] **后台数据管理**：SimpleUI 后台分组展示产品、库存、订单、留言、对话记录
+- [x] **后台数据管理**：Unfold 后台分组展示产品、库存、订单、留言、对话记录（运营看板 `/admin/dashboard/`）
 - [x] **关键词兜底**：AI 未按预期输出时，用规则识别意图，保证稳定性
+- [x] **订单状态机 + 库存联动**：待发货 → 发货（扣库存）/ 取消（释放预占）/ 退货（库存回滚），全程事务 + 行级锁（`agent/services.py`）
+- [x] **公司钱包与流水**：发货自动记「订单收入」、退货自动记「订单退款」，后台可手动充值/扣款，收支可追溯（`Wallet` / `Transaction`）
+- [x] **JWT 用户认证**：注册 / 登录 / access+refresh 令牌（旋转 + 黑名单）/ 退出 / 当前用户（`agent/auth_views.py`）
+- [x] **知识库在线维护**：RAG 语料从 DB 构建，后台可直接增删改，编辑后自动失效索引缓存、下次请求重建
+- [x] **真实语义向量（可选）**：`RAG_BACKEND=embedding` 切到 OpenAI 兼容 Embedding（如硅基流动 BAAI/bge-m3）+ Chroma 向量库，无需改动上层代码
+- [x] **Swagger 接口文档**：`/api/schema/swagger-ui/` 自动生成
+- [x] **LlamaIndex 对照 Demo**：`demo_llamaindex.py` 用框架实现同等 RAG，印证「先手写原理再上框架」
 
 ---
 
@@ -51,15 +60,23 @@ ZT-agent/
 │   ├── prompts.py              # ★ Prompt 版本管理（load_prompt）
 │   ├── agent.py                # ★ ReAct Agent 循环 + 真流式（agent_stream）
 │   ├── tools.py                # ★ 工具函数 + 工具 Schema（Function Calling 定义）
+│   ├── services.py             # ★ 订单状态机 + 库存联动 + 钱包记账
+│   ├── auth_views.py           # ★ JWT 注册/登录/刷新/退出/当前用户
+│   ├── response.py             # ★ 统一响应构造器 {code,message,data}
+│   ├── embeddings/             # ★ 可插拔 Embedder（OpenaiEmbedder 语义向量）
+│   ├── vectorstores/           # ★ 可插拔向量库（ChromaStore）
 │   ├── urls.py                 # ★ API 路由
-│   ├── views.py                # ★ 聊天(流式) / 联系表单 / 历史查询 视图
+│   ├── views.py                # ★ 聊天(流式)/联系表单/历史/订单库存 视图
 │   └── migrations/
 ├── config/                     # Django 配置
 │   ├── __init__.py             # PyMySQL 注册 MySQLdb
 │   ├── asgi.py
-│   ├── settings.py             # ★ 数据库/AI/CORS/SimpleUI 配置
-│   ├── urls.py                 # ★ 根路由（包含前端页面托管）
+│   ├── settings.py             # ★ 数据库/AI/CORS/Unfold/JWT/Swagger 配置
+│   ├── urls.py                 # ★ 根路由（前端托管 + Swagger + 管理看板）
 │   └── wsgi.py
+├── demo_llamaindex.py          # LlamaIndex 对照 RAG Demo（自定义 LLM/Embedding 扩展）
+├── Dockerfile                  # 镜像构建（Python 3.12-slim）
+├── docker-compose.yml          # Django + MySQL 一键编排
 ├── frontend/                   # Vue 前端（统一 Tailwind 湖青主题）
 │   ├── index.html              # 首页 + AI 客服
 │   ├── products.html           # 产品中心（动态从后端拉产品）
@@ -95,8 +112,8 @@ ZT-agent/
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 
-# 安装依赖
-pip install django==5.2.17 PyMySQL python-dotenv openai django-cors-headers django-simpleui
+# 安装依赖（完整清单见 requirements.txt，含 DRF/JWT/Unfold/Swagger/chromadb）
+pip install -r requirements.txt
 ```
 
 ### ② 数据库初始化
@@ -110,6 +127,14 @@ mysql -u root -p123456 < agent_db.sql
 # DEEPSEEK_API_KEY=sk-xxx
 # DB_PASSWORD=123456
 ```
+
+> **数据库维护说明（重要）**：本项目采用「混合 managed」模式——
+> - `Products / Inventory / Orders / Conversations` 由 `agent_db.sql` 手动建表（`managed=False`），Django 只读写不建表；
+> - `ContactMessage / CustomRequest / KnowledgeChunk / Wallet / Transaction` 由 Django migration 建表（`managed=True`）。
+>
+> 因此：修改 `models.py` 后需 `python manage.py makemigrations && python manage.py migrate`；
+> 若改到 `managed=False` 的四张表，`agent_db.sql` 也需同步手动更新（migration 仅记录状态，不改 DB），
+> 并在 `agent_db.sql` 与 `models.py` 中同步字段/索引，避免两者漂移。
 
 ### ③ 环境变量
 
@@ -148,6 +173,25 @@ python manage.py createsuperuser
 # 用户名：admin
 # 密码：admin123
 ```
+
+### ⑦ Docker 容器化部署（推荐）
+
+```powershell
+# 复制环境变量模板并填写真实值（DB 密码、DeepSeek Key、Embedding Key 等）
+cp .env.example .env
+# 编辑 .env（DB 密码、DEEPSEEK_API_KEY、EMBEDDING_API_KEY、RAG_BACKEND 等）
+
+# 一键启动 Django + MySQL（首次会自动 migrate 建表 + 启动服务）
+docker compose up --build
+
+# 浏览器访问：http://localhost:8000/
+# 后台：http://localhost:8000/admin/
+```
+
+> 注意：`docker-compose.yml` 的 `web` 服务启动命令为
+> `python manage.py migrate && python manage.py runserver`，会**自动建立 simplejwt 的
+> `token_blacklist` 表**（JWT 退出 / 刷新黑名单依赖它）。本地开发若手动 `migrate`，
+> 也请确保执行过该步骤，否则 refresh token 旋转会报 500。
 
 ---
 
@@ -293,8 +337,11 @@ data: {"done": true, "session_id": "abc123"}
 ## 后续规划
 
 - [x] RAG 完整落地（切块 + 向量化 + 召回 + 重排，纯标准库）
-- [ ] 向量库升级（Chroma / FAISS / Milvus）+ 真实 Embedding 模型（语义检索）
-- [ ] Docker 容器化部署
+- [x] 向量库升级（Chroma）+ 真实 Embedding 模型（语义检索，`RAG_BACKEND=embedding` 可切换）
+- [x] Docker 容器化部署（`docker compose up`）
+- [x] Swagger / OpenAPI 接口文档
+- [x] LlamaIndex 对照 Demo（框架版 RAG）
+- [x] JWT 用户认证 + 订单状态机 + 库存联动 + 钱包记账 + 知识库后台维护
 - [ ] 接入企业微信 / 小程序客服
 - [ ] 对接真实 ERP / 订单系统
 - [ ] 角色权限隔离（钓友 / 经销商 / 老板）

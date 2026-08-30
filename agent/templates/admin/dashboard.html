@@ -8,7 +8,8 @@
   <style>
     .zy-dash{ --jade:#1F6B54; --jade-700:#185647; --jade-500:#2C8466; --jade-100:#DCEDE6;
       --lake:#2C7C8C; --lake-300:#6FBAC6; --fire:#E2703A; --fire-700:#B5481C; --fire-300:#F4B495;
-      --paper:#F6F1E7; --paper-card:#FBF8F1; --ink:#15211D; --ink-soft:#3A473F; --ink-mute:#738079;
+      --paper:#F6F1E7; --paper-card:#FBF8F1; --paper-deep:#ECE4D4;
+      --ink:#15211D; --ink-soft:#3A473F; --ink-mute:#738079;
       --radius:16px; --shadow:0 4px 14px rgba(31,107,84,.10); }
     .zy-dash *{box-sizing:border-box;}
     .zy-dash .dash-head{display:flex;align-items:center;gap:14px;margin-bottom:22px;}
@@ -28,9 +29,51 @@
     .zy-dash .card .value{font-size:30px;font-weight:700;color:var(--ink);margin:6px 0 2px;font-family:'Noto Serif SC',serif;}
     .zy-dash .card .value .u{font-size:14px;color:var(--ink-mute);font-weight:500;margin-left:4px;}
     .zy-dash .card .sub{font-size:12px;color:var(--ink-soft);}
+    /* 可点击卡片（链接到对应后台列表） */
+    .zy-dash a.card{display:block;text-decoration:none;transition:transform .15s, box-shadow .15s;}
+    .zy-dash a.card:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(31,107,84,.16);}
+    .zy-dash .card .arrow{position:absolute;right:16px;bottom:12px;font-size:11.5px;
+      color:var(--jade);font-weight:600;opacity:0;transition:opacity .15s;}
+    .zy-dash a.card:hover .arrow{opacity:1;}
+    .zy-dash .ord-link{color:var(--jade-700);font-weight:600;text-decoration:none;
+      border-bottom:1px dashed rgba(31,107,84,.4);}
+    .zy-dash .ord-link:hover{color:var(--fire-700);border-bottom-color:var(--fire);}
     .zy-dash .sec{margin-top:26px;}
     .zy-dash .sec h2{font-family:'Noto Serif SC',serif;font-size:17px;color:var(--jade-700);
       border-left:4px solid var(--fire);padding-left:10px;margin:0 0 12px;}
+    /* ── 公司收入概览 ── */
+    .zy-dash .fin-grid{display:grid;grid-template-columns:1.25fr 1fr;gap:16px;}
+    @media (max-width:900px){.zy-dash .fin-grid{grid-template-columns:1fr;}}
+    .zy-dash .fin-card{background:var(--paper-card);border-radius:var(--radius);
+      box-shadow:var(--shadow);border:1px solid rgba(31,107,84,.08);padding:16px 18px;}
+    .zy-dash .fin-card h3{font-size:13px;color:var(--ink-soft);margin:0 0 12px;font-weight:600;}
+    .zy-dash .fin-card h3 .total{color:var(--jade-700);font-weight:700;margin-left:6px;}
+    .zy-dash .chart{display:flex;align-items:flex-end;gap:6px;height:150px;padding:4px 2px 0;}
+    .zy-dash .bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:0;height:100%;justify-content:flex-end;}
+    .zy-dash .bar-pair{display:flex;align-items:flex-end;gap:2px;height:100%;width:100%;justify-content:center;}
+    .zy-dash .bar{width:38%;max-width:14px;border-radius:4px 4px 0 0;min-height:2px;
+      transition:height .3s ease;position:relative;}
+    .zy-dash .bar.in{background:linear-gradient(180deg,var(--jade-500),var(--jade-700));}
+    .zy-dash .bar.out{background:linear-gradient(180deg,var(--fire-300),var(--fire));}
+    .zy-dash .bar:hover::after{content:attr(data-tip);position:absolute;bottom:105%;left:50%;
+      transform:translateX(-50%);background:var(--ink);color:#fff;font-size:11px;white-space:nowrap;
+      padding:4px 8px;border-radius:6px;z-index:5;}
+    .zy-dash .axis{display:flex;gap:6px;margin-top:6px;}
+    .zy-dash .axis span{flex:1;text-align:center;font-size:9.5px;color:var(--ink-mute);transform:scale(.92);}
+    .zy-dash .legend{display:flex;gap:14px;font-size:11.5px;color:var(--ink-mute);margin-bottom:8px;}
+    .zy-dash .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px;}
+    .zy-dash .comp-row{margin-bottom:11px;}
+    .zy-dash .comp-row .t{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px;}
+    .zy-dash .comp-row .t b{color:var(--ink);}
+    .zy-dash .comp-row .t .amt{color:var(--jade-700);font-weight:600;}
+    .zy-dash .comp-row .t .pct{color:var(--ink-mute);margin-left:8px;font-weight:400;}
+    .zy-dash .comp-bar{height:8px;border-radius:99px;background:var(--paper-deep);overflow:hidden;}
+    .zy-dash .comp-bar i{display:block;height:100%;border-radius:99px;
+      background:linear-gradient(90deg,var(--jade-500),var(--lake));}
+    .zy-dash .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
+    .zy-dash .chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:5px 12px;
+      border-radius:999px;background:var(--paper);color:var(--ink-soft);border:1px solid rgba(31,107,84,.10);}
+    .zy-dash .chip b{color:var(--ink);}
     .zy-dash .tbl{width:100%;border-collapse:collapse;background:var(--paper-card);border-radius:var(--radius);
       overflow:hidden;box-shadow:var(--shadow);}
     .zy-dash .tbl th,.zy-dash .tbl td{padding:11px 14px;text-align:left;font-size:13px;border-bottom:1px solid var(--jade-100);}
@@ -53,13 +96,109 @@
 
   <div class="grid">
     {% for m in metrics %}
-    <div class="card tone-{{ m.tone }}">
-      <div class="ic {{ m.tone }}"><span class="material-symbols-outlined">{{ m.icon }}</span></div>
-      <div class="label">{{ m.label }}</div>
-      <div class="value">{{ m.value }}{% if m.unit %}<span class="u">{{ m.unit }}</span>{% endif %}</div>
-      <div class="sub">{{ m.sub }}</div>
-    </div>
+      {% if m.href %}
+      <a class="card link tone-{{ m.tone }}" href="{{ m.href }}" title="点击进入「{{ m.label }}」">
+        <div class="ic {{ m.tone }}"><span class="material-symbols-outlined">{{ m.icon }}</span></div>
+        <div class="label">{{ m.label }}</div>
+        <div class="value">{{ m.value }}{% if m.unit %}<span class="u">{{ m.unit }}</span>{% endif %}</div>
+        <div class="sub">{{ m.sub }}</div>
+        <span class="arrow">进入 →</span>
+      </a>
+      {% else %}
+      <div class="card tone-{{ m.tone }}">
+        <div class="ic {{ m.tone }}"><span class="material-symbols-outlined">{{ m.icon }}</span></div>
+        <div class="label">{{ m.label }}</div>
+        <div class="value">{{ m.value }}{% if m.unit %}<span class="u">{{ m.unit }}</span>{% endif %}</div>
+        <div class="sub">{{ m.sub }}</div>
+      </div>
+      {% endif %}
     {% endfor %}
+  </div>
+
+  <div class="sec">
+    <h2>公司收入概览</h2>
+    <div class="fin-grid">
+      <div class="fin-card">
+        <div class="legend">
+          <span><i style="background:var(--jade-500);"></i>收入</span>
+          <span><i style="background:var(--fire);"></i>支出</span>
+          <span style="margin-left:auto;">峰值 ¥{{ tx_max|floatformat:0 }}</span>
+        </div>
+        <div class="chart">
+          {% for s in income_series %}
+          <div class="bar-col">
+            <div class="bar-pair">
+              <div class="bar in" style="height:{{ s.h_income }}%;"
+                   data-tip="{{ s.label }} 收入 +¥{{ s.income|floatformat:2 }}"></div>
+              <div class="bar out" style="height:{{ s.h_expense }}%;"
+                   data-tip="{{ s.label }} 支出 -¥{{ s.expense|floatformat:2 }}"></div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="axis">
+          {% for s in income_series %}<span>{{ s.label }}</span>{% endfor %}
+        </div>
+      </div>
+
+      <div class="fin-card">
+        <h3>累计收入构成<span class="total">¥{{ income_total|floatformat:2 }}</span></h3>
+        {% for c in income_composition %}
+        <div class="comp-row">
+          <div class="t">
+            <div><b>{{ c.category }}</b><span class="pct">{{ c.pct }}%</span></div>
+            <div class="amt">+¥{{ c.amount|floatformat:2 }}</div>
+          </div>
+          <div class="comp-bar"><i style="width:{{ c.pct }}%;"></i></div>
+        </div>
+        {% empty %}
+        <div class="muted" style="font-size:12.5px;">暂无收入流水 · 订单发货后将自动记账</div>
+        {% endfor %}
+
+        <h3 style="margin-top:16px;">订单状态分布</h3>
+        <div class="chips">
+          {% for st in status_dist %}
+          <span class="chip">{{ st.status|default:"未知" }} <b>{{ st.c }}</b></span>
+          {% empty %}
+          <span class="muted" style="font-size:12px;">暂无订单</span>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>最近收支流水</h2>
+    <table class="tbl">
+      <thead><tr><th>时间</th><th>类型</th><th>分类</th><th>金额</th><th>关联订单</th><th>备注</th></tr></thead>
+      <tbody>
+      {% for t in recent_txs %}
+        <tr>
+          <td class="muted">{{ t.created_at|date:"m-d H:i" }}</td>
+          <td>
+            {% if t.tx_type == "收入" %}<span class="badge jade">收入</span>
+            {% else %}<span class="badge fire">支出</span>{% endif %}
+          </td>
+          <td>{{ t.category }}</td>
+          <td>
+            {% if t.tx_type == "收入" %}
+              <b style="color:var(--jade-700);">+¥{{ t.amount|floatformat:2 }}</b>
+            {% else %}
+              <b style="color:var(--fire-700);">-¥{{ t.amount|floatformat:2 }}</b>
+            {% endif %}
+          </td>
+          <td>{% if t.order_id %}<a class="ord-link" href="/admin/agent/orders/{{ t.order_id }}/change/">{{ t.order__order_no }}</a>{% else %}—{% endif %}</td>
+          <td class="muted">{{ t.note|default:"—"|truncatechars:24 }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="6" class="muted">暂无流水（订单已发货/退货会自动写入）</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <div style="margin-top:10px;text-align:right;">
+      <a href="/admin/agent/transaction/" class="badge jade" style="text-decoration:none;">查看全部收支流水 →</a>
+      <a href="/admin/agent/wallet/" class="badge fire" style="text-decoration:none;margin-left:8px;">进入公司钱包 →</a>
+    </div>
   </div>
 
   <div class="sec">
@@ -69,7 +208,7 @@
       <tbody>
       {% for o in recent_orders %}
         <tr>
-          <td>{{ o.order_no }}</td>
+          <td>{% if o.id %}<a class="ord-link" href="/admin/agent/orders/{{ o.id }}/change/">{{ o.order_no }}</a>{% else %}{{ o.order_no }}{% endif %}</td>
           <td>{{ o.customer_name|default:"—" }}</td>
           <td>{{ o.product_name|default:"—" }}</td>
           <td>{{ o.quantity|default:"—" }}</td>
@@ -94,7 +233,7 @@
       <tbody>
       {% for c in unread_list %}
         <tr>
-          <td>{{ c.name }}</td>
+          <td><a class="ord-link" href="/admin/agent/contactmessage/{{ c.id }}/change/" title="点击处理该留言">{{ c.name }}</a></td>
           <td>{{ c.phone }}</td>
           <td>{{ c.message|truncatechars:40 }}</td>
           <td class="muted">{{ c.created_at|date:"m-d H:i" }}</td>

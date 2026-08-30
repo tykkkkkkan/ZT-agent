@@ -61,8 +61,6 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
-    # SecurityMiddleware 会给 StreamingHttpResponse 注入 Content-Length，
-    # 导致 runserver 缓冲整个响应。放最前，让其他中间件无法注入长度。
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.locale.LocaleMiddleware',
@@ -73,9 +71,6 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     # 注意：不要加 GZipMiddleware，会压缩 SSE 流导致逐字节变成大块
 ]
-
-# SSE 流式配置：跳过 SecurityMiddleware 的 Content-Length 注入
-SECURITY_MIDDLEWARE_SKIP_CONTENT_LENGTH = True
 
 ROOT_URLCONF = 'config.urls'
 
@@ -103,11 +98,12 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'agent_db',
-        'USER': 'root',
+        'NAME': os.getenv('DB_NAME', 'agent_db'),
+        'USER': os.getenv('DB_USER', 'root'),
         'PASSWORD': os.getenv('DB_PASSWORD', ''),
-        'HOST': '127.0.0.1',
-        'PORT': '3306',
+        # 本地开发默认 127.0.0.1；Docker/docker-compose 通过 DB_HOST=db 指向数据库服务容器
+        'HOST': os.getenv('DB_HOST', '127.0.0.1'),
+        'PORT': os.getenv('DB_PORT', '3306'),
         'OPTIONS': {
             'charset': 'utf8mb4',
         },

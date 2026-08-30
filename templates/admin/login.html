@@ -1,0 +1,208 @@
+{# 项目级 admin/login.html — 覆盖 Unfold 登录页，「江畔渔火」品牌化管理员登录 #}
+{# 完全独立样式（不依赖 admin/unfold CSS），POST 目标保持原 admin login 视图 #}
+{% load i18n %}<!DOCTYPE html>
+<html lang="zh-hans">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% blocktranslate %}后台登录 · {{ site_header }}{% endblocktranslate %}</title>
+  <style>
+    :root{
+      --jade:#1F6B54; --jade-700:#134435; --jade-500:#2C8466; --jade-100:#DCEDE6;
+      --lake:#2C7C8C; --fire:#E2703A; --fire-700:#B5481C;
+      --paper:#F6F1E7; --paper-deep:#ECE4D4; --card:#FBF8F1;
+      --ink:#15211D; --ink-soft:#3A473F; --ink-mute:#738079;
+    }
+    *{margin:0;padding:0;box-sizing:border-box;}
+    html,body{height:100%;}
+    body{
+      font-family:'Noto Sans SC',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+      background:
+        radial-gradient(1100px 520px at 82% -10%, rgba(44,124,140,.14), transparent 60%),
+        radial-gradient(900px 480px at -10% 108%, rgba(226,112,58,.12), transparent 55%),
+        var(--paper);
+      display:flex;align-items:center;justify-content:center;padding:24px;
+      color:var(--ink);
+    }
+    .wrap{width:100%;max-width:920px;display:grid;grid-template-columns:1.05fr .95fr;
+      background:var(--card);border-radius:22px;overflow:hidden;
+      box-shadow:0 18px 50px rgba(31,107,84,.16);border:1px solid rgba(31,107,84,.10);}
+    /* 左侧品牌区 */
+    .brand{position:relative;background:linear-gradient(155deg,var(--jade-700) 0%,var(--jade) 58%,var(--lake) 130%);
+      color:#fff;padding:46px 42px;display:flex;flex-direction:column;justify-content:space-between;min-height:560px;}
+    .brand::before{content:"";position:absolute;inset:0;opacity:.10;
+      background-image:radial-gradient(circle at 1px 1px, #fff 1px, transparent 0);background-size:22px 22px;}
+    .logo{display:flex;align-items:center;gap:12px;position:relative;}
+    .logo .mark{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.14);
+      border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;}
+    .logo .name{font-family:'Noto Serif SC',serif;font-size:21px;letter-spacing:2px;}
+    .logo .tag{font-size:11px;opacity:.75;margin-top:2px;letter-spacing:3px;}
+    .slogan{position:relative;margin-top:34px;}
+    .slogan h1{font-family:'Noto Serif SC',serif;font-size:30px;line-height:1.5;font-weight:700;}
+    .slogan h1 em{font-style:normal;color:#F4B495;}
+    .slogan p{margin-top:12px;font-size:13px;line-height:1.9;opacity:.85;max-width:34ch;}
+    .waves{position:absolute;left:0;right:0;bottom:0;opacity:.16;}
+    .foot{position:relative;font-size:12px;opacity:.72;letter-spacing:1px;}
+    /* 右侧表单区 */
+    .pane{padding:52px 46px;display:flex;flex-direction:column;justify-content:center;}
+    .pane .kicker{font-size:12px;color:var(--fire);letter-spacing:4px;font-weight:600;}
+    .pane h2{font-family:'Noto Serif SC',serif;font-size:24px;color:var(--jade-700);margin:8px 0 6px;}
+    .pane .sub{font-size:13px;color:var(--ink-mute);margin-bottom:26px;}
+    .field{margin-bottom:16px;}
+    .field label{display:block;font-size:12px;color:var(--ink-soft);font-weight:600;margin-bottom:7px;letter-spacing:1px;}
+    .field .box{position:relative;}
+    .field .box .mi{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:18px;height:18px;
+      color:var(--ink-mute);pointer-events:none;}
+    .field input{width:100%;padding:12px 14px 12px 40px;font-size:14px;color:var(--ink);
+      background:#fff;border:1.5px solid var(--paper-deep);border-radius:11px;outline:none;
+      transition:border-color .18s, box-shadow .18s;}
+    .field input:focus{border-color:var(--jade-500);box-shadow:0 0 0 3px rgba(44,132,102,.14);}
+    .field input.input-error{border-color:#DC5240;box-shadow:0 0 0 3px rgba(199,51,32,.12);}
+    .field.has-toggle input{padding-right:44px;}
+    .pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);
+      width:34px;height:34px;border:none;background:transparent;border-radius:9px;cursor:pointer;
+      color:var(--ink-mute);display:flex;align-items:center;justify-content:center;}
+    .pw-toggle:hover{color:var(--jade);background:rgba(31,107,84,.08);}
+    .errors{background:#FDECEA;border:1px solid #F4A89C;color:#A8281A;font-size:12.5px;
+      padding:10px 14px;border-radius:10px;margin-bottom:16px;line-height:1.7;}
+    .btn{width:100%;margin-top:6px;padding:13px;border:none;border-radius:11px;cursor:pointer;
+      font-size:15px;font-weight:700;letter-spacing:6px;color:#fff;
+      background:linear-gradient(135deg,var(--jade-500),var(--jade-700));
+      box-shadow:0 6px 16px rgba(31,107,84,.32);transition:transform .15s, box-shadow .15s, opacity .15s;}
+    .btn:hover{transform:translateY(-1px);box-shadow:0 9px 20px rgba(31,107,84,.38);}
+    .btn:disabled{opacity:.72;cursor:wait;transform:none;}
+    .tips{margin-top:22px;padding-top:16px;border-top:1px dashed var(--paper-deep);
+      font-size:12px;color:var(--ink-mute);line-height:1.8;}
+    .tips a{color:var(--lake);text-decoration:none;font-weight:600;}
+    .back{margin-top:14px;text-align:center;font-size:12px;}
+    .back a{color:var(--ink-mute);text-decoration:none;}
+    .back a:hover{color:var(--jade);}
+    @media (max-width:760px){
+      .wrap{grid-template-columns:1fr;} .brand{min-height:auto;padding:30px;}
+      .slogan{margin-top:18px;} .slogan h1{font-size:22px;} .pane{padding:34px 28px;}
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <aside class="brand">
+      <div>
+        <div class="logo">
+          <div class="mark">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M2 12c3-4.5 7-6.5 11-6.5 3.2 0 6.2 1.4 8.5 3.6l-2 2.9 2 2.9c-2.3 2.2-5.3 3.6-8.5 3.6-4 0-8-2-11-6.5z"/>
+              <circle cx="16.2" cy="10.4" r="1" fill="#fff" stroke="none"/>
+              <path d="M6.5 9.5c1.8 1.6 1.8 3.4 0 5"/>
+            </svg>
+          </div>
+          <div>
+            <div class="name">中渔天下</div>
+            <div class="tag">JIANGPAN YUHUO</div>
+          </div>
+        </div>
+        <div class="slogan">
+          <h1>专注好饵料<br><em>助你连竿爆护</em></h1>
+          <p>AI 智能客服 · 库存联动 · 财务流水可追溯。此后台仅供管理员使用，数据操作将记入日志。</p>
+        </div>
+      </div>
+      <svg class="waves" viewBox="0 0 480 90" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M0 60 C90 20 150 80 240 55 C330 30 390 75 480 45 L480 90 L0 90 Z" fill="#fff"/>
+        <path d="M0 74 C100 44 170 92 260 68 C350 46 410 86 480 62 L480 90 L0 90 Z" fill="#0C2A24"/>
+      </svg>
+      <div class="foot">© 2026 中渔天下 · 后台管理系统</div>
+    </aside>
+
+    <section class="pane">
+      <div class="kicker">ADMIN CONSOLE</div>
+      <h2>管理员登录</h2>
+      <div class="sub">请使用管理员账号进入后台（与前台账号体系独立）</div>
+
+      {% if form.non_field_errors or form.errors %}
+        <div class="errors">
+          {% for e in form.non_field_errors %}{{ e }}<br>{% endfor %}
+          {% for field in form %}{% for e in field.errors %}{{ e }}<br>{% endfor %}{% endfor %}
+        </div>
+      {% endif %}
+
+      <form method="post" action="{{ app_path }}" novalidate>
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ next }}">
+        <div class="field">
+          <label for="id_username">用户名</label>
+          <div class="box">
+            <svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="8" r="4"/><path d="M4 20c1.8-3.4 4.6-5 8-5s6.2 1.6 8 5"/>
+            </svg>
+            <input type="text" name="username" id="id_username" autocomplete="username"
+                   autocapitalize="none" required autofocus
+                   value="{{ form.username.value|default:'' }}"
+                   class="{% if form.username.errors %}input-error{% endif %}"
+                   placeholder="请输入管理员用户名">
+          </div>
+        </div>
+        <div class="field has-toggle">
+          <label for="id_password">密码</label>
+          <div class="box">
+            <svg class="mi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="4" y="10" width="16" height="10" rx="2.5"/>
+              <path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15" r="1.4" fill="currentColor" stroke="none"/>
+            </svg>
+            <input type="password" name="password" id="id_password" autocomplete="current-password"
+                   required class="{% if form.password.errors %}input-error{% endif %}"
+                   placeholder="请输入密码">
+            <button type="button" class="pw-toggle" id="pwToggle" aria-label="显示或隐藏密码" title="显示/隐藏密码">
+              <svg id="pwEyeOn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/>
+                <circle cx="12" cy="12" r="2.8"/>
+              </svg>
+              <svg id="pwEyeOff" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none;">
+                <path d="M2 12s3.6-6.5 10-6.5c2 0 3.7.5 5.2 1.3M22 12s-3.6 6.5-10 6.5c-2 0-3.7-.5-5.2-1.3"/>
+                <path d="M4 4l16 16"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <button type="submit" class="btn" id="loginBtn">登 录</button>
+      </form>
+
+      <div class="tips">
+        登录即代表同意后台操作规范 · 忘记密码请联系超级管理员重置<br>
+        <a href="/">返回官网首页</a>
+      </div>
+      <div class="back"><a href="/">← 中渔天下官网</a></div>
+    </section>
+  </main>
+  <script>
+    // 密码显隐切换
+    (function () {
+      var input = document.getElementById('id_password');
+      var btn = document.getElementById('pwToggle');
+      var eyeOn = document.getElementById('pwEyeOn');
+      var eyeOff = document.getElementById('pwEyeOff');
+      btn.addEventListener('click', function () {
+        var show = input.type === 'password';
+        input.type = show ? 'text' : 'password';
+        eyeOn.style.display = show ? 'none' : '';
+        eyeOff.style.display = show ? '' : 'none';
+        btn.title = show ? '隐藏密码' : '显示密码';
+        input.focus();
+      });
+    })();
+    // 提交加载态（原生表单提交前短暂反馈）
+    (function () {
+      var form = document.querySelector('form');
+      var btn = document.getElementById('loginBtn');
+      form.addEventListener('submit', function () {
+        btn.disabled = true;
+        btn.textContent = '登录中…';
+      });
+    })();
+  </script>
+</body>
+</html>

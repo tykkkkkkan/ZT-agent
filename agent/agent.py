@@ -18,12 +18,15 @@ agent/agent.py — ReAct 式 Agent 循环 + 真·流式输出
 历史加载 / 存库也收敛在本模块，视图层只负责 HTTP 与 SSE 格式化。
 """
 import json
+import logging
 import re
 
 from django.utils import timezone
 
 from agent import llm
 from agent.prompts import load_prompt
+
+logger = logging.getLogger(__name__)
 
 MAX_TOOL_STEPS = 3
 HISTORY_MAX_MSGS = 10
@@ -92,6 +95,7 @@ def _load_history(session_id: str, max_msgs: int = HISTORY_MAX_MSGS) -> list:
         ).order_by("-created_at")[:max_msgs]
         return [{"role": r.role, "content": r.content} for r in reversed(list(records))]
     except Exception:
+        logger.exception("加载对话历史失败（session=%s）", session_id)
         return []
 
 
@@ -103,7 +107,8 @@ def _save_conversation(session_id: str, role: str, content: str) -> None:
             session_id=session_id, role=role, content=content, created_at=timezone.now()
         )
     except Exception:
-        pass
+        # 存库失败不阻断对话主流程，但要留下排查线索
+        logger.exception("对话记录落库失败（session=%s role=%s）", session_id, role)
 
 
 def _parse_tool_args(raw: str) -> dict:

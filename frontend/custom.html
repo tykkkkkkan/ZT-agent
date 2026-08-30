@@ -8,53 +8,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/theme.css">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        paper: { DEFAULT: '#F6F1E7', deep: '#ECE4D4', card: '#FBF8F1' },
-                        brand: {
-                            50: '#EAF4EF', 100: '#DCEDE6', 200: '#BFE0D3', 300: '#8FC4B1',
-                            400: '#4FA386', 500: '#2C8466', 600: '#1F6B54', 700: '#185647',
-                            800: '#124037', 900: '#0C2A24',
-                        },
-                        sunset: {
-                            50: '#FCEFE6', 100: '#FBE6D8', 200: '#F7CBB2', 300: '#F4B495',
-                            400: '#ED935F', 500: '#E2703A', 600: '#D65F2A', 700: '#B5481C',
-                        },
-                        lake: {
-                            50: '#EBF5F7', 100: '#D2E9ED', 200: '#A6D4DC', 300: '#6FBAC6',
-                            400: '#3E9AA9', 500: '#2C7C8C', 600: '#236472', 700: '#1B4E5A',
-                            800: '#143B44',
-                        },
-                        ink: {
-                            900: '#15211D', 800: '#243029', 700: '#3A473F', 600: '#54615A',
-                            500: '#738079', 400: '#9AA89F', 300: '#C3CCC4',
-                        },
-                        white: '#FBF8F1',
-                        stone: { 50:'#F6F1E7',100:'#ECE4D4',200:'#E2D8C6',300:'#C9BBA3',400:'#9AA89F',500:'#738079',600:'#54615A',700:'#3A473F',800:'#243029',900:'#15211D' },
-                        slate: { 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
-                        emerald:{ 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
-                        green: { 50:'#EAF4EF',100:'#DCEDE6',200:'#BFE0D3',300:'#8FC4B1',400:'#4FA386',500:'#2C8466',600:'#1F6B54',700:'#185647',800:'#124037',900:'#0C2A24' },
-                        blue:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
-                        sky:    { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
-                        cyan:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
-                        teal:   { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
-                        indigo: { 50:'#EBF5F7',100:'#D2E9ED',200:'#A6D4DC',300:'#6FBAC6',400:'#3E9AA9',500:'#2C7C8C',600:'#236472',700:'#1B4E5A',800:'#143B44',900:'#0F2F38' },
-                        orange: { 50:'#FCEFE6',100:'#FBE6D8',200:'#F7CBB2',300:'#F4B495',400:'#ED935F',500:'#E2703A',600:'#D65F2A',700:'#B5481C',800:'#9A3A18',900:'#7E3013' },
-                        amber:  { 50:'#FCEFE6',100:'#FBE6D8',200:'#F7CBB2',300:'#F4B495',400:'#ED935F',500:'#E2703A',600:'#D65F2A',700:'#B5481C',800:'#9A3A18',900:'#7E3013' },
-                        red:    { 50:'#FDECEA',100:'#FAD2CC',200:'#F4A89C',300:'#EA7A6B',400:'#DC5240',500:'#C73320',600:'#A8281A',700:'#821E14',800:'#5E160F',900:'#43100B' }
-                    },
-                    fontFamily: {
-                        sans: ['Noto Sans SC', '-apple-system', 'BlinkMacSystemFont', 'PingFang SC', 'Microsoft YaHei', 'sans-serif'],
-                        display: ['Noto Serif SC', 'Noto Sans SC', 'serif'],
-                    }
-                }
-            }
-        };
-    </script>
+    <script src="assets/vendor/tailwindcdn.js"></script>
+    <script src="assets/tailwind-config.js"></script>
     
 <script src="auth.js"></script>
 </head>
@@ -248,7 +203,7 @@
             </div>
         </div>
         <div class="mt-12 pt-8 border-t border-slate-800 text-center text-sm text-stone-400">
-            © 2026 中渔天下 · 专注好饵料，助你连竿爆护
+            © 2026 中渔天下 · 专注好饵料，助你连竿爆护 <span class="text-stone-600 mx-1">·</span><a href="/admin/" target="_blank" class="text-stone-500 hover:text-stone-300 transition-colors">管理员后台</a>
         </div>
     </div>
 </footer>

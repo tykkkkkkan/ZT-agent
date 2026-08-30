@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+{% load i18n %}
+<html lang="zh-hans">
+<head>
+  <meta charset="UTF-8">
+  <title>管理员登录 · 中渔天下</title>
+  <link rel="icon" type="image/svg+xml" href="/static/admin/logo.svg">
+  <style>
+    :root{ --jade:#1F6B54; --jade-700:#185441; --fire:#E2703A; --fire-700:#B5481C;
+      --paper:#F6F1E7; --ink:#15211D; --ink-mute:#738079; --radius:16px; }
+    *{box-sizing:border-box;}
+    html,body{margin:0;padding:0;height:100%;font-family:'PingFang SC','Microsoft YaHei','Helvetica Neue',Arial,sans-serif;
+      background:linear-gradient(135deg,#E2F3F7 0%, #DCEDE6 50%, #F4D9CF 100%);
+      color:var(--ink);}
+    .wrap{ min-height:100%; display:flex; align-items:center; justify-content:center; padding:24px; }
+    .card{ width:min(420px,96vw); background:#FBF8F1; border-radius:var(--radius);
+      box-shadow:0 16px 40px rgba(31,107,84,.18), 0 2px 6px rgba(0,0,0,.06);
+      overflow:hidden; }
+    .card .head{ background:linear-gradient(135deg, var(--jade) 0%, #185441 100%);
+      color:#fff; padding:22px 28px; display:flex; align-items:center; gap:14px; }
+    .card .head .logo{ width:42px; height:42px; border-radius:12px; background:rgba(255,255,255,.18);
+      display:flex; align-items:center; justify-content:center; }
+    .card .head .logo span{ font-size:24px; }
+    .card .head h1{ margin:0; font-size:18px; font-weight:700; letter-spacing:.5px; }
+    .card .head p{ margin:2px 0 0; font-size:12px; color:rgba(255,255,255,.85); }
+    form{ padding:24px 28px 28px; }
+    .field{ margin-bottom:16px; }
+    .field label{ display:block; font-size:13px; color:var(--ink-mute); margin-bottom:6px; }
+    .field input{ width:100%; padding:11px 14px; font-size:15px; border:1px solid #d8d2c0; border-radius:10px;
+      background:#fff; outline:none; transition:border .15s, box-shadow .15s; }
+    .field input:focus{ border-color:var(--jade); box-shadow:0 0 0 3px rgba(31,107,84,.12); }
+    .err{ background:#F7D9CF; color:#7A2E0E; padding:9px 12px; border-radius:8px;
+      font-size:13px; margin-bottom:14px; border-left:3px solid var(--fire-700); }
+    .btn{ width:100%; padding:12px; border:0; border-radius:10px; background:linear-gradient(135deg,var(--jade) 0%,#185441 100%);
+      color:#fff; font-size:15px; font-weight:600; cursor:pointer; letter-spacing:1px; transition:transform .1s, box-shadow .15s; }
+    .btn:hover{ box-shadow:0 4px 12px rgba(31,107,84,.25); }
+    .btn:active{ transform:translateY(1px); }
+    .meta{ margin-top:16px; text-align:center; font-size:12px; color:var(--ink-mute); }
+    .meta a{ color:var(--jade); text-decoration:none; }
+    .meta a:hover{ text-decoration:underline; }
+    .lock{ font-size:11px; color:var(--ink-mute); text-align:center; padding:0 0 16px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="head">
+        <div class="logo"><span>🎣</span></div>
+        <div>
+          <h1>中渔天下 · 后台管理</h1>
+          <p>仅限管理员（is_staff）登录</p>
+        </div>
+      </div>
+
+      <form method="post" action="{% url 'manage_login' %}{% if request.GET.next %}?next={{ request.GET.next }}{% endif %}">
+        {% csrf_token %}
+        {% if error %}<div class="err">{{ error }}</div>{% endif %}
+
+        <div class="field">
+          <label for="username">账号</label>
+          <input type="text" id="username" name="username" value="{{ username }}" autocomplete="username" required autofocus>
+        </div>
+        <div class="field">
+          <label for="password">密码</label>
+          <input type="password" id="password" name="password" autocomplete="current-password" required>
+        </div>
+
+        <button type="submit" class="btn">登 录</button>
+
+        <div class="meta">
+          <a href="/">← 返回网站首页</a>
+        </div>
+      </form>
+
+      <div class="lock">登录后进入 <a href="/admin/" style="color:var(--jade);">中渔天下 AI 助手 · 后台管理系统</a></div>
+    </div>
+  </div>
+</body>
+</html>

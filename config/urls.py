@@ -22,6 +22,7 @@ load_dotenv()
 from agent import views as views_agent
 from agent import auth_views
 from agent.views_admin import admin_dashboard
+from agent.manage_views import manage_login, manage_logout
 from rest_framework_simplejwt.views import TokenRefreshView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 
@@ -94,6 +95,9 @@ urlpatterns = [
     # 后台数据看板（须放在 admin/ 之前，避免被 admin.site.urls 抢匹配）
     path("admin/dashboard/", admin_dashboard, name="admin_dashboard"),
     path("admin/", admin.site.urls),
+    # 独立的管理员登录入口（与 /admin/login/ 分离，方便外部直接进入后台）
+    path("manage/login/", manage_login, name="manage_login"),
+    path("manage/logout/", manage_logout, name="manage_logout"),
     path("test-ai/", test_ai, name="test_ai"),
     path("api/agent/", include("agent.urls")),
     # 认证（JWT：注册/登录/刷新/退出/当前用户）

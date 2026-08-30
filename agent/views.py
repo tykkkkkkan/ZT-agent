@@ -10,6 +10,7 @@ P2 增强：管理类 API 加 staff 鉴权（session auth，同源 cookie 自动
          公开 API（chat/contact/custom/history/产品列表/订单查询）保持公开。
 """
 import json
+import logging
 import random
 import uuid
 from datetime import datetime
@@ -27,31 +28,65 @@ from agent.services import (
     transition_order, reserve_inventory,
 )
 
+logger = logging.getLogger(__name__)
+
 
 # ════════════════════════════════════════════════════════════════
 # 管理类 API 鉴权（P2）
 # ════════════════════════════════════════════════════════════════
-def staff_required(view_func):
-    """要求 staff（后台管理员）登录。
+def _jwt_staff_user(request):
+    """尝试从 Authorization: Bearer <access> 解析 JWT 用户。
 
-    使用 Django 内置 SessionAuth：
-    - 浏览器访问 admin 登录后，同源请求自动带 session cookie
+    返回 (user, ok)：token 合法且用户为 staff → (user, True)；
+    其余情况 → (None, False)。无 Authorization 头时返回 (None, False)，
+    由调用方回退到 session 认证。
+    """
+    from django.contrib.auth import get_user_model
+    header = request.META.get("HTTP_AUTHORIZATION", "")
+    if not header.lower().startswith("bearer "):
+        return None, False
+    token = header[7:].strip()
+    if not token:
+        return None, False
+    try:
+        from rest_framework_simplejwt.tokens import AccessToken
+        user_id = AccessToken(token).get("user_id")
+        user = get_user_model().objects.get(pk=user_id)
+        return (user, True) if user.is_staff else (None, False)
+    except Exception:
+        return None, False
+
+
+def staff_required(view_func):
+    """要求 staff（后台管理员）登录，session 与 JWT 双通道。
+
+    - session 通道：浏览器访问 admin 登录后，同源请求自动带 session cookie
+    - JWT 通道：前端管理页通过 auth.js 带 `Authorization: Bearer <access>`
     - 非 staff / 未登录 → 401 JSON
     """
     @wraps(view_func)
     def wrapper(request, *args, **kwargs):
         user = request.user
-        if not user.is_authenticated or not user.is_staff:
-            return JsonResponse(
-                {"success": False, "message": "需要管理员权限，请先登录后台。"},
-                status=401,
-            )
+        if not (user.is_authenticated and user.is_staff):
+            # session 未过 → 尝试 JWT
+            user, ok = _jwt_staff_user(request)
+            if not ok:
+                return JsonResponse(
+                    {"success": False, "message": "需要管理员权限，请先登录后台。"},
+                    status=401,
+                )
         return view_func(request, *args, **kwargs)
     return wrapper
 
 # SSE 事件序列化（统一 JSON 格式）
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _server_error(e):
+    """统一服务端异常处理：记录日志，向客户端返回通用错误（不泄露内部细节）。"""
+    logger.exception("服务端未预期异常：%s", e)
+    return JsonResponse({"success": False, "message": "服务器开小差了，请稍后重试。"}, status=500)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -91,8 +126,10 @@ def chat(request):
                     parts.append(ev["content"])
                     yield _sse({"content": ev["content"]})
         except Exception as e:
-            parts.append(f"⚠️ 服务出错：{e}")
-            yield _sse({"content": f"⚠️ 服务出错：{e}"})
+            # 详细错误只进日志，不对前端泄露内部信息（如 key/DB 报错细节）
+            logger.exception("AI 聊天流处理出错：%s", e)
+            parts.append("⚠️ 服务开小差了，请稍后重试。")
+            yield _sse({"content": "⚠️ 服务开小差了，请稍后重试。"})
 
         # 流结束后落库 AI 回复
         _save_conversation(session_id, "assistant", "".join(parts))
@@ -128,7 +165,7 @@ def history(request, session_id):
         ]
         return JsonResponse({"success": True, "session_id": session_id, "messages": data})
     except Exception as e:
-        return JsonResponse({"success": False, "message": str(e)}, status=500)
+        return _server_error(e)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -236,7 +273,7 @@ def product_list(request):
             })
         return JsonResponse({"success": True, "products": data})
     except Exception as e:
-        return JsonResponse({"success": False, "message": str(e)}, status=500)
+        return _server_error(e)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -286,7 +323,7 @@ def create_order_api(request):
     except Products.DoesNotExist:
         return JsonResponse({"success": False, "message": "所选产品不存在"}, status=404)
     except Exception as e:
-        return JsonResponse({"success": False, "message": f"查询产品出错：{e}"}, status=500)
+        return _server_error(e)
 
     if not product.is_active:
         return JsonResponse({"success": False, "message": "该产品已下架，暂不可下单"}, status=400)
@@ -295,13 +332,15 @@ def create_order_api(request):
     unit_price = float(product.retail_price or 0)
     total_price = round(unit_price * quantity, 2)
 
-    # 生成订单号：DD + 年月日 + 4 位随机数
-    today = datetime.now().strftime("%Y%m%d")
-    for _ in range(5):  # 极小概率重号，重试 5 次
-        order_no = f"DD{today}{random.randint(1000, 9999)}"
-        if not Orders.objects.filter(order_no=order_no).exists():
+    # 生成订单号：DD + 年月日时分秒 + 4 位随机数（时间戳降低碰撞概率，随机位防同秒重复）
+    now = datetime.now()
+    order_no = None
+    for _ in range(5):  # 极小概率重号（同秒同 4 位随机），重试 5 次
+        candidate = f"DD{now.strftime('%Y%m%d%H%M%S')}{random.randint(1000, 9999)}"
+        if not Orders.objects.filter(order_no=candidate).exists():
+            order_no = candidate
             break
-    else:
+    if order_no is None:
         return JsonResponse({"success": False, "message": "订单号生成失败，请重试"}, status=500)
 
     # 写入订单 + 预占库存（P0 修复：事务 + 行级锁）
@@ -334,7 +373,7 @@ def create_order_api(request):
                     "requested": e.requested,
                 }, status=400)
     except Exception as e:
-        return JsonResponse({"success": False, "message": f"创建订单出错：{e}"}, status=500)
+        return _server_error(e)
 
     return JsonResponse({
         "success": True,
@@ -396,7 +435,7 @@ def query_orders(request):
             "orders": [_serialize_order(o) for o in orders],
         })
     except Exception as e:
-        return JsonResponse({"success": False, "message": str(e)}, status=500)
+        return _server_error(e)
 
 
 def _serialize_order(order):
@@ -433,7 +472,7 @@ def order_detail(request, order_no):
     except Orders.DoesNotExist:
         return JsonResponse({"success": False, "message": "订单不存在"}, status=404)
     except Exception as e:
-        return JsonResponse({"success": False, "message": str(e)}, status=500)
+        return _server_error(e)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -577,7 +616,7 @@ def products_collection(request):
                 "products": [_serialize_product(p, inv_map) for p in qs],
             })
         except Exception as e:
-            return JsonResponse({"success": False, "message": str(e)}, status=500)
+            return _server_error(e)
 
     # POST 新建
     try:
@@ -624,7 +663,7 @@ def products_collection(request):
         return JsonResponse({"success": True, "product": _serialize_product(p)},
                             status=201)
     except Exception as e:
-        return JsonResponse({"success": False, "message": str(e)}, status=500)
+        return _server_error(e)
 
 
 @csrf_exempt
@@ -691,7 +730,7 @@ def product_detail_api(request, product_id):
                 inv.save()
         return JsonResponse({"success": True, "product": _serialize_product(p)})
     except Exception as e:
-        return JsonResponse({"success": False, "message": str(e)}, status=500)
+        return _server_error(e)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -720,7 +759,7 @@ def inventory_list_api(request):
             })
         return JsonResponse({"success": True, "inventory": items})
     except Exception as e:
-        return JsonResponse({"success": False, "message": str(e)}, status=500)
+        return _server_error(e)
 
 
 @csrf_exempt
@@ -736,15 +775,15 @@ def inventory_update_api(request, product_id):
     """
     from agent.models import Inventory
     try:
-        inv = Inventory.objects.select_for_update().get(product_id=product_id)
-    except Inventory.DoesNotExist:
-        return JsonResponse({"success": False, "message": "该产品无库存记录"}, status=404)
-    try:
         body = json.loads(request.body or b"{}")
     except json.JSONDecodeError:
         return JsonResponse({"success": False, "message": "请求体必须是 JSON"}, status=400)
 
     with transaction.atomic():
+        try:
+            inv = Inventory.objects.select_for_update().get(product_id=product_id)
+        except Inventory.DoesNotExist:
+            return JsonResponse({"success": False, "message": "该产品无库存记录"}, status=404)
         if "stock" in body:
             new_stock = max(0, int(body["stock"]))
             if new_stock < (inv.reserved_stock or 0):
@@ -817,7 +856,7 @@ def contact_messages_list(request):
             "messages": data,
         })
     except Exception as e:
-        return JsonResponse({"success": False, "message": str(e)}, status=500)
+        return _server_error(e)
 
 
 @csrf_exempt
@@ -850,7 +889,7 @@ def custom_requests_list(request):
             "requests": data,
         })
     except Exception as e:
-        return JsonResponse({"success": False, "message": str(e)}, status=500)
+        return _server_error(e)
 
 
 @csrf_exempt
