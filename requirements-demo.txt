@@ -1,0 +1,10 @@
+# 可选依赖：仅 demo_llamaindex.py 需要（对照 demo，非主流程）
+# 单独安装：pip install -r requirements-demo.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+#
+# 说明：llama-index 是元包，会拉入 llama-index-core 及其数十个传递依赖，
+#      体积远超主流程全部依赖之和。为使 Docker 构建从 ~10 分钟降到 ~2 分钟，
+#      主 requirements.txt 已不再包含它。需要跑 demo 时再单独安装即可。
+
+llama-index==0.14.24
+llama-index-llms-openai
+llama-index-embeddings-openai
