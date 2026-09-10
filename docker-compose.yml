@@ -6,7 +6,11 @@ services:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-123456}
       MYSQL_DATABASE: agent_db
     ports:
-      - "3306:3306"
+      # 宿主机 3307 → 容器 3306。
+      # 容器内部通信始终走 Docker 网络（web 用 DB_HOST=db:3306），与此映射无关；
+      # 这里换成 3307 是为了避开本机已安装的 MySQL 占用的 3306 端口。
+      # 仅当你需要用 Navicat/DBeaver 从宿主机连容器库时才需要它，连 127.0.0.1:3307。
+      - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       # 首次启动自动建表 + 灌初始数据（products/inventory/orders/conversations）
@@ -28,12 +32,20 @@ services:
       timeout: 3s
       retries: 10
     volumes:
-      - redis_data:/var/lib/redis
+      # redis:7-alpine 默认工作目录是 /data（配置里 `dir /data`），
+      # 挂到 /var/lib/redis 起不到持久化作用，RDB 快照会随容器删除而丢失。
+      - redis_data:/data
 
   web:
     build: .
     restart: unless-stopped
-    command: sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+    command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
+    # 把 .env 全部变量注入容器（DEEPSEEK_API_KEY / EMBEDDING_API_KEY / EMBEDDING_BASE_URL /
+    # EMBEDDING_MODEL / RAG_BACKEND / CORS_ALLOWED_ORIGINS 等），避免逐项列举时漏配
+    # 导致容器内 RAG 从「语义检索」静默降级为「关键词检索」。
+    # 下方 environment 优先级更高，用于覆盖必须改写为容器内地址的项。
+    env_file:
+      - .env
     environment:
       DB_HOST: db
       DB_PORT: 3306
@@ -41,12 +53,22 @@ services:
       DB_USER: root
       DB_PASSWORD: ${DB_PASSWORD:-123456}
       DEBUG: ${DEBUG:-True}
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-127.0.0.1,localhost,web}
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
+      # 追加 web（容器名），保证容器间调用不被 DisallowedHost 拦截
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-127.0.0.1,localhost},web
+      # ⚠️ 不要在此写 `DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}`：
+      # .env 缺失该变量时，`:-` 会把「空字符串」注入容器；而
+      # os.getenv(key, default) 仅在 key 不存在时才使用 default —— 空字符串会绕过
+      # settings.py 的兜底，导致容器一启动就崩：
+      #   ImproperlyConfigured: The SECRET_KEY setting must not be empty.
+      # SECRET_KEY 已由上方 env_file(.env) 注入，此处无需重复声明。
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
     ports:
-      - "8000:8000"
+      # 宿主机 8001 → 容器 8000。
+      # 本机 8000 已被一个 python 进程（多为本地 runserver）占用，故改用 8001。
+      # 容器内 Django 仍监听 8000，访问地址：http://localhost:8001
+      # 若你关掉本机占用 8000 的进程，可把这里改回 "8000:8000"。
+      - "8001:8000"
     depends_on:
       db:
         condition: service_healthy

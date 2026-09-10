@@ -24,7 +24,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 # 生产环境必须在 .env 中配置 DJANGO_SECRET_KEY；此处 fallback 仅供本地开发。
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-local-dev-only-please-change-in-prod')
+# 注意：这里必须用 `or` 兜底，不能用 os.getenv 的第二个参数。
+# 原因：os.getenv(key, default) 只在「key 不存在」时返回 default；
+# 若环境变量被显式注入为空字符串（例如 docker-compose 的 ${VAR:-} 写法），
+# 会返回 ""，绕过兜底并触发 ImproperlyConfigured: The SECRET_KEY setting must not be empty.
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY') or 'django-insecure-local-dev-only-please-change-in-prod'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
