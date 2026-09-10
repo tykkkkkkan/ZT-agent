@@ -93,6 +93,12 @@ logs/
 tmp/
 temp/
 
+# 备份产物（scripts/backup.sh 生成）
+backups/
+
+# 生成物 / 文档产物（脚本生成的 Word 等，不进版本库）
+outputs/
+
 # 临时脚本与备份
 frontend/_backup_20260829/
 frontend/_*.py

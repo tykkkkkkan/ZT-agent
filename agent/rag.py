@@ -23,10 +23,14 @@ agent/rag.py — 轻量级 RAG（检索增强生成）引擎
 from __future__ import annotations
 
 import math
+import os
 import re
 from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
+
+# BM25 重排权重：cosine 召回分与 BM25 字面分的混合比例（0~1），可经环境变量调节
+RAG_BM25_WEIGHT = float(os.getenv("RAG_BM25_WEIGHT", "0.5"))
 
 # ---------------------------------------------------------------------------
 # 分词：中文按「单字 + 相邻 bigram」切分，英文/数字按词切分（零依赖）
@@ -297,7 +301,7 @@ class RAGEngine:
             reranked: List[Tuple[float, int]] = []
             for idx, cos_s in recall:
                 bm = self._bm25.score(qtokens, idx) if self._bm25 else 0.0
-                final = cos_s + bm * 0.5
+                final = cos_s + bm * RAG_BM25_WEIGHT
                 reranked.append((final, idx))
         reranked.sort(key=lambda x: -x[0])
 

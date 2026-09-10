@@ -69,6 +69,10 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # 生产化中间件（P0）：请求 ID 注入日志 + 接口限流
+    'agent.middleware.RequestIDMiddleware',
+    'agent.middleware.MetricsMiddleware',
+    'agent.middleware.RateLimitMiddleware',
     # 注意：不要加 GZipMiddleware，会压缩 SSE 流导致逐字节变成大块
 ]
 
@@ -284,3 +288,119 @@ SIMPLE_JWT = {
 # 登录失败次数限制（可选加分项）
 LOGIN_MAX_ATTEMPTS = int(os.getenv('LOGIN_MAX_ATTEMPTS', '5'))
 LOGIN_LOCKOUT_MINUTES = int(os.getenv('LOGIN_LOCKOUT_MINUTES', '15'))
+
+
+# ════════════════════════════════════════════════════════════════
+# 缓存（P0：生产接 Redis；未配置 REDIS_URL 时回退 LocMem，保证本地可跑）
+# 登录失败锁定、未来异步任务均依赖此后端。
+# ════════════════════════════════════════════════════════════════
+REDIS_URL = os.getenv('REDIS_URL')
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+            'OPTIONS': {
+                'socket_timeout': 2,
+                'socket_connect_timeout': 2,
+            },
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
+    }
+
+
+# ════════════════════════════════════════════════════════════════
+# 接口限流（P0：固定窗口，按 用户/IP），详见 agent/middleware.RateLimitMiddleware
+# ════════════════════════════════════════════════════════════════
+RATE_CHAT_LIMIT = int(os.getenv('RATE_CHAT_LIMIT', '20'))     # 聊天接口每窗口允许次数
+RATE_CHAT_WINDOW = int(os.getenv('RATE_CHAT_WINDOW', '60'))   # 窗口秒数
+RATE_API_LIMIT = int(os.getenv('RATE_API_LIMIT', '120'))      # 通用 API 每窗口允许次数
+RATE_API_WINDOW = int(os.getenv('RATE_API_WINDOW', '60'))
+
+# 对话输入安全审核（默认开启；设为 0/false 关闭，仅保留长度校验）
+CONTENT_MODERATION = os.getenv('CONTENT_MODERATION', '1') not in ('0', 'false', 'False', '')
+
+
+# ════════════════════════════════════════════════════════════════
+# 日志（P0：统一格式 + 文件轮转 + request_id 注入，便于生产排障）
+# ════════════════════════════════════════════════════════════════
+LOG_DIR = BASE_DIR / 'logs'
+LOG_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{asctime}] {levelname:<8} {name} [req={request_id}] {message}',
+            'style': '{',
+        },
+    },
+    'filters': {
+        'request_id': {'()': 'agent.middleware.RequestIDFilter'},
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+            'filters': ['request_id'],
+        },
+        'file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOG_DIR / 'zt_agent.log',
+            'maxBytes': 10 * 1024 * 1024,   # 10 MB / 文件
+            'backupCount': 5,                # 保留 5 个历史文件
+            'encoding': 'utf-8',
+            'formatter': 'verbose',
+            'filters': ['request_id'],
+        },
+    },
+    'root': {
+        'handlers': ['console', 'file'],
+        'level': os.getenv('LOG_LEVEL', 'INFO'),
+    },
+    'loggers': {
+        'agent': {
+            'handlers': ['console', 'file'],
+            'level': os.getenv('LOG_LEVEL', 'INFO'),
+            'propagate': False,
+        },
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.request': {
+            'handlers': ['console', 'file'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+    },
+}
+
+
+# ════════════════════════════════════════════════════════════════
+# 可观测性：错误上报（可选，不强制依赖 sentry-sdk）
+# 配置 SENTRY_DSN 并 pip install sentry-sdk 后自动启用；未配置则跳过。
+# ════════════════════════════════════════════════════════════════
+SENTRY_DSN = os.getenv('SENTRY_DSN')
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.django import DjangoIntegration
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[DjangoIntegration()],
+            traces_sample_rate=float(os.getenv('SENTRY_TRACES_RATE', '0.1')),
+            send_default_pii=False,
+            environment=os.getenv('SENTRY_ENV', 'production'),
+        )
+    except ImportError:
+        logging.getLogger(__name__).warning(
+            "SENTRY_DSN 已配置但未安装 sentry-sdk，已跳过错误上报（pip install sentry-sdk 启用）"
+        )

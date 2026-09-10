@@ -30,6 +30,7 @@ from agent.models import (
     KnowledgeChunk, Wallet, Transaction, TxType, TxCategory, OrderStatus,
 )
 from agent.services import transition_order, revert_shipped_to_pending, manual_wallet_adjust
+from agent.knowledge_data import invalidate_rag_cache
 
 
 # ══════════════════════════════════════════════════════════════
@@ -425,12 +426,23 @@ class KnowledgeChunkAdmin(ZYModelAdmin):
     list_per_page = 25
     ordering = ('-updated_at',)
 
-    # 编辑时提示：keywords 用逗号分隔；改动后需重启进程重建 RAG 索引（当前为内存缓存）
+    # 知识库热更新（P1-7）：保存/删除后立即使内存 RAG 索引缓存失效，
+    # 下次请求自动从 DB 重建索引，无需重启 Django 进程。
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        invalidate_rag_cache()
+
+    def delete_model(self, request, obj):
+        super().delete_model(request, obj)
+        invalidate_rag_cache()
+
+    # 编辑时提示：keywords 用逗号分隔；保存后索引自动重建（无需重启）
     fieldsets = (
         (None, {'fields': ('title', 'category', 'keywords', 'content', 'is_active')}),
         ('提示', {'fields': (), 'description':
             'keywords 多个词用英文逗号分隔（如：退换,退货,退款）。'
-            '保存后需重启 Django 进程才会重建 RAG 索引（当前为内存缓存）。'}),
+            '保存或删除后索引会自动重建（无需重启进程）；也可在服务器执行 '
+            '`python manage.py rebuild_rag` 手动全量重建。'}),
     )
 
 

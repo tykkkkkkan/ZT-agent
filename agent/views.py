@@ -23,6 +23,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_GET, require_http_methods
 
 from agent.agent import agent_stream, _save_conversation
+from agent.safety import check_message
 from agent.services import (
     OrderTransitionError, InsufficientStockError,
     transition_order, reserve_inventory,
@@ -106,6 +107,17 @@ def chat(request):
         return JsonResponse({"error": "message 不能为空"}, status=400)
 
     session_id = (body.get("session_id") or "").strip() or uuid.uuid4().hex
+
+    # 输入安全审核（C 端客服合规前置）：命中脏话 / 注入 / 刷屏 / 超长 → 拒绝
+    ok, reason = check_message(user_message)
+    if not ok:
+        logger.warning("聊天输入被安全审核拦截 reason=%s session_id=%s", reason, session_id)
+        return JsonResponse(
+            {"error": "您的输入包含不当内容或异常，请调整后重试。如确需人工协助，请拨打客服热线。"},
+            status=400,
+        )
+
+    logger.info("收到聊天请求 session_id=%s msg_len=%d", session_id, len(user_message))
 
     # 先落库用户消息
     _save_conversation(session_id, "user", user_message)

@@ -17,6 +17,19 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redis_data:/var/lib/redis
+
   web:
     build: .
     restart: unless-stopped
@@ -31,13 +44,17 @@ services:
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-127.0.0.1,localhost,web}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
     ports:
       - "8000:8000"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - ./chroma_data:/app/chroma_data
 
 volumes:
   mysql_data:
+  redis_data:

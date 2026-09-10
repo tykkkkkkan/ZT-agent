@@ -9,6 +9,7 @@ Day8: 新增 /api/products/、/api/orders/ 直连路由（下单页用）
 from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse, HttpResponse, FileResponse
+from django.db import connection
 from django.conf import settings
 from django.views.static import serve
 
@@ -21,6 +22,7 @@ load_dotenv()
 
 from agent import views as views_agent
 from agent import auth_views
+from agent.middleware import metrics_view
 from agent.views_admin import admin_dashboard
 from agent.manage_views import manage_login, manage_logout
 from rest_framework_simplejwt.views import TokenRefreshView
@@ -87,7 +89,53 @@ def test_ai(request):
         return JsonResponse({"error": str(e)}, status=500)
 
 
+def healthz(request):
+    """健康检查（K8s / 负载均衡探活）：校验关键依赖，返回 200/503 JSON。
+
+    依赖判定：
+      - database：必须可用，否则 503；
+      - chroma_store：目录存在则 ok，缺失仅告警（仍可降级为纯 LLM 模式）；
+      - redis：仅当配置了 REDIS_URL 时检查，未配置则跳过。
+    """
+    import os
+    checks = {}
+    # 1) 数据库
+    try:
+        connection.ensure_connection()
+        with connection.cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        checks["database"] = "ok"
+    except Exception as e:  # noqa: BLE001
+        checks["database"] = f"error: {e}"
+
+    # 2) 向量库持久化目录
+    chroma_dir = settings.BASE_DIR / "chroma_data"
+    checks["chroma_store"] = "ok" if chroma_dir.exists() else "missing(optional)"
+
+    # 3) Redis（仅当配置了 REDIS_URL）
+    redis_url = os.getenv("REDIS_URL")
+    if redis_url:
+        try:
+            from django.core.cache import cache
+            cache.set("__health__", "1", 5)
+            cache.get("__health__")
+            checks["redis"] = "ok"
+        except Exception as e:  # noqa: BLE001
+            checks["redis"] = f"error: {e}"
+    else:
+        checks["redis"] = "not_configured(skip)"
+
+    ok = str(checks.get("database", "")).startswith("ok")
+    payload = {"status": "ok" if ok else "degraded", "checks": checks}
+    return JsonResponse(payload, status=200 if ok else 503)
+
+
 urlpatterns = [
+    # 健康检查（K8s / 负载均衡探活）
+    path("healthz", healthz, name="healthz"),
+    # 轻量级指标（Prometheus 风格文本）
+    path("metrics", metrics_view, name="metrics"),
     # Swagger / OpenAPI 文档
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path("api/schema/swagger-ui/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),

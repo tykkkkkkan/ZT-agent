@@ -16,10 +16,11 @@ def test_imports():
     from agent.prompts import load_prompt
     from agent import llm
 
-    assert len(TOOL_SCHEMAS) == 6
+    assert len(TOOL_SCHEMAS) == 7
     assert set(TOOL_REGISTRY) == {
         "query_product", "check_inventory", "get_order_status",
-        "calculate_quote", "search_knowledge", "guide_to_contact",
+        "query_orders_by_phone", "calculate_quote", "search_knowledge",
+        "guide_to_contact",
     }
     assert "中渔小助" in load_prompt("system_prompt_agent")
     print("[PASS] 核心模块导入正常")
