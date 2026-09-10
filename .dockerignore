@@ -18,6 +18,17 @@ env/
 *.key
 secrets.json
 
+# 版本控制历史与产物（不进运行镜像：会显著增大体积，
+# 且 .git 内含完整历史，若镜像被 push 到 Docker Hub 会一并暴露）
+.git/
+.gitignore
+.github/
+
+# 运行期产物 / 本地文档
+logs/
+outputs/
+backups/
+
 # 向量库持久化数据 / 本地数据库
 chroma_data/
 *.sqlite3
