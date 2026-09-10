@@ -1,5 +1,6 @@
 # 中渔天下 ZT-agent 依赖清单
 # 安装：pip install -r requirements.txt
+# 建议：Python 3.12+（django-unfold 0.100+ 不再支持 3.11）
 
 # Web 框架
 Django==5.2.17

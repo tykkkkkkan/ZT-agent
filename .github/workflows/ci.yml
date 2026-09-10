@@ -16,10 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          # 与本地开发环境保持一致：django-unfold 0.100+ 需要 Python ≥ 3.12
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
