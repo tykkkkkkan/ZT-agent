@@ -1,0 +1,93 @@
+# ==========================================================
+# docker-compose.hub.yml —— 「用镜像跑，不构建」
+#
+# 适用对象：只想跑起来看效果的人（面试官 / 同学 / 同事）。
+# 与 docker-compose.yml 的唯一区别：web 服务用 image: 拉现成镜像，
+# 没有 build: 指令 —— 因此不需要 Python 环境、不需要 pip 装依赖、
+# 不需要等 5~10 分钟构建，几十秒就能起来。
+#
+# 前置条件（只有一条）：项目目录里要有 .env 文件
+#   cp .env.example .env      # 然后按需填写 DEEPSEEK_API_KEY
+#
+# 启动：
+#   docker compose -f docker-compose.hub.yml up -d
+# 访问：
+#   http://localhost:8001/
+#
+# 维护提醒：新增/修改服务、端口、环境变量时，记得回来同步本文件。
+# ==========================================================
+
+services:
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-123456}
+      MYSQL_DATABASE: agent_db
+    ports:
+      # 宿主机 3307 → 容器 3306（避开多数人本机已装的 MySQL）
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      # 首次启动自动建表 + 灌初始数据（products/inventory/orders/conversations）
+      - ./agent_db.sql:/docker-entrypoint-initdb.d/agent_db.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD:-123456}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - redis_data:/data
+
+  web:
+    # ★ 核心差异：不写 build，直接拉 Docker Hub 上的现成镜像
+    image: tykkkkkk/zt-agent:latest
+    restart: unless-stopped
+    command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
+    # .env 注入容器（DEEPSEEK_API_KEY / RAG_BACKEND / CORS_ALLOWED_ORIGINS 等）
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: agent_db
+      DB_USER: root
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
+      DEBUG: ${DEBUG:-True}
+      # 末尾必须有 web：容器间调用时 Host 头为容器名，否则被 DisallowedHost 拦截
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-127.0.0.1,localhost},web
+      # 不要在此声明 DJANGO_SECRET_KEY：`.env` 缺该变量时 `:-` 会注入空字符串，
+      # 而 os.getenv(key, default) 只在 key 不存在时才用 default —— 空字符串会绕过
+      # settings.py 的兜底，容器一启动就崩。SECRET_KEY 已由 env_file 注入。
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
+    ports:
+      # 宿主机 8001 → 容器 8000，访问：http://localhost:8001
+      - "8001:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      # 向量库持久化目录。仓库里不含该目录内容（.gitignore/.dockerignore 已排除），
+      # 首次启动会是空目录：
+      #   - RAG_BACKEND=tfidf（.env.example 默认）：零依赖，启动即用，无需处理；
+      #   - RAG_BACKEND=embedding：需要 EMBEDDING_API_KEY，并执行一次
+      #     docker compose -f docker-compose.hub.yml exec web python manage.py rebuild_rag
+      - ./chroma_data:/app/chroma_data
+
+volumes:
+  mysql_data:
+  redis_data:

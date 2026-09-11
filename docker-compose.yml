@@ -37,7 +37,14 @@ services:
       - redis_data:/data
 
   web:
+    # 同时声明 build 与 image：
+    # - 本地 `docker compose build` 构建出的镜像会自动命名为下面的 image 值，
+    #   省掉手工 `docker tag` 这一步；
+    # - `docker compose up -d`（不带 --build）在本地已有该镜像时直接复用，不会重复构建；
+    # - `docker compose push web` 可把它推到 Docker Hub。
+    # 只想「用镜像跑、不构建」的场景（例如别人用你的镜像），见 docker-compose.hub.yml。
     build: .
+    image: tykkkkkk/zt-agent:latest
     restart: unless-stopped
     command: sh -c "python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
     # 把 .env 全部变量注入容器（DEEPSEEK_API_KEY / EMBEDDING_API_KEY / EMBEDDING_BASE_URL /

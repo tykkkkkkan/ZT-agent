@@ -6,8 +6,17 @@
 ![Vue](https://img.shields.io/badge/Vue-3-42b883?logo=vuedotjs&logoColor=white)
 ![MySQL](https://img.shields.io/badge/MySQL-8.0-00758f?logo=mysql&logoColor=white)
 ![DeepSeek](https://img.shields.io/badge/LLM-DeepSeek-4d6bfe)
+![Docker](https://img.shields.io/badge/docker-tykkkkkk%2Fzt--agent-2496ED?logo=docker&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Commits](https://img.shields.io/badge/commits-21-2ea043)
+
+**最快跑起来**（不用装 Python 环境，直接拉现成镜像，约 1 分钟）：
+
+```powershell
+git clone https://github.com/tykkkkkkan/ZT-agent.git && cd ZT-agent
+cp .env.example .env    # 默认配置零 Key 即可启动；填 DEEPSEEK_API_KEY 后 AI 对话可用
+docker compose -f docker-compose.hub.yml up -d    # → http://localhost:8001/
+```
 
 ## 系统架构
 
@@ -206,17 +215,38 @@ python manage.py createsuperuser
 
 ### ⑦ Docker 容器化部署（推荐）
 
+**方式一：用 Docker Hub 现成镜像跑（最快，不用装 Python 依赖、不用构建）**
+
+镜像地址：`tykkkkkk/zt-agent:latest`（[Docker Hub](https://hub.docker.com/r/tykkkkkk/zt-agent)）
+
+```powershell
+git clone https://github.com/tykkkkkkan/ZT-agent.git && cd ZT-agent
+cp .env.example .env          # 默认 RAG_BACKEND=tfidf，零 Key 即可跑；填 DEEPSEEK_API_KEY 后 AI 对话可用
+docker compose -f docker-compose.hub.yml up -d
+
+# 浏览器访问：http://localhost:8001/
+# 健康检查：http://localhost:8001/healthz
+```
+
+**方式二：从源码构建（改代码后用这个）**
+
 ```powershell
 # 复制环境变量模板并填写真实值（DB 密码、DeepSeek Key、Embedding Key 等）
 cp .env.example .env
 # 编辑 .env（DB 密码、DEEPSEEK_API_KEY、EMBEDDING_API_KEY、RAG_BACKEND 等）
 
-# 一键启动 Django + MySQL（首次会自动 migrate 建表 + 启动服务）
-docker compose up --build
+# 一键启动 Django + MySQL + Redis（首次会自动 migrate 建表 + 启动服务）
+docker compose up -d --build
 
-# 浏览器访问：http://localhost:8000/
-# 后台：http://localhost:8000/admin/
+# 浏览器访问：http://localhost:8001/
+# 后台：http://localhost:8001/admin/
 ```
+
+> 端口说明：`docker-compose.yml` 把 web 映射到宿主机 **8001**（避开本机常见的 8000 占用）、
+> MySQL 映射到 **3307**（避开本机 3306）。若你的电脑这两个端口空闲，想改回 8000/3306，
+> 改 compose 文件里冒号左边的数字即可。
+>
+> 推送自己的镜像到 Docker Hub、以及让别人用你的镜像跑，见 **[DEPLOY.md](DEPLOY.md)** 第十一、十二节。
 
 > 注意：`docker-compose.yml` 的 `web` 服务启动命令为
 > `python manage.py migrate && python manage.py runserver`，会**自动建立 simplejwt 的
