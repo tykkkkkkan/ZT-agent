@@ -286,7 +286,12 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
-    'SIGNING_KEY': os.getenv('JWT_SIGNING_KEY', SECRET_KEY),
+    'SIGNING_KEY': os.getenv('JWT_SIGNING_KEY') or SECRET_KEY,
+    # ⚠️ 必须用 `or` 而不是 os.getenv('JWT_SIGNING_KEY', SECRET_KEY)。
+    # 原因：compose 的 env_file 会把 `.env` 里的 `JWT_SIGNING_KEY=`（空值）
+    # 注入成**空字符串**，而 os.getenv(k, default) 只在 key「不存在」时才用 default
+    # —— 空字符串会绕过回退，导致 PyJWT 抛 InvalidKeyError: HMAC key must not be empty，
+    # 所有登录/签发 token 的接口直接 500。（与 SECRET_KEY 属同一类陷阱，勿改回默认值写法）
 }
 
 # 登录失败次数限制（可选加分项）
