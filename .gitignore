@@ -105,3 +105,13 @@ frontend/_*.py
 
 # Chroma 向量库持久化数据
 chroma_data/
+
+# ===== Docker 镜像导出产物 / 离线分发包 =====
+# ⚠️ 这类文件单个 200MB+，一旦 git add 就永久留在历史里（删不掉、仓库体积永涨）。
+# 用 docker save -o 导出镜像后务必确认它被这里忽略。
+*.tar
+*.tar.gz
+*.tgz
+zt-agent-image.*
+offline-package/
+dist-offline/
