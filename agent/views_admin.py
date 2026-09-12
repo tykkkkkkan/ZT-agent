@@ -9,14 +9,15 @@ agent/views_admin.py — 后台数据看板（运营概览）
 from datetime import datetime, timedelta
 
 from django.db.models import Sum, F, Q, Count
-from django.db.models.functions import TruncDate
+from django.db.models.functions import Coalesce, TruncDate
 from django.contrib import admin
 from django.contrib.admin.views.decorators import staff_member_required
 from django.template.response import TemplateResponse
 
 from agent.models import (
     Orders, ContactMessage, CustomRequest, Inventory, Conversations,
-    Wallet, Transaction, TxType, TxCategory,
+    Wallet, Transaction, TxType, TxCategory, OrderStatus,
+    PAID_ORDER_STATUSES,
 )
 
 
@@ -81,7 +82,19 @@ def _income_analytics(days: int = 14):
 
 @staff_member_required
 def admin_dashboard(request):
-    """后台首页数据看板"""
+    """后台首页数据看板
+
+    ⚠️ 口径统一说明（改造前这里自算一套，与营销看板、C 端个人中心三方对不上）：
+      · 成交额 `revenue` 原先 = `Sum(total_price)` over **全部订单**，
+        把「已取消」「已退货」也算成收入 → 数字虚高，和营销侧 / 个人中心不一致。
+        现在改用 `PAID_ORDER_STATUSES`（已发货 + 已完成 + 退货申请中），
+        与 `me_views._order_stats.total_amount`、营销 `collect_metrics.gmv` 完全同源。
+      · 库存「偏低 / 缺货」原先只看 `stock`，忽略了已被订单预占的部分 ——
+        stock=5 但 reserved=5 时可用库存为 0、前台已不可购，看板却显示"正常"。
+        现在统一按**可用库存**（stock − reserved_stock）判定，与营销侧
+        `analytics` 的库存健康度算法一致。
+      · 新增「退货申请中」待处理数：这是需要人立刻动手的事，必须出现在首页。
+    """
     now = datetime.now()
     today = now.date()
     week_ago = now - timedelta(days=7)
@@ -89,18 +102,34 @@ def admin_dashboard(request):
     orders_today = _safe(lambda: Orders.objects.filter(created_at__date=today).count())
     pending_orders = _safe(lambda: Orders.objects.filter(status="未发货").count())
     total_orders = _safe(lambda: Orders.objects.count())
+    # 成交额：只统计真正成交的订单（与营销看板、个人中心同口径）
     revenue = _safe(
-        lambda: float(Orders.objects.aggregate(s=Sum("total_price"))["s"] or 0)
+        lambda: float(Orders.objects.filter(
+            status__in=[s.value for s in PAID_ORDER_STATUSES],
+        ).aggregate(s=Sum("total_price"))["s"] or 0)
     )
+    # 待商家处理的退货申请 —— 首页必须一眼看到
+    returning_orders = _safe(
+        lambda: Orders.objects.filter(status=OrderStatus.RETURNING).count())
+    refunded_orders = _safe(
+        lambda: Orders.objects.filter(status=OrderStatus.RETURNED).count())
     unread_msgs = _safe(lambda: ContactMessage.objects.filter(is_read=False).count())
     unread_custom = _safe(lambda: CustomRequest.objects.filter(is_read=False).count())
+
+    # 库存：一律按可用库存（stock − reserved_stock）判定，与营销侧一致
     low_stock = _safe(
-        lambda: Inventory.objects.filter(
+        lambda: Inventory.objects.annotate(
+            avail=F("stock") - Coalesce(F("reserved_stock"), 0),
+        ).filter(
             stock__isnull=False, alert_line__isnull=False,
-            stock__gt=0, stock__lte=F("alert_line"),
+            avail__gt=0, avail__lte=F("alert_line"),
         ).count()
     )
-    out_stock = _safe(lambda: Inventory.objects.filter(stock__lte=0).count())
+    out_stock = _safe(
+        lambda: Inventory.objects.annotate(
+            avail=F("stock") - Coalesce(F("reserved_stock"), 0),
+        ).filter(avail__lte=0).count()
+    )
     conv_7d = _safe(lambda: Conversations.objects.filter(created_at__gte=week_ago).count())
 
     # 余额 / 流水汇总
@@ -166,8 +195,13 @@ def admin_dashboard(request):
          "href": "/admin/agent/orders/?ship=pending"},
         {"key": "revenue", "label": "累计销售额", "value": f"¥{revenue:,.0f}",
          "unit": "", "icon": "payments", "tone": "lake",
-         "sub": f"共 {total_orders} 笔订单",
+         "sub": f"已发货/已完成/退货中，共 {total_orders} 笔订单",
          "href": "/admin/agent/transaction/"},
+        # 退货申请中：需要人立刻处理的售后，必须出现在首页（此前完全看不到）
+        {"key": "returning", "label": "退货待处理", "value": returning_orders,
+         "unit": "单", "icon": "assignment_return", "tone": "fire",
+         "sub": f"已退货 {refunded_orders} 单 · 等商家处理",
+         "href": "/admin/agent/orders/?status__exact=%E9%80%80%E8%B4%A7%E7%94%B3%E8%AF%B7%E4%B8%AD" },
         {"key": "unread_msg", "label": "未读留言", "value": unread_msgs,
          "unit": "条", "icon": "mark_email_unread", "tone": "fire",
          "sub": "客服待处理",
@@ -202,6 +236,11 @@ def admin_dashboard(request):
         "income_total": income_total,
         "status_dist": status_dist,
         "recent_txs": recent_txs,
+        # 口径统一后的订单分组计数（供模板显示"口径说明"与售后待办）
+        "returning_orders": returning_orders,
+        "refunded_orders": refunded_orders,
+        "paid_orders": _safe(lambda: Orders.objects.filter(
+            status__in=[s.value for s in PAID_ORDER_STATUSES]).count()),
     }
     # 注入 Unfold 后台上下文（侧栏导航、配色变量、站点标识等），使看板继承统一后台框架
     context.update(admin.site.each_context(request))

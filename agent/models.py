@@ -34,6 +34,34 @@ class ReturnStatus(models.TextChoices):
     REJECTED  = "已拒绝",  "已拒绝"
 
 
+# ════════════════════════════════════════════════════════════════
+# 订单统计口径（**全项目唯一来源**，别再各处自己写 Q(status=...)）
+# ════════════════════════════════════════════════════════════════
+# 背景：同一个"成交额"曾在三处各写一套 —— 后台看板用全部订单、
+# 营销侧用 `status != '已取消'`（把已退货也算进来）、个人中心用
+# 已发货+已完成+退货申请中。三个页面报三个数，看起来就是"数据不同步"。
+# 统一到下面这组常量，新代码一律引用它们。
+#
+#   PAID（成交）= 已发货 + 已完成 + 退货申请中
+#     · 已发货：物权已转移、钱包已记「订单收入」→ 算成交
+#     · 已完成：同上，交易终结 → 算成交
+#     · 退货申请中：客户在申请退货，但商家未同意前钱货两未定 → 仍算成交
+#       （ZT 个人中心「成交金额」即此口径，营销侧 collect_metrics 与之对齐）
+#   CLOSED（终结且不计收入）= 已取消 + 已退货
+#   EVER_SHIPPED（曾发货，可能发生退货的集合）= 成交 + 已退货
+#     · 退货率的分母必须用它：待发货/已取消的订单永远不可能退货，
+#       算进分母会把退货率稀释掉
+PAID_ORDER_STATUSES = (
+    OrderStatus.SHIPPED, OrderStatus.COMPLETED, OrderStatus.RETURNING,
+)
+CLOSED_ORDER_STATUSES = (
+    OrderStatus.CANCELLED, OrderStatus.RETURNED,
+)
+EVER_SHIPPED_ORDER_STATUSES = (
+    OrderStatus.SHIPPED, OrderStatus.COMPLETED, OrderStatus.RETURNING, OrderStatus.RETURNED,
+)
+
+
 class ConversationRole(models.TextChoices):
     """对话角色：用户消息 vs AI 回复。"""
     USER      = "user",      "用户"

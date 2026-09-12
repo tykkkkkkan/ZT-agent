@@ -205,6 +205,50 @@ def main():
             p.save(update_fields=["phone", "updated_at"])
             print("    (已复原测试写入的手机号)")
 
+        # ── ⑦ 成交额三处一致（个人中心 / 后台看板 / 统一常量） ──
+        print("\n⑦ 成交额口径三处对齐")
+        from django.db.models import Sum
+        from agent.models import PAID_ORDER_STATUSES
+
+        canonical = float(
+            Orders.objects.filter(status__in=[s.value for s in PAID_ORDER_STATUSES])
+            .aggregate(s=Sum("total_price"))["s"] or 0
+        )
+        all_orders = float(Orders.objects.aggregate(s=Sum("total_price"))["s"] or 0)
+
+        # 个人中心是"我的订单"维度：拿全站总额比会必然不等（第一次就踩了这个假失败）
+        from agent.me_helpers import my_orders_q
+        user_canonical = float(
+            Orders.objects.filter(
+                my_orders_q(user), status__in=[s.value for s in PAID_ORDER_STATUSES],
+            ).aggregate(s=Sum("total_price"))["s"] or 0
+        )
+
+        check("个人中心成交金额 == 统一口径（该用户维度）",
+              abs(float(mine.get("stats", {}).get("total_amount", -1)) - user_canonical) < 0.01,
+              f"{mine.get('stats', {}).get('total_amount')} vs {user_canonical}")
+
+        c_dash = Client()
+        settings_ok = True
+        try:
+            from django.test import override_settings as _ovs
+            with _ovs(ALLOWED_HOSTS=["testserver"]):
+                su = User.objects.filter(is_superuser=True).first()
+                c_dash.force_login(su)
+                h = c_dash.get("/admin/dashboard/").content.decode("utf-8", "ignore")
+            check("后台看板渲染成功且含成交额", "累计销售额" in h)
+            # 看板把金额格式化成 ¥x,xxx，做字符串比对
+            shown = f"¥{canonical:,.0f}"
+            check(f"后台看板成交额 == 统一口径（{shown}）", shown in h,
+                  "未在页面中找到该金额")
+            if all_orders != canonical:
+                check("看板不再把已取消/已退货算进成交额",
+                      f"¥{all_orders:,.0f}" not in h,
+                      f"全部订单口径 ¥{all_orders:,.0f} 不应出现")
+        except Exception as e:  # noqa: BLE001
+            settings_ok = False
+            check("后台看板可访问", False, f"{type(e).__name__}: {e}")
+
     print("\n" + "=" * 64)
     print(f"结果：{len(PASS)} 通过 / {len(FAIL)} 失败")
     if FAIL:
