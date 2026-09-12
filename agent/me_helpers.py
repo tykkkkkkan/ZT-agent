@@ -36,22 +36,41 @@ def phone_taken_by_other(phone: str, user) -> bool:
 
 
 def bind_phone_if_free(user, phone: str, nickname: str = "") -> bool:
-    """手机号未被他人占用时绑定到该用户（下单后自动认领历史订单用）。
+    """下单后把（尚未占用且自己还没绑的）手机号认领到该用户资料。
 
-    :returns: 是否实际写入
+    ⚠️ 本函数**绝不覆盖已绑定的手机号**。
+    改造前它写成 `if profile.phone != phone: profile.phone = phone`，
+    于是出现这条隐蔽的数据不同步链路：
+
+        用户绑定了手机号 A（据此认领了 A 名下的 6 笔历史订单）
+          → 某次下单随手填了手机号 B
+          → profile.phone 被改成 B
+          → 那 6 笔历史订单**立刻从「我的订单」消失**（归属规则失效）
+
+    这正是用户反馈「数据不同步」的一种：钱和货都在，但订单"不见了"。
+    所以现在只在**用户尚未绑定任何手机号**时才自动认领；已绑定的号码
+    只能由用户本人到「个人中心」显式更换（那里有唯一性校验与提示）。
+
+    :returns: 是否实际写入（用于审计日志）
     """
     phone = (phone or "").strip()
     if not phone or phone_taken_by_other(phone, user):
         return False
+
     profile = get_profile(user)
     changed = []
-    if profile.phone != phone:
+
+    # 手机号：仅在「自己还没绑」时认领，绝不覆盖
+    if not (profile.phone or "").strip() and profile.phone != phone:
         profile.phone = phone
         changed.append("phone")
+
+    # 收货人姓名：仅当用户还没填过时补上（同样不覆盖用户已设置的值）
     nickname = (nickname or "").strip()[:50]
-    if nickname and profile.nickname != nickname:
+    if nickname and not (profile.nickname or "").strip() and profile.nickname != nickname:
         profile.nickname = nickname
         changed.append("nickname")
+
     if changed:
         profile.save(update_fields=changed + ["updated_at"])
     return bool(changed)

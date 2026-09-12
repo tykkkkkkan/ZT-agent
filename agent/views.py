@@ -294,36 +294,54 @@ def custom_submit(request):
 @csrf_exempt
 @require_GET
 def product_list(request):
-    """GET /api/products/ — 返回产品列表（用于下单页下拉框）
+    """GET /api/products/ — 返回产品列表（用于下单页下拉框 / 产品页）
 
-    P0 增强：
-      - 新增 sku、is_active、available_stock（join inventory 实时算）
-      - 默认只返回 is_active=True 的在售商品
-      - ?include_inactive=1 可看全部（含下架）
+    返回字段说明（关键：前台必须与后台对同一商品的"能不能买"认知一致）：
+      - sku / is_active / stock / available_stock / alert_line：基础字段
+      - can_buy / buy_block_reason / buy_block_message：**可购买性与不可购原因**
+        由 agent.purchase_guard 统一判定，与下单接口用同一套规则 ——
+        营销 Agent 下发「暂停购买」后，这里会立刻变为不可购，不再出现
+        「后台显示暂停、前台照样下单」的数据不同步。
+      - purchase_paused / customer_notice：跨 Agent 协调覆盖状态原文，
+        前端据此展示缺货提示条。
+
+    参数：?include_inactive=1 可看全部（含下架）；默认只返回在售商品。
     """
-    from agent.models import Products, Inventory
+    from agent.models import Products, Inventory, ProductCoordination
+    from agent.purchase_guard import evaluate
     try:
         qs = Products.objects.all().order_by("id")
         if request.GET.get("include_inactive") != "1":
             qs = qs.filter(is_active=True)
-        # 一次性把 inventory 拿出来，避免 N+1
+        # 一次性把 inventory / 协调覆盖拿出来，避免 N+1
         inv_map = {i.product_id: i for i in Inventory.objects.all()}
+        coord_map = {c.product_id: c for c in ProductCoordination.objects.all()}
         data = []
         for p in qs:
             inv = inv_map.get(p.id)
+            coord = coord_map.get(p.id)
+            verdict = evaluate(p, inv, coord)
             data.append({
                 "id": p.id,
-                "sku": p.sku,                                     # 新增：商品编码
+                "sku": p.sku,
                 "name": p.name,
                 "spec": p.spec or "",
                 "target_fish": p.target_fish or "",
                 "retail_price": float(p.retail_price or 0),
                 "wholesale_price": float(p.wholesale_price or 0),
                 "description": p.description or "",
-                "is_active": p.is_active,                          # 新增
-                "stock": (inv.stock or 0) if inv else 0,          # 新增
-                "available_stock": (inv.available_stock if inv else 0),  # 新增：可用库存
+                "is_active": p.is_active,
+                "stock": (inv.stock or 0) if inv else 0,
+                "available_stock": verdict["available_stock"],
                 "alert_line": (inv.alert_line or 0) if inv else 0,
+                # ── 可购买性（与下单接口同源判定）──
+                "can_buy": verdict["can_buy"],
+                "buy_block_reason": verdict["reason"],
+                "buy_block_message": verdict["message"],
+                # ── 跨 Agent 协调状态（营销侧暂停购买/客户提示）──
+                "purchase_paused": bool(coord and coord.purchase_paused),
+                "customer_notice": verdict["customer_notice"],
+                "reserved_stock": (inv.reserved_stock or 0) if inv else 0,
             })
         return JsonResponse({"success": True, "products": data})
     except Exception as e:
@@ -382,6 +400,21 @@ def create_order_api(request):
 
     if not product.is_active:
         return JsonResponse({"success": False, "message": "该产品已下架，暂不可下单"}, status=400)
+
+    # 跨 Agent 协调 + 库存守卫（与 /api/products/ 用同一套判定，避免口径漂移）：
+    # 营销 Agent 巡检发现断货会下发 pause_product，此前前台完全不读该覆盖，
+    # 导致「后台显示暂停购买、客户照样下单成功」。这里落库前统一拦住。
+    from agent.purchase_guard import check_buyable
+    ok_buy, block_code, block_msg = check_buyable(product, quantity=quantity)
+    if not ok_buy:
+        if block_code == "insufficient_stock":
+            return JsonResponse({
+                "success": False, "message": block_msg,
+                "code": "insufficient_stock",
+            }, status=400)
+        return JsonResponse({
+            "success": False, "message": block_msg, "code": block_code,
+        }, status=400)
 
     # 计算金额（按零售价）
     unit_price = float(product.retail_price or 0)
@@ -458,15 +491,38 @@ def create_order_api(request):
 # ══════════════════════════════════════════════════════════════
 # 订单查询（按手机号查该手机号的订单，隐私脱敏）
 # ══════════════════════════════════════════════════════════════
+# 「查订单」页单次最多返回条数（超出时按 total 提示用户去「我的订单」分页看）
+QUERY_PAGE_LIMIT = 50
+
+
+def _err(message, code=400):
+    return JsonResponse({"success": False, "message": message}, status=code)
+
+
 @csrf_exempt
 @require_POST
 @login_required
 def query_orders(request):
-    """POST /api/orders/query/ — 按手机号查询该手机号的所有订单（脱敏，不返回姓名/电话）【需登录】
+    """POST /api/orders/query/ — 查询「我的」订单（脱敏，不返回姓名/电话）【需登录】
 
-    Body: {"phone": "13800138000", "order_no": "DD20260827xxxx"} (order_no 可选)
-    - 仅传 phone → 列出该手机号最近 50 条订单的核心字段
-    - 同时传 phone + order_no → 验证匹配后返回该订单详情
+    Body: {"phone": "13800138000", "order_no": "DD20260827xxxx"}（order_no 可选）
+
+    归属规则与「我的订单」(/api/me/orders/) **完全一致**，统一走
+    `agent.me_helpers.my_orders_q`：
+
+        我的订单 = user_id == 我
+                 或 (phone == 我绑定的手机号 且 user_id 为空)
+
+    改造前这里只按 `phone=手机号` 过滤，造成两个真实问题：
+      1. **同一用户两个页面看到的订单不一样** —— 实测某用户「我的」显示 6 单、
+         「查订单」显示 8 单（差的 2 单是已被其它账号认领的同号订单）；
+      2. **越权** —— 任何登录用户填别人的手机号即可拿到他人订单的
+         物流单号、退货原因等。
+
+    因此现在：
+      · phone 只能等于**自己绑定的手机号**（未填则默认用自己的）；
+        填了别人的手机号一律 403，且不透露该号码是否存在订单。
+      · count 返回**真实总数**（此前用截断后的列表长度，超过 50 条会显示错）。
     """
     try:
         body = json.loads(request.body)
@@ -476,31 +532,62 @@ def query_orders(request):
     phone = (body.get("phone") or "").strip()
     order_no = (body.get("order_no") or "").strip()
 
-    if not phone:
-        return JsonResponse({"success": False, "message": "请输入下单手机号"}, status=400)
     if len(phone) > 20:
         return JsonResponse({"success": False, "message": "手机号格式有误"}, status=400)
 
     from agent.models import Orders
+    from agent.me_helpers import get_profile, my_orders_q
+
+    me, ok = _resolve_request_user(request)
+    if not ok or me is None:
+        return JsonResponse(
+            {"success": False, "code": "LOGIN_REQUIRED", "message": "请先登录后再查询"},
+            status=401,
+        )
+
+    my_phone = (get_profile(me).phone or "").strip()
+    if phone and phone != my_phone:
+        # 只允许查自己的手机号；用 403 明确拒绝，不泄露该号码是否存在订单
+        return JsonResponse({
+            "success": False,
+            "code": "PHONE_NOT_BOUND",
+            "message": (
+                "只能查询当前账号绑定的手机号订单。"
+                "如需查询该手机号的历史订单，请先在「个人中心」绑定它。"
+            ),
+        }, status=403)
 
     try:
+        qs = Orders.objects.filter(my_orders_q(me)).select_related("product")
+
         # 单订单详情查询
         if order_no:
-            order = Orders.objects.filter(order_no=order_no, phone=phone).first()
+            order = qs.filter(order_no=order_no).first()
             if not order:
-                return JsonResponse({"success": False, "message": "订单号或手机号不匹配"}, status=404)
+                return JsonResponse(
+                    {"success": False, "message": "订单不存在，或不属于当前账号"}, status=404,
+                )
             return JsonResponse({
                 "success": True,
-                "order": _serialize_order(order),
+                "order": _serialize_order(order, with_actions=True),
+                "orders": [_serialize_order(order, with_actions=True)],
+                "count": 1,
+                "total": 1,
+                "truncated": False,
+                "phone": my_phone,
             })
 
-        # 列出该手机号所有订单
-        orders = Orders.objects.filter(phone=phone).order_by("-created_at")[:50]
+        # 列出我的订单
+        total = qs.count()
+        rows = list(qs.order_by("-created_at", "-id")[:QUERY_PAGE_LIMIT])
         return JsonResponse({
             "success": True,
-            "phone": phone,
-            "count": len(orders),
-            "orders": [_serialize_order(o) for o in orders],
+            "phone": my_phone,
+            "count": len(rows),
+            "total": total,
+            "truncated": total > len(rows),
+            "limit": QUERY_PAGE_LIMIT,
+            "orders": [_serialize_order(o, with_actions=True) for o in rows],
         })
     except Exception as e:
         return _server_error(e)
@@ -569,13 +656,38 @@ def _serialize_order(order, with_actions=False):
 @require_GET
 @login_required
 def order_detail(request, order_no):
-    """GET /api/orders/<order_no>/ — 查询单个订单详情（脱敏，不返回姓名/电话）【需登录】"""
+    """GET /api/orders/<order_no>/ — 查询单个订单详情（脱敏）【需登录 + 归属校验】
+
+    改造前用 `Orders.objects.get(order_no=...)`，**任何登录用户只要猜到/拿到
+    订单号就能读到他人订单的物流单号、退货原因**。现在改为：
+      · 该订单必须属于当前用户（同 `my_orders_q` 归属规则）→ 否则 404；
+      · staff 可直接查看（后台排障需要）。
+    返回体同时补上 `actions`（用户端可执行操作），让前端不必自己推导状态规则。
+    """
     from agent.models import Orders
+    from agent.me_helpers import my_orders_q
+
+    me, ok = _resolve_request_user(request)
+    if not ok or me is None:
+        return JsonResponse(
+            {"success": False, "code": "LOGIN_REQUIRED", "message": "请先登录后再查询"},
+            status=401,
+        )
+
     try:
-        order = Orders.objects.get(order_no=order_no)
-        return JsonResponse({"success": True, "order": _serialize_order(order)})
-    except Orders.DoesNotExist:
-        return JsonResponse({"success": False, "message": "订单不存在"}, status=404)
+        qs = Orders.objects.all()
+        if not me.is_staff:
+            qs = qs.filter(my_orders_q(me))
+        order = qs.filter(order_no=order_no).select_related("product").first()
+        if order is None:
+            # 不存在与无权访问统一 404：不泄露"这个订单号确实存在"
+            return JsonResponse(
+                {"success": False, "message": "订单不存在，或不属于当前账号"}, status=404,
+            )
+        return JsonResponse({
+            "success": True,
+            "order": _serialize_order(order, with_actions=True),
+        })
     except Exception as e:
         return _server_error(e)
 

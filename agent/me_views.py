@@ -108,10 +108,16 @@ class MeProfileView(views.APIView):
 
         手机号必须唯一：一个手机号只能归一个账号，否则会出现两个用户都能看到
         同一批历史订单的情况。
+
+        ⚠️ 手机号直接决定「我的订单」的可见范围（归属规则的第二条就是
+        「phone == 我绑定的号 且 订单未归属任何账号」）。改造前接口对这一点
+        完全沉默，用户换了手机号就"订单凭空消失"，看起来像数据不同步。
+        现在返回体带 `visible_orders` 与 `visible_delta`，换绑变少时给出明确提示。
         """
         profile = get_profile(request.user)
         data = request.data or {}
         changed = []
+        visible_before = Orders.objects.filter(my_orders_q(request.user)).count()
 
         if 'phone' in data:
             phone = (data.get('phone') or '').strip()
@@ -134,10 +140,25 @@ class MeProfileView(views.APIView):
         if changed:
             profile.save(update_fields=changed + ['updated_at'])
 
+        visible_after = Orders.objects.filter(my_orders_q(request.user)).count()
+        delta = visible_after - visible_before
+
+        if 'phone' in changed:
+            message = f"手机号已更新，当前可查看 {visible_after} 笔订单"
+            if delta < 0:
+                message += f"（比之前少 {abs(delta)} 笔 —— 原手机号名下未认领的订单已不再展示）"
+            elif delta > 0:
+                message += f"（新认领了 {delta} 笔历史订单）"
+        else:
+            message = "资料已更新" if changed else "没有需要更新的内容"
+
         return Response({
             "success": True,
-            "message": "资料已更新" if changed else "没有需要更新的内容",
+            "message": message,
             "user": _user_payload(request.user, profile),
+            "visible_orders": visible_after,
+            "visible_delta": delta,
+            "changed": changed,
         })
 
 

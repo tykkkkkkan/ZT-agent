@@ -394,6 +394,20 @@ class OrdersAdmin(ZYModelAdmin):
       · 取消 / 退货 / 撤回各自独立入口，不再需要在下拉里挑状态字符串。
     物流信息改为在发货时录入（因此移除 list_editable，列表更干净，
     也避免"改了物流忘记保存"这种隐性坑）。
+
+    详情页（本轮重做）：改造前详情页是**一长串字段平铺**，既看不到
+    「这笔订单的钱去了哪」（关联钱包流水）、也看不到「对库存做了什么」，
+    更看不到 C 端用户此刻能对这个订单做什么 —— 后台与 C 端「我的订单」
+    对同一笔订单的认知因此对不上。现在改为四个只读信息 panel + 字段分组：
+
+        📒 关联资金流水   —— 发货入账 / 退货退款 / 撤回冲账的每一笔
+        📦 库存影响       —— 该商品当前 stock / reserved / 可用，以及本单的占用
+        🖱 C 端可执行操作 —— 与服务层 `_order_actions` 同源，后台可见用户视角
+        ⚡ 订单操作       —— 一键进「订单操作页」完成状态流转
+
+    并且**全部字段只读**：订单是业务凭证，状态必须经 `services.transition_order`
+    流转（库存联动 + 自动记账都在那一个事务里）。在详情页直接改 status /
+    return_status 会绕过状态机，正是"数据不同步"的温床。
     """
 
     list_display = ('order_no', 'status_badge', 'quick_ops', 'product_name',
@@ -406,10 +420,252 @@ class OrdersAdmin(ZYModelAdmin):
     # list_editable；发货统一走「订单操作页」。
     date_hierarchy = 'created_at'
     ordering = ('-created_at',)
-    readonly_fields = ('order_no', 'customer_name', 'phone', 'product', 'product_name',
-                       'product_sku', 'unit_price', 'quantity', 'total_price',
-                       'shipped_at', 'cancelled_at', 'cancel_reason', 'created_at', 'status')
     list_per_page = 25
+
+    # ── 详情页：字段分组 + 只读 ────────────────────────────────
+    fieldsets = (
+        ('订单', {
+            'fields': ('order_no', 'status_badge', 'created_at', 'updated_at'),
+        }),
+        ('客户与归属（C 端「我的订单」的判定依据）', {
+            'fields': ('customer_name', 'phone', 'user_link'),
+            'description': (
+                '「下单用户」是登录后下单写入的强归属凭据；为空表示登录体系上线前下的单，'
+                '由 C 端用户在「个人中心」绑定手机号后认领。归属规则与 '
+                '/api/me/orders/ 完全一致，后台与前台看到的应是同一批订单。'
+            ),
+        }),
+        ('商品明细（均为下单时快照，不受商品改名影响）', {
+            'fields': ('product', 'product_name', 'product_sku',
+                       'unit_price', 'quantity', 'total_price'),
+        }),
+        ('物流', {
+            'fields': ('ship_company', 'tracking_no', 'shipped_at'),
+            'description': '物流信息在「发货」时录入；如需更正请用「撤回 → 重新发货」。',
+        }),
+        ('售后与收货闭环', {
+            'fields': ('completed_at', 'return_status', 'return_reason',
+                       'return_requested_at', 'return_handled_at', 'return_note',
+                       'cancelled_at', 'cancel_reason'),
+        }),
+        ('📒 关联资金流水（发货入账 / 退货退款，自动记账）', {
+            'fields': ('wallet_panel',),
+        }),
+        ('📦 库存影响（与服务层状态机联动）', {
+            'fields': ('inventory_panel',),
+        }),
+        ('🖱 C 端用户可执行的操作（与前台同源）', {
+            'fields': ('user_actions_panel',),
+        }),
+        ('⚡ 订单操作（全部经状态机，含库存联动与自动记账）', {
+            'fields': ('ops_panel',),
+        }),
+    )
+    readonly_fields = (
+        'order_no', 'status_badge', 'created_at', 'updated_at',
+        'customer_name', 'phone', 'user_link',
+        'product', 'product_name', 'product_sku', 'unit_price', 'quantity', 'total_price',
+        'ship_company', 'tracking_no', 'shipped_at',
+        'completed_at', 'return_status', 'return_reason', 'return_requested_at',
+        'return_handled_at', 'return_note', 'cancelled_at', 'cancel_reason',
+        'wallet_panel', 'inventory_panel', 'user_actions_panel', 'ops_panel',
+    )
+
+    # ── 详情页信息面板 ─────────────────────────────────────────
+    @admin.display(description='订单状态', ordering='status')
+    def status_badge(self, obj):
+        return self._status_badge_html(obj.status)
+
+    @admin.display(description='下单用户')
+    def user_link(self, obj):
+        """订单归属账号：点击可跳到该用户，便于核对「为什么这笔没出现在我的订单里」。"""
+        if not obj.user_id:
+            return format_html(
+                '<span style="color:#B5481C;font-weight:600;">未归属账号</span>'
+                '<span style="color:#9AA89F;"> · 历史订单，由 C 端绑定手机号后认领</span>'
+            )
+        url = reverse('admin:auth_user_change', args=[obj.user_id])
+        return format_html(
+            '<a href="{}" style="font-weight:600;color:#1F6B54;">{}</a>'
+            '<span style="color:#9AA89F;"> · id={}</span>',
+            url, obj.user.username, obj.user_id,
+        )
+
+    @admin.display(description='关联资金流水')
+    def wallet_panel(self, obj):
+        """该订单产生的每一笔钱包流水（收入 / 退款 / 冲账），体现"钱从哪来、到哪去"。"""
+        txs = list(Transaction.objects.filter(order=obj).order_by('created_at', 'id'))
+        head = format_html(
+            '<div style="font-size:12.5px;color:#5A6B62;margin-bottom:6px;">'
+            '共 <b>{}</b> 笔流水，净额 <b style="color:{};">{}</b>'
+            '（发货自动记「订单收入」，退货/撤回自动记「订单退款」）</div>',
+            len(txs),
+            '#1F6B54' if obj.status in (OrderStatus.SHIPPED, OrderStatus.COMPLETED) else '#B5481C',
+            f"{'¥' + str(sum((t.amount if t.tx_type == TxType.INCOME else -t.amount) for t in txs or []))}",
+        )
+        if not txs:
+            return format_html(
+                '{}<p style="color:#9AA89F;padding:6px 0;">'
+                '暂无流水 —— 订单发货时才会入账（待发货 / 已取消不产生收入）。</p>',
+                head)
+
+        rows = []
+        for t in txs:
+            sign = '+' if t.tx_type == TxType.INCOME else '−'
+            color = '#1F6B54' if t.tx_type == TxType.INCOME else '#B5481C'
+            rows.append(format_html(
+                '<tr>'
+                '<td style="padding:6px 10px;color:#5A6B62;white-space:nowrap;">{}</td>'
+                '<td style="padding:6px 10px;">{}</td>'
+                '<td style="padding:6px 10px;text-align:right;font-weight:600;color:{};">{}¥{}</td>'
+                '<td style="padding:6px 10px;color:#5A6B62;">{}</td>'
+                '</tr>',
+                t.created_at.strftime('%Y-%m-%d %H:%M') if t.created_at else '—',
+                t.category,
+                color, sign, t.amount,
+                t.note or '',
+            ))
+        return format_html(
+            '{}<table style="width:100%;border-collapse:collapse;font-size:12.5px;'
+            'background:#fff;border:1px solid #e8e4d8;border-radius:8px;overflow:hidden;">'
+            '<thead><tr style="background:#F3EFE4;">'
+            '<th style="text-align:left;padding:6px 10px;">时间</th>'
+            '<th style="text-align:left;padding:6px 10px;">分类</th>'
+            '<th style="text-align:right;padding:6px 10px;">金额</th>'
+            '<th style="text-align:left;padding:6px 10px;">备注</th>'
+            '</tr></thead><tbody>{}</tbody></table>',
+            head, mark_safe(''.join(str(r) for r in rows)),
+        )
+
+    @admin.display(description='库存影响')
+    def inventory_panel(self, obj):
+        """该商品当前库存与本单占用，解释"为什么下不了单/发了货库存变多少"。"""
+        if not obj.product_id:
+            return format_html('<p style="color:#9AA89F;">该订单未关联商品（历史数据），无库存影响。</p>')
+        inv = Inventory.objects.filter(product_id=obj.product_id).first()
+        if inv is None:
+            return format_html(
+                '<p style="color:#B5481C;">商品 #{0} 没有库存记录 —— '
+                '下单/发货都会被状态机拒绝，请先到「库存管理」补一行。</p>', obj.product_id)
+
+        qty = obj.quantity or 0
+        s = obj.status
+        if s == OrderStatus.PENDING:
+            effect, color = f'已预占 {qty} 包（发货时真正扣减）', '#7A2E0E'
+        elif s in (OrderStatus.SHIPPED, OrderStatus.COMPLETED):
+            effect, color = f'已扣减 {qty} 包', '#134435'
+        elif s in (OrderStatus.CANCELLED, OrderStatus.RETURNED):
+            effect, color = f'库存已回滚（未占用）', '#3A473F'
+        else:   # 退货申请中
+            effect, color = '退货申请中，尚未回滚库存（等商家同意才入库）', '#7A2E0E'
+
+        return format_html(
+            '<div style="font-size:12.5px;color:#5A6B62;margin-bottom:6px;">'
+            '商品 <b>{}</b> · 本单数量 <b>{}</b> 包 · 本单影响：'
+            '<b style="color:{};">{}</b></div>'
+            '<table style="width:100%;border-collapse:collapse;font-size:12.5px;'
+            'background:#fff;border:1px solid #e8e4d8;border-radius:8px;overflow:hidden;">'
+            '<thead><tr style="background:#F3EFE4;">'
+            '<th style="text-align:left;padding:6px 10px;">现有库存</th>'
+            '<th style="text-align:left;padding:6px 10px;">预占</th>'
+            '<th style="text-align:left;padding:6px 10px;">可用</th>'
+            '<th style="text-align:left;padding:6px 10px;">预警线</th>'
+            '<th style="text-align:left;padding:6px 10px;">库存视图</th>'
+            '</tr></thead><tbody><tr>'
+            '<td style="padding:6px 10px;font-weight:600;">{}</td>'
+            '<td style="padding:6px 10px;">{}</td>'
+            '<td style="padding:6px 10px;font-weight:600;color:{};">{}</td>'
+            '<td style="padding:6px 10px;">{}</td>'
+            '<td style="padding:6px 10px;"><a href="{}" style="color:#1F6B54;">去库存管理 →</a></td>'
+            '</tr></tbody></table>',
+            inv.product.name if inv.product else f'#{obj.product_id}',
+            qty, color, effect,
+            inv.stock or 0,
+            inv.reserved_stock or 0,
+            '#B5481C' if (inv.available_stock or 0) <= 0 else '#1F6B54',
+            inv.available_stock,
+            inv.alert_line or 0,
+            reverse('admin:agent_inventory_changelist') + f'?q={inv.product_id}',
+        )
+
+    @admin.display(description='C 端可执行操作')
+    def user_actions_panel(self, obj):
+        """与 frontend 用的 `_order_actions` 同源 —— 后台直接看到用户此刻能做什么。"""
+        from agent.views import _order_actions
+        LABELS = {
+            'confirm': ('确认收货', '#1F6B54'),
+            'return': ('申请退货', '#B5481C'),
+            'cancel': ('取消订单', '#3A473F'),
+            'withdraw_return': ('撤销退货申请', '#3A473F'),
+        }
+        acts = _order_actions(obj)
+        if not acts:
+            return format_html(
+                '<p style="color:#9AA89F;">当前状态下 C 端无可用操作（订单已终结或待商家处理）。</p>')
+        chips = ''.join(
+            f'<span style="display:inline-block;padding:3px 10px;border-radius:999px;'
+            f'background:#EEF4F1;color:{LABELS[a][1]};font-size:12px;font-weight:600;'
+            f'margin:0 6px 6px 0;">{LABELS[a][0]}</span>'
+            for a in acts if a in LABELS
+        )
+        return format_html(
+            '<div style="font-size:12.5px;color:#5A6B62;margin-bottom:6px;">'
+            '该订单在 C 端「个人中心 → 我的订单」中会显示以下按钮（规则与服务层同源，'
+            '后台与前台不会出现"一边能操作一边不能"）：</div>{}',
+            mark_safe(chips),
+        )
+
+    @admin.display(description='可用操作')
+    def ops_panel(self, obj):
+        """详情页直接进「订单操作页」——不必退回列表再点行内按钮。"""
+        base = reverse('admin:agent_orders_action')
+        candidates = {
+            OrderStatus.PENDING: [('ship', '📦 发货', 'go'), ('cancel', '✕ 取消', 'danger')],
+            OrderStatus.SHIPPED: [('return', '↩ 退货', 'warn'), ('pending', '↳ 撤回为待发货', 'mute')],
+            OrderStatus.COMPLETED: [('return', '↩ 退货', 'warn'), ('pending', '↳ 撤回为待发货', 'mute')],
+            OrderStatus.RETURNING: [('approve_return', '✓ 同意退货', 'go'),
+                                    ('reject_return', '✕ 拒绝退货', 'danger')],
+        }.get(obj.status, [])
+        if not candidates:
+            return format_html(
+                '<p style="color:#9AA89F;">该订单已终结（{}），无可执行操作。</p>', obj.status)
+        links = ''.join(
+            f'<a class="zy-op-link zy-op-{tone}" data-zy-back="1" '
+            f'href="{base}?ids={obj.pk}&op={op}" '
+            f'style="display:inline-block;margin:0 8px 8px 0;padding:6px 14px;border-radius:8px;'
+            f'font-size:13px;font-weight:600;text-decoration:none;'
+            f'background:{bg};color:{fg};">{label}</a>'
+            for op, label, tone in candidates
+            for bg, fg in [{
+                'go': ('#1F6B54', '#fff'),
+                'danger': ('#FBE9E2', '#8A2B0F'),
+                'warn': ('#FDF0E8', '#7A2E0E'),
+                'mute': ('#EEF0EE', '#3A473F'),
+            }[tone]]
+        )
+        return format_html(
+            '<div style="font-size:12.5px;color:#5A6B62;margin-bottom:8px;">'
+            '所有操作都会经 <code>services.transition_order</code> 执行，'
+            '在同一事务内完成「改状态 + 动库存 + 记账」。</div>{}',
+            mark_safe(links),
+        )
+
+    @staticmethod
+    def _status_badge_html(status):
+        style_map = {
+            '未发货': ('#F4B495', '#7A2E0E', '● 待发货'),
+            '已发货': ('#DCEDE6', '#134435', '● 已发货'),
+            '已完成': ('#DCE9FF', '#13407A', '● 已完成'),
+            '退货申请中': ('#FDF0E8', '#7A2E0E', '● 退货申请中'),
+            '已取消': ('#E2E5E2', '#3A473F', '● 已取消'),
+            '已退货': ('#F7D9CF', '#7A2E0E', '● 已退货'),
+        }
+        bg, fg, label = style_map.get(status, ('#EEE', '#333', status or '—'))
+        return format_html(
+            '<span style="display:inline-block;padding:3px 10px;border-radius:999px;'
+            'background:{};color:{};font-size:12px;font-weight:600;white-space:nowrap;">{}</span>',
+            bg, fg, label,
+        )
 
     # ── 行内「快速操作」列 ────────────────────────────────────
     @admin.display(description='快速操作')
@@ -475,24 +731,6 @@ class OrdersAdmin(ZYModelAdmin):
         if obj.return_note:
             badge = format_html('{}<br><span style="font-size:11px;color:#B5481C;">处理：{}</span>', badge, obj.return_note)
         return badge
-
-    @admin.display(description='订单状态', ordering='status')
-    def status_badge(self, obj):
-        # 状态 → (背景色, 文字色, 标签)
-        style_map = {
-            '未发货': ('#F4B495', '#7A2E0E', '● 待发货'),
-            '已发货': ('#DCEDE6', '#134435', '● 已发货'),
-            '已完成': ('#DCE9FF', '#13407A', '● 已完成'),
-            '退货申请中': ('#FDF0E8', '#7A2E0E', '● 退货申请中'),
-            '已取消': ('#E2E5E2', '#3A473F', '● 已取消'),
-            '已退货': ('#F7D9CF', '#7A2E0E', '● 已退货'),
-        }
-        bg, fg, label = style_map.get(obj.status, ('#EEE', '#333', obj.status or '—'))
-        return format_html(
-            '<span style="display:inline-block;padding:3px 10px;border-radius:999px;'
-            'background:{};color:{};font-size:12px;font-weight:600;white-space:nowrap;">{}</span>',
-            bg, fg, label,
-        )
 
     # ── 订单操作页（发货 / 取消 / 退货 / 撤回 四合一） ──────────
     def get_urls(self):

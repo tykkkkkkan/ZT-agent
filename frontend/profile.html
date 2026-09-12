@@ -169,7 +169,10 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;color:#1F6B54" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
                             绑定手机号
                         </h3>
-                        <p class="text-xs text-ink-500 mb-4">绑定后可用手机号在「查订单」查询历史订单，并认领登录前的订单。</p>
+                        <p class="text-xs text-ink-500 mb-4">
+                            绑定后可用该手机号在「查订单」查询，并认领登录前下的历史订单。
+                            <span class="text-ink-400">换绑会改变可见订单范围（原号码名下未被认领的订单将不再展示）。</span>
+                        </p>
                         <div id="phoneState" class="text-sm text-ink-600 mb-3"></div>
                         <form id="phoneForm" class="space-y-3" onsubmit="return submitPhone(event)">
                             <div>
@@ -347,8 +350,10 @@
             document.getElementById('phoneInput').value = u.phone || '';
             document.getElementById('nickInput').value = u.nickname || '';
             var ps = document.getElementById('phoneState');
+            var visible = (st.total == null ? 0 : st.total);
             ps.innerHTML = u.phone
                 ? '当前已绑定：<b class="text-brand-700">' + esc(u.phone) + '</b>'
+                  + '<br><span class="text-ink-400 text-xs">共可查看 ' + visible + ' 笔订单</span>'
                 : '<span class="text-sunset-600">尚未绑定手机号，建议尽快绑定以便认领历史订单。</span>';
         } catch (e) {
             if (!/登录/.test(e.message)) toast(e.message, 'error');
@@ -526,6 +531,11 @@
         e.preventDefault();
         var phone = document.getElementById('phoneInput').value.trim();
         var nick = document.getElementById('nickInput').value.trim();
+        // 换绑手机号会改变可见订单范围（归属规则含「手机号 + 未认领订单」），先提醒
+        var curPhone = document.getElementById('accPhone').textContent.trim();
+        if (curPhone && curPhone !== '未绑定' && curPhone !== phone && phone) {
+            if (!confirm('换绑手机号会改变可见订单范围：\n' + curPhone + ' 名下尚未被认领的订单将不再展示。\n\n确定要换绑为 ' + phone + ' 吗？')) return false;
+        }
         try {
             var d = await api('/api/me/profile/', {
                 method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -537,6 +547,11 @@
                 document.getElementById('accNick').textContent = d.user.nickname || '';
                 document.getElementById('phoneInput').value = d.user.phone || '';
                 document.getElementById('nickInput').value = d.user.nickname || '';
+            }
+            // 手机号变了 → 订单可见范围可能变化，整体刷新一次保持一致
+            if (d.changed && d.changed.indexOf('phone') >= 0) {
+                await loadProfile();
+                loadOrders(state.filter, 1, false);
             }
         } catch (err) { toast(err.message, 'error'); }
         return false;

@@ -111,7 +111,9 @@
             <!-- 查询表单 -->
             <div class="bg-white rounded-2xl border border-brand-100 shadow-lg shadow-brand-500/5 p-6 lg:p-8">
                 <h2 class="text-xl font-bold text-ink-900 mb-1">输入下单手机号</h2>
-                <p class="text-sm text-ink-500 mb-5">仅查询该手机号关联的订单，不泄露其他信息</p>
+                <p class="text-sm text-ink-500 mb-5">
+                    仅可查询<span class="font-semibold text-ink-700">当前账号绑定的手机号</span>名下的订单，与「我的订单」结果一致
+                </p>
 
                 <form @submit.prevent="doQuery" class="flex flex-col sm:flex-row gap-3">
                     <input v-model="phone" type="tel" required maxlength="20"
@@ -127,6 +129,10 @@
                 <!-- 错误提示 -->
                 <div v-if="errorMsg" class="mt-4 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-4 py-3">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg> {{ errorMsg }}
+                    <div v-if="notBound" class="mt-3 flex flex-wrap gap-2">
+                        <a href="profile.html" class="px-3.5 py-1.5 bg-brand-600 text-white text-xs font-semibold rounded-full hover:bg-brand-700 transition">去个人中心绑定该手机号</a>
+                        <a href="profile.html" class="px-3.5 py-1.5 bg-white border border-amber-300 text-amber-800 text-xs font-semibold rounded-full hover:bg-amber-50 transition">查看我的订单</a>
+                    </div>
                 </div>
             </div>
 
@@ -135,50 +141,80 @@
                 <div v-if="orders.length === 0" class="bg-white rounded-2xl border border-stone-200 p-8 text-center">
                     <div class="text-5xl mb-3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.5 2 12v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-7l-3.5-6.5A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.5z"/></svg></div>
                     <h3 class="text-lg font-bold text-ink-700 mb-1">未查到该手机号的订单</h3>
-                    <p class="text-sm text-ink-500">请确认手机号是否正确，或
+                    <p class="text-sm text-ink-500">请确认手机号是否为「个人中心」绑定的号码，或
                         <a href="contact.html" class="text-brand-600 underline">联系客服</a>
                     </p>
+                    <div class="mt-4 flex flex-wrap gap-3 justify-center">
+                        <a href="profile.html" class="px-4 py-2 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition">去个人中心绑定手机号</a>
+                        <a href="order.html" class="px-4 py-2 border border-stone-200 text-sm text-ink-600 rounded-full hover:bg-stone-50 transition">去下单</a>
+                    </div>
                 </div>
 
                 <div v-else>
-                    <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
                         <h3 class="text-lg font-bold text-ink-900">
-                            查到 <span class="text-brand-600">{{ orders.length }}</span> 条订单
+                            共 <span class="text-brand-600">{{ total }}</span> 条订单<span v-if="truncated">（显示最近 {{ orders.length }} 条）</span>
                         </h3>
-                        <span class="text-xs text-ink-500">最近 50 条</span>
+                        <div class="flex items-center gap-2">
+                            <span v-if="truncated" class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">
+                                订单较多，完整列表请到「我的订单」分页查看
+                            </span>
+                            <a href="profile.html" class="text-xs text-brand-600 hover:underline whitespace-nowrap">去我的订单 →</a>
+                        </div>
                     </div>
 
                     <div class="space-y-4">
                         <div v-for="o in orders" :key="o.order_no"
                              class="order-card card-enter bg-white rounded-2xl border border-brand-100 shadow-sm overflow-hidden">
-                            <div class="px-5 py-4 border-b border-brand-100 bg-gradient-to-r from-brand-50 to-transparent flex items-center justify-between">
-                                <div>
+                            <div class="px-5 py-4 border-b border-brand-100 bg-gradient-to-r from-brand-50 to-transparent flex items-center justify-between gap-3">
+                                <div class="min-w-0">
                                     <div class="text-xs text-ink-500">订单号</div>
-                                    <div class="font-mono font-bold text-brand-700 text-base">{{ o.order_no }}</div>
+                                    <div class="font-mono font-bold text-brand-700 text-base truncate">{{ o.order_no }}</div>
                                 </div>
-                                <span class="px-3 py-1 rounded-full text-xs font-semibold"
-                                      :class="o.status === '已发货' ? 'bg-emerald-100 text-emerald-700' : 'bg-sunset-100 text-sunset-700'">
-                                    {{ o.status }}
+                                <!-- 状态徽章：与「个人中心」「后台」同一套配色与文案，避免同一订单三处显示不一致 -->
+                                <span class="px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap"
+                                      :style="statusStyle(o.status)">
+                                    {{ statusLabel(o.status) }}
                                 </span>
                             </div>
                             <div class="px-5 py-4">
-                                <div class="flex items-center justify-between mb-2">
-                                    <span class="text-sm font-semibold text-ink-800">{{ o.product_name }}</span>
-                                    <span class="text-xs text-ink-500">×{{ o.quantity }} 包</span>
+                                <div class="flex items-center justify-between mb-2 gap-3">
+                                    <span class="text-sm font-semibold text-ink-800 truncate">{{ o.product_name || '—' }}</span>
+                                    <span class="text-xs text-ink-500 whitespace-nowrap">×{{ o.quantity || 0 }} 包</span>
                                 </div>
-                                <!-- 物流信息（已发货且有记录时展示） -->
-                                <div v-if="o.status === '已发货' && (o.ship_company || o.tracking_no || o.shipped_at)"
+                                <div v-if="o.product_sku" class="text-xs text-ink-400 mb-2">SKU：{{ o.product_sku }}</div>
+
+                                <!-- 物流信息（任何已发货过的订单都展示，含已完成） -->
+                                <div v-if="o.tracking_no || o.ship_company || o.shipped_at"
                                      class="mb-2.5 rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2 text-xs leading-relaxed text-ink-700">
                                     <div class="flex items-center gap-1.5 flex-wrap">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;flex-shrink:0" aria-hidden="true"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.3l-3-3.2H12v9"/><circle cx="7.5" cy="17.5" r="1.6"/><circle cx="17.5" cy="17.5" r="1.6"/></svg>
                                         <span class="font-semibold">{{ o.ship_company || '已发货' }}</span>
                                         <span v-if="o.tracking_no" class="text-ink-500">运单号 <span class="font-mono">{{ o.tracking_no }}</span></span>
+                                        <button v-if="o.tracking_no" type="button" @click="copyText(o.tracking_no)"
+                                                class="px-2 py-0.5 border border-stone-200 rounded text-ink-500 hover:text-brand-600 hover:border-brand-300 transition">复制</button>
                                     </div>
                                     <div v-if="o.shipped_at" class="text-ink-500 mt-0.5">发货时间：{{ formatTime(o.shipped_at) }}</div>
                                 </div>
+
+                                <!-- 售后状态（退货申请中 / 已同意 / 已拒绝） -->
+                                <div v-if="o.return_status" class="mb-2.5 rounded-lg bg-sunset-50 border border-sunset-100 px-3 py-2 text-xs text-ink-700">
+                                    <span class="font-semibold">退货{{ o.return_status }}</span>
+                                    <span v-if="o.return_reason"> · 原因：{{ o.return_reason }}</span>
+                                    <span v-if="o.return_note"> · 处理：{{ o.return_note }}</span>
+                                    <div v-if="o.return_requested_at" class="text-ink-400 mt-0.5">{{ formatTime(o.return_requested_at) }} 申请</div>
+                                </div>
+
                                 <div class="flex items-center justify-between text-sm">
                                     <span class="text-ink-500">{{ formatTime(o.created_at) }}</span>
-                                    <span class="font-bold text-sunset-600">¥{{ o.total_price.toFixed(2) }}</span>
+                                    <span class="font-bold text-sunset-600">¥{{ money(o.total_price) }}</span>
+                                </div>
+
+                                <!-- 可执行操作：由后端下发（actions），前端不自己推导状态规则 -->
+                                <div v-if="(o.actions || []).length" class="mt-3 pt-3 border-t border-stone-100 flex flex-wrap gap-2">
+                                    <a href="profile.html" class="px-3.5 py-1.5 text-xs font-semibold rounded-full border border-stone-300 text-ink-600 hover:bg-stone-50 transition">
+                                        去「我的订单」处理（确认收货 / 退货）
+                                    </a>
                                 </div>
                             </div>
                         </div>
@@ -193,9 +229,13 @@
                     <div class="text-sm">
                         <h4 class="font-bold text-ink-900 mb-2">查询说明</h4>
                         <ul class="space-y-1.5 text-ink-600 leading-relaxed">
-                            <li>• 通过下单时预留的<span class="font-semibold text-ink-800"> 手机号</span>查询关联订单</li>
-                            <li>• 支持查看：订单号、产品、数量、金额、状态、物流信息、下单时间</li>
-                            <li>• 状态实时更新（<span class="text-emerald-700 font-semibold">已发货</span> / <span class="text-sunset-700 font-semibold">未发货</span>）</li>
+                            <li>• 只能查询<span class="font-semibold text-ink-800"> 当前账号绑定的手机号</span>名下的订单；换号请先到
+                                <a href="profile.html" class="text-brand-600 underline">个人中心</a>绑定</li>
+                            <li>• 与「我的订单」使用同一套归属规则，结果完全一致，不会出现两处数量对不上</li>
+                            <li>• 支持查看：订单号、产品、数量、金额、状态、物流信息、售后进展、下单时间</li>
+                            <li>• 状态实时更新（<span class="text-emerald-700 font-semibold">已发货</span> / <span class="text-sunset-700 font-semibold">待发货</span> / <span class="text-blue-700 font-semibold">已完成</span>）</li>
+                            <li>• 需要确认收货 / 申请退货？请到
+                                <a href="profile.html" class="text-brand-600 underline">我的订单</a> 操作</li>
                             <li>• 查不到？请确认手机号，或
                                 <a href="contact.html" class="text-brand-600 underline">联系客服</a>
                                 <span> / 咨询</span>
@@ -282,42 +322,103 @@
         else n.classList.remove('nav-scrolled');
     });
 
-    const { createApp, ref } = Vue;
+    const { createApp, ref, computed, onMounted } = Vue;
     createApp({
         setup() {
             const phone = ref('');
             const loading = ref(false);
             const queried = ref(false);
             const orders = ref([]);
+            const total = ref(0);
+            const truncated = ref(false);
             const errorMsg = ref('');
+            const notBound = ref(false);      // 403：手机号不属于当前账号
+
+            // 状态映射：与「个人中心」「后台订单列表」保持同一套配色与标签。
+            // 改造前这里只有「已发货 / 其他」两色，导致已完成、退货申请中、已取消的订单
+            // 在查订单页全都显示成橙色"未发货"样式 —— 同一订单在不同页面看起来状态不同。
+            const STATUS_MAP = {
+                '未发货':     { bg: '#F4B495', fg: '#7A2E0E', label: '待发货' },
+                '已发货':     { bg: '#DCEDE6', fg: '#134435', label: '已发货' },
+                '已完成':     { bg: '#DCE9FF', fg: '#13407A', label: '已完成' },
+                '退货申请中': { bg: '#FDF0E8', fg: '#7A2E0E', label: '退货申请中' },
+                '已取消':     { bg: '#E2E5E2', fg: '#3A473F', label: '已取消' },
+                '已退货':     { bg: '#F7D9CF', fg: '#7A2E0E', label: '已退货' }
+            };
+            function statusStyle(status) {
+                const s = STATUS_MAP[status] || { bg: '#EEE', fg: '#333' };
+                return { background: s.bg, color: s.fg };
+            }
+            function statusLabel(status) {
+                const s = STATUS_MAP[status];
+                return '● ' + (s ? s.label : (status || '—'));
+            }
 
             function formatTime(s) {
                 if (!s) return '';
-                // 已形如 "YYYY-MM-DD HH:MM:SS"
                 return s;
+            }
+            // 金额空值安全：部分历史订单没有 total_price，
+            // 改造前直接 o.total_price.toFixed(2) 会抛错并中断整页渲染
+            function money(v) {
+                const n = Number(v);
+                return isNaN(n) ? '0.00' : n.toFixed(2);
+            }
+
+            function copyText(text) {
+                if (!text) return;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(text).catch(function () {});
+                }
             }
 
             function doQuery() {
-                if (!phone.value.trim()) return;
+                const p = phone.value.trim();
+                if (!p) return;
                 errorMsg.value = '';
+                notBound.value = false;
                 loading.value = true;
-                axios.post('/api/orders/query/', { phone: phone.value.trim() })
+                axios.post('/api/orders/query/', { phone: p })
                     .then(r => {
                         const d = r.data;
                         if (d.success) {
                             orders.value = d.orders || (d.order ? [d.order] : []);
+                            total.value = (d.total != null) ? d.total : orders.value.length;
+                            truncated.value = !!d.truncated;
                             queried.value = true;
                         } else {
                             errorMsg.value = d.message || '查询失败';
                         }
                     })
                     .catch(e => {
-                        errorMsg.value = (e.response && e.response.data && e.response.data.message) || '网络异常，请稍后重试';
+                        const d = (e.response && e.response.data) || {};
+                        errorMsg.value = d.message || '网络异常，请稍后重试';
+                        if (e.response && e.response.status === 403) {
+                            notBound.value = true;
+                        }
+                        queried.value = false;
                     })
                     .finally(() => { loading.value = false; });
             }
 
-            return { phone, loading, queried, orders, errorMsg, doQuery, formatTime };
+            // 预填当前账号绑定的手机号：与「我的订单」用同一个号，避免用户手输别的号码被拒
+            onMounted(function () {
+                if (!window.AUTH || !AUTH.isLoggedIn()) return;
+                AUTH.authFetch('/api/me/profile/')
+                    .then(r => (r.ok ? r.json() : null))
+                    .then(d => {
+                        if (!d || !d.success) return;
+                        const p = (d.user || {}).phone || '';
+                        if (p && !phone.value) {
+                            phone.value = p;
+                            doQuery();          // 已绑定则直接查出结果，省一次点击
+                        }
+                    })
+                    .catch(function () { /* 预填属增强体验，失败静默 */ });
+            });
+
+            return { phone, loading, queried, orders, total, truncated, errorMsg, notBound,
+                     doQuery, formatTime, money, copyText, statusStyle, statusLabel };
         },
     }).mount('#app');
 </script>

@@ -171,11 +171,24 @@
                                         :aria-invalid="!!errors.product_id" aria-describedby="f-product-error"
                                         class="form-input w-full px-4 py-3 border border-stone-200 rounded-xl text-sm transition">
                                     <option value="" disabled>请选择产品…</option>
-                                    <option v-for="p in products" :key="p.id" :value="p.id">
-                                        {{ p.name }}（{{ p.spec }}）
+                                    <option v-for="p in products" :key="p.id" :value="p.id" :disabled="!p.can_buy">
+                                        {{ p.name }}（{{ p.spec }}）{{ p.can_buy ? '' : '· ' + buyTag(p) }}
                                     </option>
                                 </select>
                                 <p v-if="errors.product_id" class="field-error">{{ errors.product_id }}</p>
+                                <p v-if="pausedCount" class="text-xs text-ink-400 mt-1.5">
+                                    其中 {{ pausedCount }} 个商品当前缺货/暂停接单，已在列表中标注且不可选择。
+                                </p>
+                            </div>
+
+                            <!-- 库存 / 暂停接单提示（与后台、营销侧同一数据源） -->
+                            <div v-if="selectedProduct && !selectedProduct.can_buy"
+                                 class="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-4 py-3 flex items-start gap-2">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0;margin-top:2px" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+                                <span>
+                                    <strong>{{ buyTag(selectedProduct) }}</strong>：{{ buyMessage(selectedProduct) }}
+                                    <a href="index.html#ai-section" class="underline">咨询客服</a>换成同类商品。
+                                </span>
                             </div>
 
                             <!-- 产品详情 -->
@@ -188,7 +201,16 @@
                                     <span class="text-ink-500">规格：{{ selectedProduct.spec }}</span>
                                     <span class="text-lg font-bold total-shine">¥{{ selectedProduct.retail_price.toFixed(2) }} / 包</span>
                                 </div>
-                                <div class="text-xs text-ink-500">适用：{{ selectedProduct.target_fish }}</div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-ink-500">适用：{{ selectedProduct.target_fish }}</span>
+                                    <span :class="selectedProduct.can_buy ? 'text-emerald-700 font-semibold' : 'text-amber-700 font-semibold'">
+                                        {{ selectedProduct.can_buy ? '现货 ' + selectedProduct.available_stock + ' 包可下单' : buyTag(selectedProduct) }}
+                                    </span>
+                                </div>
+                                <div v-if="selectedProduct.can_buy && selectedProduct.available_stock <= selectedProduct.alert_line"
+                                     class="text-xs text-amber-700 mt-1.5">
+                                    该商品库存已低于预警线（{{ selectedProduct.alert_line }} 包），建议尽快下单。
+                                </div>
                             </div>
 
                             <!-- 姓名 + 电话 -->
@@ -221,9 +243,13 @@
                                     购买数量（包） <span class="text-sunset-600">*</span>
                                 </label>
                                 <input v-model.number="form.quantity" type="number" min="1" step="1" required
+                                       :max="maxQuantity || undefined"
                                        :aria-invalid="!!errors.quantity" aria-describedby="f-quantity-error"
                                        class="form-input w-full px-4 py-3 border border-stone-200 rounded-xl text-sm transition" />
                                 <p v-if="errors.quantity" class="field-error">{{ errors.quantity }}</p>
+                                <p v-else-if="maxQuantity" class="text-xs text-ink-400 mt-1.5">
+                                    当前可下单上限 {{ maxQuantity }} 包（可用库存实时数据）
+                                </p>
                             </div>
 
                             <!-- 总额 -->
@@ -280,15 +306,18 @@
                                     class="flex-1 px-4 py-3 bg-white border border-brand-200 text-ink-700 text-sm font-semibold rounded-xl hover:border-brand-400 hover:text-brand-600 transition">
                                 继续下单
                             </button>
-                            <a href="order_query.html"
+                            <a href="profile.html"
                                class="flex-1 px-4 py-3 bg-white border border-lake-200 text-lake-700 text-sm font-semibold rounded-xl hover:border-lake-400 hover:bg-lake-50 transition flex items-center justify-center gap-1.5">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg> 查询订单
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> 我的订单
                             </a>
                             <a href="contact.html"
                                class="flex-1 px-4 py-3 bg-gradient-to-r from-brand-600 to-lake-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-brand-500/30 transition flex items-center justify-center gap-1.5">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 联系客服
                             </a>
                         </div>
+                        <p class="text-xs text-ink-400 mt-4">
+                            这笔订单已同步到「我的订单」，可随时查看发货与物流状态。
+                        </p>
                     </div>
                 </div>
             </div>
@@ -392,20 +421,58 @@
                 if (!form.product_id) return null;
                 return products.value.find(p => p.id === form.product_id) || null;
             });
+            // 可购买性（后端统一判定：下架 / 营销侧暂停购买 / 售罄）
+            const pausedCount = computed(() => products.value.filter(p => !p.can_buy).length);
+            const maxQuantity = computed(() =>
+                selectedProduct.value && selectedProduct.value.can_buy
+                    ? Number(selectedProduct.value.available_stock || 0) : 0);
             const totalPrice = computed(() => {
                 if (!selectedProduct.value || !form.quantity) return 0;
                 return selectedProduct.value.retail_price * Number(form.quantity || 0);
             });
             const canSubmit = computed(() => {
-                return form.customer_name.trim() && form.phone.trim() && form.product_id && Number(form.quantity) > 0;
+                return form.customer_name.trim() && form.phone.trim() && form.product_id &&
+                    Number(form.quantity) > 0 && !!selectedProduct.value && selectedProduct.value.can_buy;
             });
 
-            // 加载产品列表
+            // 不可购原因的中文标签（原因码由后端给，文案在这里集中映射）
+            const BLOCK_TAGS = {
+                purchase_paused: '暂停接单',
+                sold_out: '已售罄',
+                no_inventory: '暂无库存',
+                inactive: '已下架'
+            };
+            function buyTag(p) { return BLOCK_TAGS[p.buy_block_reason] || '暂不可购'; }
+            function buyMessage(p) { return p.buy_block_message || p.customer_notice || '该商品暂时无法下单'; }
+
+            // 加载产品列表（含 can_buy / purchase_paused：与后台、营销侧同源）
             axios.get('/api/products/').then(r => {
                 if (r.data && r.data.success) products.value = r.data.products;
             }).catch(e => console.error('加载产品失败：', e));
 
-            function onProductChange() { errorMsg.value = ''; errors.product_id = ''; }
+            // 预填已登录用户的收货人姓名与手机号（个人中心已绑定的）
+            // —— 避免每次下单重填，也避免填了不同手机号导致历史订单归属漂移
+            (function prefillFromProfile() {
+                if (!window.AUTH || !AUTH.isLoggedIn()) return;
+                AUTH.authFetch('/api/me/profile/')
+                    .then(r => (r.ok ? r.json() : null))
+                    .then(d => {
+                        if (!d || !d.success) return;
+                        const u = d.user || {};
+                        if (u.nickname && !form.customer_name) form.customer_name = u.nickname;
+                        if (u.phone && !form.phone) form.phone = u.phone;
+                    })
+                    .catch(() => { /* 预填属增强体验，失败静默 */ });
+            })();
+
+            function onProductChange() {
+                errorMsg.value = '';
+                errors.product_id = '';
+                // 切换商品时把数量收敛到上限内，避免带着上一个商品的超大数量提交
+                if (maxQuantity.value && Number(form.quantity) > maxQuantity.value) {
+                    form.quantity = maxQuantity.value;
+                }
+            }
 
             // 字段级校验：填充 errors，全部通过返回 true
             function validateForm() {
@@ -413,7 +480,18 @@
                 errors.phone = !form.phone.trim() ? '请输入联系电话'
                     : (!PHONE_RE.test(form.phone.trim()) ? '请输入正确的 11 位手机号' : '');
                 errors.product_id = form.product_id ? '' : '请选择产品';
-                errors.quantity = (Number(form.quantity) > 0) ? '' : '请输入购买数量';
+
+                const qty = Number(form.quantity);
+                if (!(qty > 0)) {
+                    errors.quantity = '请输入购买数量';
+                } else if (selectedProduct.value && !selectedProduct.value.can_buy) {
+                    errors.quantity = '';
+                    errors.product_id = buyTag(selectedProduct.value) + '：' + buyMessage(selectedProduct.value);
+                } else if (maxQuantity.value && qty > maxQuantity.value) {
+                    errors.quantity = '当前可下单上限 ' + maxQuantity.value + ' 包，请调整数量或联系客服批量采购';
+                } else {
+                    errors.quantity = '';
+                }
                 return !errors.customer_name && !errors.phone && !errors.product_id && !errors.quantity;
             }
 
@@ -438,7 +516,14 @@
                         errorMsg.value = d.message || '下单失败，请稍后重试';
                     }
                 }).catch(e => {
-                    errorMsg.value = e.response && e.response.data && e.response.data.message ? e.response.data.message : '网络异常，请稍后重试';
+                    const d = (e.response && e.response.data) || {};
+                    errorMsg.value = d.message || '网络异常，请稍后重试';
+                    // 后端判定不可购（暂停接单/售罄）：本地列表已过期，拉一次最新数据对齐
+                    if (d.code && d.code !== 'insufficient_stock') {
+                        axios.get('/api/products/').then(r => {
+                            if (r.data && r.data.success) products.value = r.data.products;
+                        }).catch(() => {});
+                    }
                 }).finally(() => { loading.value = false; });
             }
 
@@ -453,7 +538,9 @@
                 Object.keys(errors).forEach(k => errors[k] = '');
             }
 
-            return { products, form, loading, submitted, errorMsg, result, errors, selectedProduct, totalPrice, canSubmit, onProductChange, submitOrder, resetForm };
+            return { products, form, loading, submitted, errorMsg, result, errors, selectedProduct, totalPrice, canSubmit,
+                     onProductChange, submitOrder, resetForm,
+                     pausedCount, maxQuantity, buyTag, buyMessage };
         },
     }).mount('#app');
 </script>
