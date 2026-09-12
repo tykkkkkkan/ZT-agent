@@ -292,6 +292,22 @@ def adjust_inventory_stock(inventory: Inventory, delta: int, *, note: str = "") 
 
 
 # ════════════════════════════════════════════════════════════════
+# L5 编排：出站通知（包一层 try，保证任何情况下都不影响订单状态机）
+# ════════════════════════════════════════════════════════════════
+def _notify_return_async(order) -> None:
+    """把「退货申请」事件异步告知营销 Agent；失败只记日志，不冒泡。"""
+    try:
+        from agent.coordination import notify_return_requested
+        notify_return_requested(order)
+    except Exception:  # noqa: BLE001 — 旁路通知，绝不能影响主业务
+        import logging
+        logging.getLogger(__name__).warning(
+            "通知营销 Agent 退货事件失败：order=%s", getattr(order, "order_no", "?"),
+            exc_info=True,
+        )
+
+
+# ════════════════════════════════════════════════════════════════
 # 订单状态机
 # ════════════════════════════════════════════════════════════════
 @dataclass
@@ -385,6 +401,10 @@ def transition_order(
             order.return_requested_at = timezone.now()
             order.return_handled_at = None
             order.return_note = ""
+            # L5 编排：把「用户申请退货」告知营销 Agent（复盘该商品售后策略）。
+            # 此前营销侧留了 return_requested 入站端点，但 ZT 从未推送 → 链路是断的。
+            # 用 on_commit + 后台线程，保证「本事务成功提交」才通知，且绝不阻塞/影响退货申请。
+            transaction.on_commit(lambda o=order: _notify_return_async(o))
             msg = "退货申请已提交，我们会尽快与您联系确认。"
 
         else:  # OrderStatus.RETURNED

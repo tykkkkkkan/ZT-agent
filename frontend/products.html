@@ -141,11 +141,12 @@
                              loading="lazy"
                              @error="onImgError($event, p)">
                         <div v-if="idx === 0" class="absolute top-3 left-3 px-2.5 py-1 bg-sunset-700 text-white text-xs font-semibold rounded-full shadow z-10">主推</div>
+                        <!-- 库存/可售状态：直接取后端统一判定，与下单页、后台一致 -->
                         <div v-if="p.in_stock" class="absolute top-3 right-3 px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full z-10">
-                            ✓ 现货 {{ p.stock }} 包
+                            {{ p.stock_label }}
                         </div>
                         <div v-else class="absolute top-3 right-3 px-2.5 py-1 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full z-10">
-                            缺货 · 补货中
+                            {{ p.stock_label }}
                         </div>
                     </div>
                     <div class="p-5">
@@ -155,6 +156,11 @@
                         </div>
                         <h3 class="text-lg font-bold text-ink-900 mb-2">{{ p.name }}</h3>
                         <p class="text-sm text-ink-500 leading-relaxed mb-4 line-clamp-2">{{ p.description }}</p>
+                        <!-- 不可购时给出与前台一致的说明（营销侧暂停接单也会带出提示语） -->
+                        <p v-if="!p.in_stock && p.buy_block_message"
+                           class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                            {{ p.buy_block_message }}
+                        </p>
                         <div class="flex items-end justify-between pt-3 border-t border-stone-100">
                             <div>
                                 <div class="text-xs text-ink-400">零售价</div>
@@ -163,9 +169,13 @@
                                     批发 ¥{{ p.wholesale_price.toFixed(2) }}（10 包起）
                                 </div>
                             </div>
-                            <a :href="'order.html?product=' + p.id"
+                            <a v-if="p.in_stock" :href="'order.html?product=' + p.id"
                                class="px-4 py-2 bg-brand-50 text-brand-700 text-sm font-semibold rounded-lg hover:bg-brand-600 hover:text-white transition border border-brand-100">
                                 下单
+                            </a>
+                            <a v-else href="index.html#ai-section"
+                               class="px-4 py-2 bg-stone-100 text-ink-500 text-sm font-semibold rounded-lg hover:bg-stone-200 transition border border-stone-200">
+                                咨询客服
                             </a>
                         </div>
                     </div>
@@ -280,6 +290,14 @@
             const loading = ref(true);
             const error = ref('');
 
+            // 不可购原因码 → 中文标签（与下单页同一套映射）
+            const BLOCK_TAGS = {
+                purchase_paused: '暂停接单',
+                sold_out: '已售罄',
+                no_inventory: '暂无库存',
+                inactive: '已下架',
+            };
+
             async function loadProducts() {
                 loading.value = true;
                 error.value = '';
@@ -287,10 +305,16 @@
                     const resp = await axios.get('/api/products/');
                     const data = resp.data || {};
                     if (data.success && Array.isArray(data.products)) {
+                        // 直接采用后端统一判定的可购买性（含营销 Agent 下发的「暂停购买」），
+                        // 不再硬编码 in_stock=true —— 此前产品页永远显示「✓ 现货」，
+                        // 与下单页、后台对同一商品的可售状态互相矛盾。
                         products.value = data.products.map((p, i) => ({
                             ...p,
                             icon: FISH_ICONS[i % FISH_ICONS.length],
-                            in_stock: true,
+                            in_stock: !!p.can_buy,
+                            stock_label: p.can_buy
+                                ? ('✓ 现货 ' + (p.available_stock || 0) + ' 包')
+                                : (BLOCK_TAGS[p.buy_block_reason] || '暂不可购'),
                         }));
                     } else {
                         error.value = (data && data.message) || '产品加载失败';

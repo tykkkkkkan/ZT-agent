@@ -417,6 +417,14 @@
             const errors = reactive({ customer_name: '', phone: '', product_id: '', quantity: '' });
             const PHONE_RE = /^1[3-9]\d{9}$/;
 
+            // 产品页「下单」跳转带来的预选商品（order.html?product=<id>）
+            const PRESELECT_ID = (function () {
+                const raw = new URLSearchParams(location.search).get('product');
+                const n = parseInt(raw, 10);
+                return Number.isFinite(n) && n > 0 ? n : 0;
+            })();
+            const PRESELECT_AT = Date.now();
+
             const selectedProduct = computed(() => {
                 if (!form.product_id) return null;
                 return products.value.find(p => p.id === form.product_id) || null;
@@ -446,9 +454,31 @@
             function buyMessage(p) { return p.buy_block_message || p.customer_notice || '该商品暂时无法下单'; }
 
             // 加载产品列表（含 can_buy / purchase_paused：与后台、营销侧同源）
+            // 加载完成后再处理 ?product=<id> 预选 —— 产品页「下单」按钮会带这个参数，
+            // 改造前下单页不读它，用户点了某个商品的下单还要重新选一遍，
+            // 很容易选错商品（"我要买的是 X，下的是 Y"）。
             axios.get('/api/products/').then(r => {
-                if (r.data && r.data.success) products.value = r.data.products;
+                if (r.data && r.data.success) {
+                    products.value = r.data.products;
+                    applyPreselect();
+                }
             }).catch(e => console.error('加载产品失败：', e));
+
+            // 立即锁定的商品 id（超过 10 分钟自动失效）：防止用户手改地址栏导致
+            // "看着是 A 商品、实际下的是 B" 的口径不一致
+            const PRESELECT_TTL = 10 * 60 * 1000;
+            function applyPreselect() {
+                if (!PRESELECT_ID) return;
+                if (Date.now() - PRESELECT_AT > PRESELECT_TTL) return;
+                const p = products.value.find(x => x.id === PRESELECT_ID);
+                if (!p) return;
+                form.product_id = p.id;
+                // 不可购也照样选中：让用户看到「暂停接单 / 已售罄」的原因，
+                // 而不是默默回退到"请选择产品"（那样用户会以为按钮坏了）
+                if (p.can_buy && maxQuantity.value && Number(form.quantity) > maxQuantity.value) {
+                    form.quantity = maxQuantity.value;
+                }
+            }
 
             // 预填已登录用户的收货人姓名与手机号（个人中心已绑定的）
             // —— 避免每次下单重填，也避免填了不同手机号导致历史订单归属漂移
