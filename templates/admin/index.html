@@ -1,0 +1,88 @@
+{% extends "admin/base.html" %}
+{% load i18n zy_admin %}
+
+{# ══════════════════════════════════════════════════════════════
+   后台首页覆盖：去掉 Django 默认的「最近动作」（Recent actions）面板。
+   原因：该面板只列最近变更记录，对运营没有价值且占掉半屏，
+   换成「待办快捷入口 + 模型列表」更实用。
+   注：模板位于项目级 templates/（settings.TEMPLATES.DIRS 优先级高于
+   各 app 的 APP_DIRS），因此能覆盖 unfold 自带的 admin/index.html。
+   ══════════════════════════════════════════════════════════════ #}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block branding %}{% include "unfold/helpers/site_branding.html" %}{% endblock %}
+
+{% block content %}
+{% zy_pending_counts as counts %}
+<div class="zy-home">
+  <style>
+    .zy-home{ --jade:#1F6B54; --jade-700:#185647; --fire:#E2703A; --fire-700:#B5481C;
+      --paper:#F6F1E7; --paper-card:#FBF8F1; --ink:#15211D; --ink-mute:#738079;
+      --radius:14px; --shadow:0 4px 14px rgba(31,107,84,.10); max-width:1180px; }
+    .zy-home .head{ margin:2px 0 18px; }
+    .zy-home .head h1{ font-family:'Noto Serif SC','Songti SC',serif; font-size:22px;
+      color:var(--jade-700); margin:0 0 4px; }
+    .zy-home .head p{ font-size:12.5px; color:var(--ink-mute); margin:0; }
+    .zy-home .quick{ display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr));
+      gap:14px; margin-bottom:26px; }
+    .zy-home .q-card{ display:block; text-decoration:none; background:var(--paper-card);
+      border:1px solid rgba(31,107,84,.10); border-left:5px solid var(--jade);
+      border-radius:var(--radius); padding:14px 16px; box-shadow:var(--shadow);
+      transition:transform .15s, box-shadow .15s; position:relative; }
+    .zy-home .q-card:hover{ transform:translateY(-2px); box-shadow:0 8px 20px rgba(31,107,84,.16); }
+    .zy-home .q-card.fire{ border-left-color:var(--fire); }
+    .zy-home .q-card .lbl{ font-size:13.5px; font-weight:600; color:var(--ink);
+      display:flex; align-items:center; gap:7px; }
+    .zy-home .q-card .num{ font-family:'Noto Serif SC',serif; font-size:26px; font-weight:700;
+      color:var(--jade-700); margin:6px 0 2px; line-height:1.1; }
+    .zy-home .q-card.fire .num{ color:var(--fire-700); }
+    .zy-home .q-card .hint{ font-size:11.5px; color:var(--ink-mute); }
+    .zy-home .q-card .go{ position:absolute; right:14px; bottom:10px; font-size:11.5px;
+      color:var(--jade); font-weight:600; opacity:0; transition:opacity .15s; }
+    .zy-home .q-card:hover .go{ opacity:1; }
+    .zy-home .sec-title{ font-family:'Noto Serif SC','Songti SC',serif; font-size:16px;
+      color:var(--jade-700); border-left:4px solid var(--fire); padding-left:10px;
+      margin:0 0 12px; }
+    .dark .zy-home .q-card{ background:#18211d; border-color:rgba(255,255,255,.08); }
+    .dark .zy-home .q-card .lbl{ color:#e8efe9; }
+    .dark .zy-home .q-card .num{ color:#8fd3ba; }
+    .dark .zy-home .sec-title{ color:#8fd3ba; }
+  </style>
+
+  <div class="head">
+    <h1>中渔天下 · 后台总览</h1>
+    <p>日常操作请优先走左侧导航；下方是待办快捷入口与全部模型列表。</p>
+  </div>
+
+  <div class="quick">
+    <a class="q-card" href="/admin/dashboard/">
+      <div class="lbl">📊 运营看板</div>
+      <div class="num">看板</div>
+      <div class="hint">收入趋势 · 订单分布 · 客服待处理</div>
+      <span class="go">进入 →</span>
+    </a>
+    <a class="q-card fire" href="/admin/agent/orders/?ship=pending">
+      <div class="lbl">📦 待发货订单</div>
+      <div class="num">{{ counts.pending_orders }}</div>
+      <div class="hint">点进后勾选即弹「发货」浮层</div>
+      <span class="go">处理 →</span>
+    </a>
+    <a class="q-card fire" href="/admin/agent/inventory/?stock_state=low">
+      <div class="lbl">📉 库存预警 / 缺货</div>
+      <div class="num">{{ counts.low_stock }}</div>
+      <div class="hint">列表内可直接改库存数字</div>
+      <span class="go">补货 →</span>
+    </a>
+    <a class="q-card fire" href="/admin/agent/contactmessage/?is_read__exact=0">
+      <div class="lbl">✉️ 未读留言 / 定制</div>
+      <div class="num">{{ counts.unread }}</div>
+      <div class="hint">行内一键标记已读</div>
+      <span class="go">查看 →</span>
+    </a>
+  </div>
+
+  <h2 class="sec-title">全部模型</h2>
+  {% include "unfold/helpers/app_list_default.html" %}
+</div>
+{% endblock %}

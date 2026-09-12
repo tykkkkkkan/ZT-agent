@@ -1,0 +1,6 @@
+{% comment %}
+公司钱包 · 收支账本 —— 列表顶部的概览面板。
+通过 TransactionAdmin.list_before_template 挂载（unfold 会在 changelist 表格上方
+include 本模板），wallet_panel 由 changelist_view 注入（已是 SafeString）。
+{% endcomment %}
+{% if wallet_panel %}{{ wallet_panel }}{% endif %}

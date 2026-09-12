@@ -35,12 +35,13 @@ logger = logging.getLogger(__name__)
 # ════════════════════════════════════════════════════════════════
 # 管理类 API 鉴权（P2）
 # ════════════════════════════════════════════════════════════════
-def _jwt_staff_user(request):
-    """尝试从 Authorization: Bearer <access> 解析 JWT 用户。
+def _jwt_user(request):
+    """尝试从 Authorization: Bearer <access> 解析 JWT 用户（不限 staff）。
 
-    返回 (user, ok)：token 合法且用户为 staff → (user, True)；
-    其余情况 → (None, False)。无 Authorization 头时返回 (None, False)，
-    由调用方回退到 session 认证。
+    返回 (user, ok)：
+      - token 合法且用户未停用 → (user, True)
+      - 无 Authorization 头 / token 缺失 / 非法 / 过期 / 用户已停用 → (None, False)
+    无 Authorization 头时返回 (None, False)，由调用方回退到 session 认证。
     """
     from django.contrib.auth import get_user_model
     header = request.META.get("HTTP_AUTHORIZATION", "")
@@ -53,9 +54,46 @@ def _jwt_staff_user(request):
         from rest_framework_simplejwt.tokens import AccessToken
         user_id = AccessToken(token).get("user_id")
         user = get_user_model().objects.get(pk=user_id)
-        return (user, True) if user.is_staff else (None, False)
+        return (user, True) if user.is_active else (None, False)
     except Exception:
         return None, False
+
+
+def _jwt_staff_user(request):
+    """要求 JWT 用户为 staff。返回 (user, ok)；非 staff / 未登录 → (None, False)。"""
+    user, ok = _jwt_user(request)
+    if ok and user.is_staff:
+        return user, True
+    return None, False
+
+
+def _resolve_request_user(request):
+    """统一解析请求身份（session 优先，其次 JWT）。返回 (user, ok)。"""
+    user = getattr(request, "user", None)
+    if user is not None and user.is_authenticated:
+        return user, True
+    return _jwt_user(request)
+
+
+def login_required(view_func):
+    """要求「已登录用户」，session 与 JWT 双通道（P2 增强）。
+
+    用途：C 端涉及隐私或产生业务数据的接口（下单、订单查询、留言、定制、AI 对话、
+    会话历史）。未登录一律返回 401 JSON，前端 auth.js 据此跳转登录页。
+
+    - session 通道：管理员登录 /admin/ 后，同源请求自动携带 cookie 也可通过；
+    - JWT 通道：前端页面经 auth.js 的 authFetch 带 `Authorization: Bearer <access>`。
+    """
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        _, ok = _resolve_request_user(request)
+        if not ok:
+            return JsonResponse(
+                {"success": False, "code": "LOGIN_REQUIRED", "message": "请先登录后再操作"},
+                status=401,
+            )
+        return view_func(request, *args, **kwargs)
+    return wrapper
 
 
 def staff_required(view_func):
@@ -95,8 +133,9 @@ def _server_error(e):
 # ══════════════════════════════════════════════════════════════
 @csrf_exempt
 @require_POST
+@login_required
 def chat(request):
-    """AI 聊天接口：POST /api/agent/chat/（SSE 流式）"""
+    """AI 聊天接口：POST /api/agent/chat/（SSE 流式）【需登录】"""
     try:
         body = json.loads(request.body)
     except json.JSONDecodeError:
@@ -160,8 +199,9 @@ def chat(request):
 # ══════════════════════════════════════════════════════════════
 @csrf_exempt
 @require_GET
+@login_required
 def history(request, session_id):
-    """查询对话历史：GET /api/agent/history/<session_id>/"""
+    """查询对话历史：GET /api/agent/history/<session_id>/【需登录】"""
     try:
         from agent.models import Conversations
         records = Conversations.objects.filter(
@@ -185,8 +225,9 @@ def history(request, session_id):
 # ══════════════════════════════════════════════════════════════
 @csrf_exempt
 @require_POST
+@login_required
 def contact_submit(request):
-    """联系表单接口：POST /api/agent/contact/"""
+    """联系表单接口：POST /api/agent/contact/【需登录】"""
     try:
         body = json.loads(request.body)
     except json.JSONDecodeError:
@@ -216,8 +257,9 @@ def contact_submit(request):
 # ══════════════════════════════════════════════════════════════
 @csrf_exempt
 @require_POST
+@login_required
 def custom_submit(request):
-    """定制表单接口：POST /api/agent/custom/"""
+    """定制表单接口：POST /api/agent/custom/【需登录】"""
     try:
         body = json.loads(request.body)
     except json.JSONDecodeError:
@@ -293,8 +335,9 @@ def product_list(request):
 # ══════════════════════════════════════════════════════════════
 @csrf_exempt
 @require_POST
+@login_required
 def create_order_api(request):
-    """POST /api/orders/ — 前端下单页提交订单
+    """POST /api/orders/ — 前端下单页提交订单【需登录】
 
     Body: {customer_name, phone, product_id, quantity}
     Returns: {success, order_no, product_name, quantity, total_price, message}
@@ -356,12 +399,16 @@ def create_order_api(request):
         return JsonResponse({"success": False, "message": "订单号生成失败，请重试"}, status=500)
 
     # 写入订单 + 预占库存（P0 修复：事务 + 行级锁）
+    # 个人中心改造：写入 user_id（订单归属登录用户），并在手机号未被他人占用时
+    # 自动绑定到该用户资料 —— 这样用户下次进个人中心即使不手动填手机号也能看到订单。
+    me, _ = _resolve_request_user(request)
     try:
         with transaction.atomic():
             order = Orders.objects.create(
                 order_no=order_no,
                 customer_name=customer_name,
                 phone=phone,
+                user_id=me.id if me else None,
                 product_id=product.id,
                 product_name=product.name,
                 product_sku=product.sku,                  # 冗余快照（P0：便于历史追溯）
@@ -387,6 +434,14 @@ def create_order_api(request):
     except Exception as e:
         return _server_error(e)
 
+    # 绑定手机号 / 记住收货人（失败不影响下单结果，仅用于个人中心体验）
+    if me is not None:
+        try:
+            from agent.me_helpers import bind_phone_if_free
+            bind_phone_if_free(me, phone, nickname=customer_name)
+        except Exception:  # noqa: BLE001 — 绑定手机号属于增强体验，绝不能影响下单主流程
+            logger.warning("下单后自动绑定手机号失败：user=%s phone=%s", me.id, phone, exc_info=True)
+
     return JsonResponse({
         "success": True,
         "order_no": order_no,
@@ -405,8 +460,9 @@ def create_order_api(request):
 # ══════════════════════════════════════════════════════════════
 @csrf_exempt
 @require_POST
+@login_required
 def query_orders(request):
-    """POST /api/orders/query/ — 按手机号查询该手机号的所有订单（脱敏，不返回姓名/电话）
+    """POST /api/orders/query/ — 按手机号查询该手机号的所有订单（脱敏，不返回姓名/电话）【需登录】
 
     Body: {"phone": "13800138000", "order_no": "DD20260827xxxx"} (order_no 可选)
     - 仅传 phone → 列出该手机号最近 50 条订单的核心字段
@@ -450,9 +506,33 @@ def query_orders(request):
         return _server_error(e)
 
 
-def _serialize_order(order):
-    """订单脱敏序列化（不返回姓名/电话等隐私字段，含物流信息）"""
-    return {
+def _order_actions(order):
+    """按当前状态推导「用户可执行的操作」列表。
+
+    规则集中在这里，前端只按返回的按钮名渲染，避免前后端各写一套状态判断而漂移。
+    """
+    from agent.models import OrderStatus, ReturnStatus
+
+    s = order.status
+    acts = []
+    if s == OrderStatus.PENDING:
+        acts.append('cancel')                       # 未发货：可取消
+    if s == OrderStatus.SHIPPED:
+        acts.append('confirm')                      # 已发货：可确认收货
+        acts.append('return')                       #        可申请退货
+    if s == OrderStatus.COMPLETED:
+        acts.append('return')                       # 已完成：仍可申请售后
+    if s == OrderStatus.RETURNING and order.return_status == ReturnStatus.PENDING:
+        acts.append('withdraw_return')              # 退货待审核：可自行撤销
+    return acts
+
+
+def _serialize_order(order, with_actions=False):
+    """订单脱敏序列化（不返回姓名/电话等隐私字段，含物流信息与售后状态）
+
+    :param with_actions: 是否附带「用户可执行操作」列表（个人中心用）
+    """
+    data = {
         "order_no": order.order_no,
         "product_id": order.product_id,
         "product_sku": order.product_sku or "",            # P0 新增：SKU 快照
@@ -467,7 +547,19 @@ def _serialize_order(order):
         "cancelled_at": order.cancelled_at.strftime("%Y-%m-%d %H:%M:%S") if order.cancelled_at else '',
         "cancel_reason": order.cancel_reason or '',        # P0 新增
         "created_at": order.created_at.strftime("%Y-%m-%d %H:%M:%S") if order.created_at else '',
+        # ── 售后 / 收货闭环（个人中心展示 + 后台反馈） ──
+        "completed_at": order.completed_at.strftime("%Y-%m-%d %H:%M:%S") if order.completed_at else '',
+        "return_status": order.return_status or '',
+        "return_reason": order.return_reason or '',
+        "return_requested_at": (order.return_requested_at.strftime("%Y-%m-%d %H:%M:%S")
+                                if order.return_requested_at else ''),
+        "return_handled_at": (order.return_handled_at.strftime("%Y-%m-%d %H:%M:%S")
+                              if order.return_handled_at else ''),
+        "return_note": order.return_note or '',
     }
+    if with_actions:
+        data["actions"] = _order_actions(order)
+    return data
 
 
 # ══════════════════════════════════════════════════════════════
@@ -475,8 +567,9 @@ def _serialize_order(order):
 # ══════════════════════════════════════════════════════════════
 @csrf_exempt
 @require_GET
+@login_required
 def order_detail(request, order_no):
-    """GET /api/orders/<order_no>/ — 查询单个订单详情（脱敏，不返回姓名/电话）"""
+    """GET /api/orders/<order_no>/ — 查询单个订单详情（脱敏，不返回姓名/电话）【需登录】"""
     from agent.models import Orders
     try:
         order = Orders.objects.get(order_no=order_no)
@@ -752,11 +845,17 @@ def product_detail_api(request, product_id):
 @require_GET
 @staff_required
 def inventory_list_api(request):
-    """GET /api/inventory/ — 库存列表（含产品信息）【需管理员】"""
-    from agent.models import Products, Inventory
+    """GET /api/inventory/ — 库存列表（含产品信息）【需管理员】
+
+    L5 编排：额外带回 ProductCoordination 覆盖状态（暂停购买/客户提示），
+    供 storefront 与营销 Agent 感知「多 Agent 协商后的临时状态」。
+    """
+    from agent.models import Products, Inventory, ProductCoordination
     try:
+        coord_map = {c.product_id: c for c in ProductCoordination.objects.all()}
         items = []
         for inv in Inventory.objects.select_related("product").order_by("product_id"):
+            coord = coord_map.get(inv.product_id)
             items.append({
                 "id": inv.id,
                 "product_id": inv.product_id,
@@ -768,10 +867,84 @@ def inventory_list_api(request):
                 "alert_line": inv.alert_line or 0,
                 "is_low": (inv.stock or 0) <= (inv.alert_line or 0),
                 "is_out": (inv.stock or 0) <= 0,
+                "purchase_paused": bool(coord and coord.purchase_paused),
+                "customer_notice": (coord.customer_notice if coord else "") or "",
             })
         return JsonResponse({"success": True, "inventory": items})
     except Exception as e:
         return _server_error(e)
+
+
+# ════════════════════════════════════════════════════════════════
+# L5 多智能体编排：ZT-agent 接收侧「接收钩子」
+# 仅接受营销 Agent(mkt_bot) 经 JWT 调来的、有界的协调指令；
+# 动作只写入独立的 product_coordination 覆盖表，绝不碰 products/inventory 业务表。
+# ════════════════════════════════════════════════════════════════
+_ALLOWED_COORD_EVENTS = {"pause_product", "resume_product", "set_notice"}
+
+
+@csrf_exempt
+@require_POST
+@staff_required
+def coordination_inbound_api(request):
+    """POST /api/coordination/inbound/ — 接收营销 Agent 的跨 Agent 协调指令。
+
+    请求体：
+      {"event": "pause_product"|"resume_product"|"set_notice",
+       "product_id": 5,
+       "customer_notice": "该商品暂时缺货，可先收藏或咨询客服",   # 可选
+       "source": "marketing-agent"}
+
+    有界性：只写入 product_coordination 覆盖表；event 不在白名单一律 400。
+    """
+    from agent.models import Products, ProductCoordination
+
+    try:
+        body = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "message": "请求体必须是 JSON"}, status=400)
+
+    event = (body.get("event") or "").strip()
+    product_id = body.get("product_id")
+    if event not in _ALLOWED_COORD_EVENTS:
+        return JsonResponse(
+            {"success": False, "message": f"不支持的协调事件：{event}"}, status=400
+        )
+    if not isinstance(product_id, int) or product_id <= 0:
+        return JsonResponse({"success": False, "message": "product_id 必须为正整数"}, status=400)
+    if not Products.objects.filter(pk=product_id).exists():
+        return JsonResponse(
+            {"success": False, "message": f"商品 #{product_id} 不存在"}, status=404
+        )
+
+    # 解析调用方身份（JWT 用户），仅用于审计留痕
+    actor = "unknown"
+    user, ok = _jwt_user(request)
+    if ok:
+        actor = user.username
+
+    defaults = {}
+    if event == "pause_product":
+        defaults["purchase_paused"] = True
+    elif event == "resume_product":
+        defaults["purchase_paused"] = False
+    if "customer_notice" in body:
+        defaults["customer_notice"] = (body.get("customer_notice") or "")[:500]
+
+    obj, created = ProductCoordination.objects.update_or_create(
+        product_id=product_id, defaults={**defaults, "updated_by": actor}
+    )
+    return JsonResponse({
+        "success": True,
+        "message": "协调指令已生效",
+        "data": {
+            "product_id": product_id,
+            "purchase_paused": obj.purchase_paused,
+            "customer_notice": obj.customer_notice or "",
+            "updated_by": obj.updated_by,
+            "updated_at": obj.updated_at.isoformat() if obj.updated_at else None,
+        },
+    })
 
 
 @csrf_exempt

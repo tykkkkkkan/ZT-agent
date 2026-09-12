@@ -1,0 +1,135 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{# ══════════════════════════════════════════════════════════════
+   订单操作页（发货 / 取消 / 退货 / 撤回 四合一）
+   单笔：订单列表「快速操作」列点按钮进来（ids=单个）
+   批量：列表勾选多行 → 右下浮层点动作进来（ids=多个）
+   两种入口共用本页，避免"单笔一套流程、批量又一套流程"。
+   ══════════════════════════════════════════════════════════════ #}
+
+{% block content_title %}{{ meta.title }}{% endblock %}
+
+{% block content %}
+<style>
+  .zy-oa{ --jade:#1F6B54; --jade-700:#185647; --fire:#E2703A; --fire-700:#B5481C;
+    --paper:#FBF8F1; --ink:#15211D; --ink-mute:#738079; --radius:14px;
+    max-width:860px; margin:8px auto; background:var(--paper); border-radius:var(--radius);
+    box-shadow:0 4px 14px rgba(31,107,84,.10); padding:24px 28px; }
+  .zy-oa h1{ font-family:'Noto Serif SC','Songti SC',serif; color:var(--ink); margin:0 0 4px; font-size:20px; }
+  .zy-oa .sub{ color:var(--ink-mute); font-size:13px; margin-bottom:16px; }
+  .zy-oa .warn{ background:#FDF0E8; border:1px solid #F4B495; color:#7A2E0E;
+    padding:10px 14px; border-radius:10px; font-size:13px; margin-bottom:14px; }
+  .zy-oa .warn ul{ margin:6px 0 0 18px; padding:0; }
+  .zy-oa .summary{ background:#fff; border:1px solid #E8E4D8; border-radius:10px; padding:6px 10px;
+    max-height:300px; overflow:auto; }
+  .zy-oa .summary table{ width:100%; border-collapse:collapse; }
+  .zy-oa .summary th,.zy-oa .summary td{ padding:7px 8px; text-align:left; font-size:12.5px; }
+  .zy-oa .summary th{ background:#F3EFE4; color:var(--ink-mute); font-weight:600; position:sticky; top:0; }
+  .zy-oa .summary tr.bad td{ background:#FDF0E8; }
+  .zy-oa .summary input[type=text]{ width:100%; box-sizing:border-box; padding:6px 8px;
+    border:1px solid #D8D2C0; border-radius:7px; font-size:12.5px; }
+  .zy-oa label.field{ display:block; margin:16px 0 6px; font-weight:600; color:var(--ink); font-size:13px; }
+  .zy-oa select, .zy-oa input[type=text]{ width:100%; box-sizing:border-box; padding:9px 12px;
+    border:1px solid #D8D2C0; border-radius:8px; font-size:14px; background:#fff; }
+  .zy-oa .actions{ display:flex; gap:10px; margin-top:22px; justify-content:flex-end; }
+  .zy-oa .btn{ padding:10px 24px; border-radius:8px; border:0; font-size:14px; cursor:pointer; font-weight:600; }
+  .zy-oa .btn-primary{ background:var(--jade); color:#fff; }
+  .zy-oa .btn-primary:hover{ background:var(--jade-700); }
+  .zy-oa .btn-primary[disabled]{ background:#B9C7C1; cursor:not-allowed; }
+  .zy-oa .btn-secondary{ background:#fff; color:var(--ink); border:1px solid #D8D2C0; text-decoration:none;
+    display:inline-flex; align-items:center; }
+  .zy-oa .btn-secondary:hover{ background:#F3EFE4; }
+  .zy-oa .help{ color:var(--ink-mute); font-size:12px; margin-top:6px; }
+  .zy-oa .tag{ display:inline-block; padding:2px 8px; border-radius:999px; font-size:11.5px;
+    background:#DCEDE6; color:#134435; font-weight:600; }
+  .dark .zy-oa{ background:#18211d; }
+  .dark .zy-oa .summary, .dark .zy-oa select, .dark .zy-oa input[type=text]{ background:#111917; color:#e8efe9; }
+</style>
+
+<div class="zy-oa">
+  <h1>{{ meta.title }}</h1>
+  <div class="sub">
+    共选中 <b>{{ orders|length }}</b> 笔订单 · {{ meta.hint }}
+  </div>
+
+  {% if bad_orders %}
+    <div class="warn">
+      ⚠️ 以下 <b>{{ bad_orders|length }}</b> 笔订单当前状态不适用本操作（会被跳过）：
+      <ul>
+        {% for o in bad_orders %}<li>{{ o.order_no }}（当前：{{ o.status|default:"未知" }}）</li>{% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  <form method="post" action="">
+    {% csrf_token %}
+    <input type="hidden" name="ids" value="{{ ids }}">
+    <input type="hidden" name="op" value="{{ op }}">
+    <input type="hidden" name="back" value="{{ back_qs }}">
+
+    <div class="summary">
+      <table>
+        <thead>
+          <tr>
+            <th>订单号</th><th>客户</th><th>电话</th><th>产品</th><th>数量</th><th>金额</th>
+            <th>当前状态</th>
+            {% if op == 'ship' %}<th style="min-width:150px;">运单号 *</th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+        {% for o in orders %}
+          <tr class="{% if o.status not in meta.from_status %}bad{% endif %}">
+            <td>{{ o.order_no }}</td>
+            <td>{{ o.customer_name|default:"—" }}</td>
+            <td>{{ o.phone|default:"—" }}</td>
+            <td>{{ o.product_name|default:"—" }}</td>
+            <td>{{ o.quantity|default:"—" }}</td>
+            <td>¥{{ o.total_price|default:"0" }}</td>
+            <td><span class="tag">{{ o.status|default:"—" }}</span></td>
+            {% if op == 'ship' %}
+              <td>
+                <input type="text" name="tracking_{{ o.pk }}" maxlength="50"
+                       placeholder="该单运单号"
+                       value="{{ o.tracking_no|default:'' }}">
+              </td>
+            {% endif %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if op == 'ship' %}
+      <label class="field" for="ship_company">物流公司 *</label>
+      <select name="ship_company" id="ship_company" required>
+        <option value="">— 请选择快递公司 —</option>
+        {% for c in ship_companies %}
+          <option value="{{ c }}">{{ c }}</option>
+        {% endfor %}
+      </select>
+
+      {% if orders|length > 1 %}
+        <label class="field" for="tracking_all">统一运单号（选填）</label>
+        <input type="text" name="tracking_all" id="tracking_all" maxlength="50"
+               placeholder="一个客户多笔订单走同一个包裹时填这里">
+        <div class="help">填了统一运单号 → 忽略上表逐单运单号，全部使用该号码；不填则用表中的逐单号码。</div>
+      {% else %}
+        <div class="help">运单号请填在上表的输入框内。</div>
+      {% endif %}
+    {% endif %}
+
+    {% if op == 'cancel' or op == 'return' or op == 'reject_return' %}
+      <label class="field" for="cancel_reason">原因（选填）</label>
+      <input type="text" name="cancel_reason" id="cancel_reason" maxlength="200"
+             placeholder="如：客户电话要求取消 / 到货破损退回 / 不符合退货条件">
+    {% endif %}
+
+    <div class="actions">
+      <a class="btn btn-secondary" href="{{ back_url }}">返回列表</a>
+      <button type="submit" class="btn btn-primary"
+              {% if bad_orders|length == orders|length %}disabled{% endif %}>{{ meta.btn }}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

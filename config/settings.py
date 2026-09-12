@@ -220,8 +220,10 @@ UNFOLD = {
             {
                 'title': '财务管理',
                 'items': [
-                    {'title': '公司钱包', 'link': '/admin/agent/wallet/', 'icon': 'account_balance_wallet'},
-                    {'title': '收支流水', 'link': '/admin/agent/transaction/', 'icon': 'receipt_long'},
+                    # 「公司钱包」直接进账本：每一笔钱款一行（可筛选/搜索/导出）
+                    {'title': '公司钱包', 'link': '/admin/agent/transaction/', 'icon': 'account_balance_wallet'},
+                    # 总览：余额卡片、统计、趋势 + 充值/扣款入口
+                    {'title': '钱包总览与调账', 'link': '/admin/agent/wallet/', 'icon': 'savings'},
                 ],
             },
             {

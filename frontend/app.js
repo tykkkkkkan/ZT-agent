@@ -36,6 +36,15 @@ createApp({
             content: '您好，我是「中渔小助」\n中渔天下的专属饵料顾问，全天在线。\n\n我可以帮您：\n· 查产品价格与规格\n· 查库存与到货\n· 算批发报价、下订单\n· 问售后政策\n· 聊钓鱼技巧与季节钓法\n\n试试点击下面的快捷问题，马上开聊～'
         };
 
+        // ========== 未登录提示（AI 对话已纳入登录保护） ==========
+        const loginPromptMessage = {
+            role: 'ai',
+            content: '您好，我是「中渔小助」。\n\n为了记录您的咨询与订单信息，请先登录后再开始对话。\n登录后我可以帮您：\n· 查产品价格与规格\n· 查库存与到货\n· 算批发报价、下订单\n· 问售后政策\n\n点击右上角「登录」即可开始，登录成功后回到本页继续咨询。'
+        };
+
+        // 当前是否已登录（对话与历史均需登录态）
+        const loginRequired = () => !(window.AUTH && AUTH.isLoggedIn());
+
         // ========== 聊天状态 ==========
         const messages = ref([welcomeMessage]);
         const inputText = ref('');
@@ -56,11 +65,24 @@ createApp({
 
         /**
          * 从后端恢复历史消息（跳转/刷新后不丢消息）
+         * 未登录时不请求接口，直接展示登录引导（历史接口已纳入登录保护）
          */
         const loadHistory = async () => {
+            if (loginRequired()) {
+                messages.value = [loginPromptMessage];
+                historyLoaded.value = true;
+                scrollToBottom();
+                return;
+            }
             const sid = getSessionId();
             try {
-                const resp = await fetch(`/api/agent/history/${sid}/`);
+                const resp = await AUTH.authFetch(`/api/agent/history/${sid}/`, {}, { silentAuthFail: true });
+                if (resp.status === 401) {
+                    messages.value = [loginPromptMessage];
+                    historyLoaded.value = true;
+                    scrollToBottom();
+                    return;
+                }
                 const data = await resp.json();
                 if (data.success && Array.isArray(data.messages) && data.messages.length > 0) {
                     messages.value = data.messages.map(m => ({
@@ -84,7 +106,7 @@ createApp({
             if (loading.value) return;
             const sid = Math.random().toString(36).substring(2) + Date.now().toString(36);
             localStorage.setItem(SESSION_KEY, sid);
-            messages.value = [welcomeMessage];
+            messages.value = [loginRequired() ? loginPromptMessage : welcomeMessage];
             pendingCard.value = null;
             scrollToBottom();
         };
@@ -123,6 +145,9 @@ createApp({
             const text = inputText.value.trim();
             if (!text || loading.value) return;
 
+            // 登录守卫：未登录 / 登录态失效 → 跳登录页并带回跳参数
+            if (!window.AUTH || !(await AUTH.ensureLogin('登录后即可与中渔小助对话'))) return;
+
             inputText.value = '';
 
             messages.value.push({ role: 'user', content: text });
@@ -140,7 +165,7 @@ createApp({
             try {
                 const sessionId = getSessionId();
 
-                const response = await fetch('/api/agent/chat/', {
+                const response = await AUTH.authFetch('/api/agent/chat/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -148,6 +173,15 @@ createApp({
                         session_id: sessionId,
                     }),
                 });
+
+                if (response.status === 401) {
+                    messages.value.splice(aiMsgIdx, 1, {
+                        role: 'error',
+                        content: '登录状态已失效，请重新登录后再试。'
+                    });
+                    loading.value = false;
+                    return;
+                }
 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);

@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人中心 - 中渔天下</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/theme.css">
+    <script src="assets/vendor/tailwindcdn.js"></script>
+    <script src="assets/tailwind-config.js"></script>
+    <script src="auth.js"></script>
+</head>
+<body class="bg-stone-50 font-sans text-ink-800 antialiased">
+    <a class="skip-link" href="#app">跳到主内容</a>
+
+<!-- ====== 顶部导航栏 ====== -->
+<nav id="navbar" aria-label="主导航" class="sticky top-0 z-50 bg-white/80 backdrop-blur-md transition-all">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
+        <a href="index.html" class="flex items-center gap-2 text-xl font-bold text-ink-900 shrink-0">
+            <span class="text-brand-600" style="display:inline-flex"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.5em;height:1.5em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></span>
+            <span>中渔天下</span>
+        </a>
+
+        <!-- 桌面端 -->
+        <div class="hidden lg:flex items-center">
+            <a href="index.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">首页</a>
+            <a href="products.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">产品</a>
+            <a href="factory.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">工厂</a>
+            <a href="custom.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">定制</a>
+            <a href="order.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">下单</a>
+            <a href="order_query.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">查订单</a>
+            <a href="contact.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">联系</a>
+            <a href="profile.html" data-auth-nav="user" class="nav-link active px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition" aria-current="page">我的</a>
+            <span class="w-px h-5 bg-stone-200 mx-2.5" aria-hidden="true"></span>
+            <a href="login.html" data-auth-nav="guest" class="px-2.5 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">登录</a>
+            <a href="register.html" data-auth-nav="guest" class="px-3.5 py-2 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition shadow-sm">注册</a>
+            <div data-auth-nav="user" class="hidden items-center gap-1">
+                <span class="text-sm text-ink-600 whitespace-nowrap">你好，<span data-auth-username class="font-semibold text-brand-600"></span></span>
+                <button onclick="AUTH.logout()" class="px-2.5 py-2 text-sm text-ink-600 hover:text-red-600 transition">退出</button>
+            </div>
+            <a href="index.html#ai-section" class="ml-2 inline-flex items-center gap-1.5 px-5 py-2 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition shadow-sm whitespace-nowrap">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 0 0 1 2-2h14a2 0 0 1 2 2z"/></svg> 咨询 AI
+            </a>
+        </div>
+
+        <button class="lg:hidden p-2 text-ink-600" aria-label="展开导航菜单"
+                onclick="var m=document.getElementById('navLinks');m.classList.toggle('hidden');this.setAttribute('aria-expanded', !m.classList.contains('hidden'));">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+    </div>
+
+    <!-- 移动端菜单 -->
+    <div id="navLinks" class="hidden lg:hidden bg-white border-t border-stone-200 px-6 py-3 space-y-1">
+        <a href="index.html" class="block py-2 text-sm text-ink-700">首页</a>
+        <a href="products.html" class="block py-2 text-sm text-ink-700">产品</a>
+        <a href="factory.html" class="block py-2 text-sm text-ink-700">工厂</a>
+        <a href="custom.html" class="block py-2 text-sm text-ink-700">定制</a>
+        <a href="order.html" class="block py-2 text-sm text-ink-700">下单</a>
+        <a href="order_query.html" class="block py-2 text-sm text-ink-700">查订单</a>
+        <a href="contact.html" class="block py-2 text-sm text-ink-700">联系</a>
+        <a href="profile.html" data-auth-nav="user" class="hidden block py-2 text-sm font-semibold text-brand-700">我的</a>
+        <div class="pt-2 mt-2 border-t border-stone-100 space-y-1">
+            <a href="login.html" data-auth-nav="guest" class="block py-2 text-sm text-ink-700">登录</a>
+            <a href="register.html" data-auth-nav="guest" class="block py-2 text-sm font-semibold text-brand-700">注册</a>
+            <div data-auth-nav="user" class="hidden py-2 text-sm text-ink-700">你好，<span data-auth-username class="font-semibold text-brand-600"></span> <button onclick="AUTH.logout()" class="ml-1 text-red-600">退出</button></div>
+        </div>
+        <a href="index.html#ai-section" class="flex items-center justify-center gap-1.5 mt-2 px-5 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-full">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 0 0 1 2-2h14a2 0 0 1 2 2z"/></svg> 咨询 AI
+        </a>
+    </div>
+</nav>
+
+<div id="app" tabindex="-1">
+    <!-- ====== 页头 ====== -->
+    <section class="relative overflow-hidden">
+        <div class="absolute inset-0 bg-gradient-to-br from-brand-50 via-white to-lake-50"></div>
+        <div class="absolute top-10 -right-20 w-80 h-80 bg-brand-200/30 rounded-full blur-3xl"></div>
+        <div class="relative max-w-6xl mx-auto px-6 py-10 lg:py-14">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-11 h-11 bg-gradient-to-br from-brand-500 to-lake-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-brand-500/30">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.4em;height:1.4em" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+                <div>
+                    <h1 class="text-2xl lg:text-3xl font-extrabold text-ink-900 leading-tight">个人中心</h1>
+                    <p class="text-sm text-ink-500 mt-0.5">管理你的订单、收货信息与账号安全</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="pb-16">
+        <div class="max-w-6xl mx-auto px-6">
+            <!-- 账号卡 -->
+            <div id="accountCard" class="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 mb-6">
+                <div class="flex items-center gap-4">
+                    <div class="w-16 h-16 rounded-full bg-gradient-to-br from-brand-500 to-lake-600 text-white flex items-center justify-center text-2xl font-bold shadow-md" id="avatarText">—</div>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span id="accName" class="text-xl font-bold text-ink-900 truncate">—</span>
+                            <span id="accNick" class="hidden px-2.5 py-0.5 bg-brand-50 text-brand-700 text-xs font-semibold rounded-full"></span>
+                        </div>
+                        <div class="mt-1 text-sm text-ink-500 flex flex-wrap gap-x-4 gap-y-1">
+                            <span>手机号：<span id="accPhone" class="text-ink-700 font-medium">未绑定</span></span>
+                            <span>邮箱：<span id="accEmail" class="text-ink-700">—</span></span>
+                            <span>注册于 <span id="accJoined" class="text-ink-700">—</span></span>
+                        </div>
+                    </div>
+                    <button onclick="AUTH.logout()" class="shrink-0 hidden lg:inline-flex items-center gap-1.5 px-4 py-2 border border-stone-200 text-sm text-ink-600 rounded-full hover:bg-stone-50 hover:text-red-600 transition">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg> 退出登录
+                    </button>
+                </div>
+            </div>
+
+            <!-- 订单概览统计 -->
+            <div id="statsRow" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
+                <button onclick="setFilter('pending')"   class="stat-card text-left bg-white rounded-2xl border border-stone-200 shadow-sm p-4 hover:border-brand-300 transition">
+                    <div class="text-2xl font-extrabold text-ink-900" data-stat="pending">0</div>
+                    <div class="text-xs text-ink-500 mt-1">待发货</div>
+                </button>
+                <button onclick="setFilter('shipped')"   class="stat-card text-left bg-white rounded-2xl border border-stone-200 shadow-sm p-4 hover:border-brand-300 transition">
+                    <div class="text-2xl font-extrabold text-ink-900" data-stat="shipped">0</div>
+                    <div class="text-xs text-ink-500 mt-1">已发货</div>
+                </button>
+                <button onclick="setFilter('completed')" class="stat-card text-left bg-white rounded-2xl border border-stone-200 shadow-sm p-4 hover:border-brand-300 transition">
+                    <div class="text-2xl font-extrabold text-ink-900" data-stat="completed">0</div>
+                    <div class="text-xs text-ink-500 mt-1">已完成</div>
+                </button>
+                <button onclick="setFilter('returning')" class="stat-card text-left bg-white rounded-2xl border border-stone-200 shadow-sm p-4 hover:border-brand-300 transition">
+                    <div class="text-2xl font-extrabold text-ink-900" data-stat="returning">0</div>
+                    <div class="text-xs text-ink-500 mt-1">退货中</div>
+                </button>
+                <button onclick="setFilter('closed')"    class="stat-card text-left bg-white rounded-2xl border border-stone-200 shadow-sm p-4 hover:border-brand-300 transition">
+                    <div class="text-2xl font-extrabold text-ink-900" data-stat="closed">0</div>
+                    <div class="text-xs text-ink-500 mt-1">已关闭</div>
+                </button>
+            </div>
+
+            <div class="grid lg:grid-cols-3 gap-6">
+                <!-- 左/主：我的订单 -->
+                <div class="lg:col-span-2">
+                    <div class="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+                        <!-- 筛选页签 -->
+                        <div class="flex items-center gap-1 px-4 py-3 border-b border-stone-100 overflow-x-auto" id="filterTabs">
+                            <button data-key=""          class="filter-tab whitespace-nowrap px-3.5 py-1.5 text-sm font-medium rounded-full transition">全部</button>
+                            <button data-key="pending"   class="filter-tab whitespace-nowrap px-3.5 py-1.5 text-sm font-medium rounded-full transition">待发货</button>
+                            <button data-key="shipped"   class="filter-tab whitespace-nowrap px-3.5 py-1.5 text-sm font-medium rounded-full transition">已发货</button>
+                            <button data-key="completed" class="filter-tab whitespace-nowrap px-3.5 py-1.5 text-sm font-medium rounded-full transition">已完成</button>
+                            <button data-key="returning" class="filter-tab whitespace-nowrap px-3.5 py-1.5 text-sm font-medium rounded-full transition">退货中</button>
+                            <button data-key="closed"    class="filter-tab whitespace-nowrap px-3.5 py-1.5 text-sm font-medium rounded-full transition">已关闭</button>
+                        </div>
+
+                        <div id="ordersList" class="p-4 space-y-4">
+                            <div class="text-center text-ink-400 text-sm py-12">加载中…</div>
+                        </div>
+
+                        <div id="loadMoreWrap" class="px-4 pb-4 text-center hidden">
+                            <button onclick="loadMore()" class="px-6 py-2.5 border border-stone-200 text-sm text-ink-600 rounded-full hover:bg-stone-50 transition">加载更多</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右：安全与设置 -->
+                <div class="space-y-6">
+                    <!-- 绑定手机号 -->
+                    <div class="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
+                        <h3 class="flex items-center gap-2 text-base font-bold text-ink-900 mb-1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;color:#1F6B54" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+                            绑定手机号
+                        </h3>
+                        <p class="text-xs text-ink-500 mb-4">绑定后可用手机号在「查订单」查询历史订单，并认领登录前的订单。</p>
+                        <div id="phoneState" class="text-sm text-ink-600 mb-3"></div>
+                        <form id="phoneForm" class="space-y-3" onsubmit="return submitPhone(event)">
+                            <div>
+                                <label class="block text-xs font-medium text-ink-600 mb-1">手机号</label>
+                                <input type="tel" id="phoneInput" inputmode="numeric" maxlength="20" placeholder="请输入 7~20 位数字"
+                                       class="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-ink-600 mb-1">收货人姓名（选填）</label>
+                                <input type="text" id="nickInput" maxlength="50" placeholder="用于订单收货人展示"
+                                       class="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300">
+                            </div>
+                            <button type="submit" class="w-full px-4 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition shadow-sm">保存</button>
+                        </form>
+                    </div>
+
+                    <!-- 修改密码 -->
+                    <div class="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
+                        <h3 class="flex items-center gap-2 text-base font-bold text-ink-900 mb-1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;color:#1F6B54" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            修改密码
+                        </h3>
+                        <p class="text-xs text-ink-500 mb-4">修改后当前登录的其它设备会被强制下线。</p>
+                        <form id="pwdForm" class="space-y-3" onsubmit="return submitPassword(event)">
+                            <div>
+                                <label class="block text-xs font-medium text-ink-600 mb-1">当前密码</label>
+                                <input type="password" id="oldPwd" autocomplete="current-password" placeholder="请输入当前密码"
+                                       class="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-ink-600 mb-1">新密码</label>
+                                <input type="password" id="newPwd" autocomplete="new-password" placeholder="至少 8 位，含字母与数字"
+                                       class="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-ink-600 mb-1">确认新密码</label>
+                                <input type="password" id="confirmPwd" autocomplete="new-password" placeholder="再次输入新密码"
+                                       class="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300">
+                            </div>
+                            <label class="flex items-center gap-2 text-xs text-ink-600 cursor-pointer">
+                                <input type="checkbox" id="revokeOthers" checked class="rounded border-stone-300 text-brand-600">
+                                退出其它已登录设备
+                            </label>
+                            <button type="submit" class="w-full px-4 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition shadow-sm">更新密码</button>
+                        </form>
+                    </div>
+
+                    <!-- 快捷服务 -->
+                    <div class="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
+                        <h3 class="text-base font-bold text-ink-900 mb-3">快捷服务</h3>
+                        <div class="grid grid-cols-2 gap-3">
+                            <a href="order.html" class="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-brand-50 hover:bg-brand-100 transition text-center">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.4em;height:1.4em;color:#1F6B54" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.6 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+                                <span class="text-xs font-medium text-ink-700">立即下单</span>
+                            </a>
+                            <a href="order_query.html" class="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-lake-50 hover:bg-lake-100 transition text-center">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.4em;height:1.4em;color:#1F6B54" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                                <span class="text-xs font-medium text-ink-700">查订单</span>
+                            </a>
+                            <a href="index.html#ai-section" class="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-sunset-50 hover:bg-sunset-100 transition text-center">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.4em;height:1.4em;color:#B5481C" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 0 0 1 2-2h14a2 0 0 1 2 2z"/></svg>
+                                <span class="text-xs font-medium text-ink-700">咨询 AI</span>
+                            </a>
+                            <a href="contact.html" class="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-stone-50 hover:bg-stone-100 transition text-center">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.4em;height:1.4em;color:#1F6B54" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                                <span class="text-xs font-medium text-ink-700">联系我们</span>
+                            </a>
+                        </div>
+                        <button onclick="AUTH.logout()" class="mt-4 w-full lg:hidden px-4 py-2.5 border border-stone-200 text-sm text-ink-600 rounded-full hover:bg-stone-50 hover:text-red-600 transition">退出登录</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="bg-ink-900 text-stone-300">
+        <div class="max-w-7xl mx-auto px-6 py-10 grid md:grid-cols-4 gap-8 text-sm">
+            <div class="md:col-span-2">
+                <div class="flex items-center gap-2 text-white text-lg font-bold mb-3">
+                    <span class="text-brand-400" style="display:inline-flex"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.4em;height:1.4em" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></span>
+                    中渔天下
+                </div>
+                <p class="text-stone-400 max-w-md">专注优质水产，从产地到餐桌的每一程都看得见。</p>
+            </div>
+            <div><h4 class="text-white font-semibold mb-3">快捷导航</h4><ul class="space-y-2"><li><a href="index.html" class="hover:text-brand-400 transition">首页</a></li><li><a href="products.html" class="hover:text-brand-400 transition">产品中心</a></li><li><a href="order.html" class="hover:text-brand-400 transition">在线下单</a></li><li><a href="profile.html" class="hover:text-brand-400 transition">个人中心</a></li></ul></div>
+            <div><h4 class="text-white font-semibold mb-3">联系</h4><ul class="space-y-2"><li><a href="contact.html" class="hover:text-brand-400 transition">联系我们</a></li><li><a href="index.html#ai-section" class="hover:text-brand-400 transition">咨询 AI</a></li></ul></div>
+        </div>
+        <div class="border-t border-white/10 text-center text-xs text-stone-500 py-4">© 中渔天下 · 个人中心</div>
+    </footer>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-[60] hidden px-5 py-3 rounded-xl text-sm font-medium shadow-lg bg-ink-900 text-white"></div>
+
+<script>
+/* ════════════════════════════════════════════════════════════
+   个人中心 profile.html — 调用 /api/me/* 接口
+   依赖：auth.js（AUTH.authFetch / AUTH.isLoggedIn）
+   ════════════════════════════════════════════════════════════ */
+(function () {
+    'use strict';
+
+    var state = { filter: '', page: 1, hasMore: false };
+
+    // ── 状态徽标配色（与后台一致） ───────────────────────────
+    var STATUS_STYLE = {
+        '未发货':     { bg: '#F4B495', fg: '#7A2E0E', label: '待发货' },
+        '已发货':     { bg: '#DCEDE6', fg: '#134435', label: '已发货' },
+        '已完成':     { bg: '#DCE9FF', fg: '#13407A', label: '已完成' },
+        '退货申请中': { bg: '#FDF0E8', fg: '#7A2E0E', label: '退货申请中' },
+        '已取消':     { bg: '#E2E5E2', fg: '#3A473F', label: '已取消' },
+        '已退货':     { bg: '#F7D9CF', fg: '#7A2E0E', label: '已退货' }
+    };
+    var RETURN_STYLE = {
+        '待审核': { bg: '#FDF0E8', fg: '#7A2E0E' },
+        '已同意': { bg: '#DCEDE6', fg: '#134435' },
+        '已拒绝': { bg: '#E2E5E2', fg: '#3A473F' }
+    };
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function statusBadge(status) {
+        var s = STATUS_STYLE[status] || { bg: '#EEE', fg: '#333', label: status || '—' };
+        return '<span style="display:inline-block;padding:3px 10px;border-radius:999px;background:' + s.bg +
+            ';color:' + s.fg + ';font-size:12px;font-weight:600;white-space:nowrap;">● ' + esc(s.label) + '</span>';
+    }
+
+    function toast(msg, type) {
+        var t = document.getElementById('toast');
+        t.textContent = msg;
+        t.style.background = type === 'error' ? '#B5481C' : (type === 'success' ? '#1F6B54' : '#15211D');
+        t.classList.remove('hidden');
+        clearTimeout(toast._t);
+        toast._t = setTimeout(function () { t.classList.add('hidden'); }, 2600);
+    }
+
+    // 统一请求封装：authFetch + JSON 解析 + 错误提示
+    async function api(url, options) {
+        options = options || {};
+        var resp = await AUTH.authFetch(url, options, { silentAuthFail: false });
+        var data;
+        try { data = await resp.json(); } catch (e) { data = {}; }
+        if (!resp.ok) {
+            var err = (data && data.message) || ('请求失败（' + resp.status + '）');
+            throw new Error(err);
+        }
+        return data;
+    }
+
+    // ── 账号信息 ───────────────────────────────────────────
+    async function loadProfile() {
+        try {
+            var d = await api('/api/me/profile/');
+            var u = d.user || {}, st = d.stats || {};
+            var name = u.username || u.email || '用户';
+            document.getElementById('avatarText').textContent = (name[0] || '用').toUpperCase();
+            document.getElementById('accName').textContent = name;
+            var nick = document.getElementById('accNick');
+            if (u.nickname) { nick.textContent = u.nickname; nick.classList.remove('hidden'); }
+            else { nick.classList.add('hidden'); }
+            document.getElementById('accPhone').textContent = u.phone ? u.phone : '未绑定';
+            document.getElementById('accEmail').textContent = u.email || '—';
+            document.getElementById('accJoined').textContent = u.date_joined || '—';
+
+            // 统计卡
+            setStat('pending', st.pending); setStat('shipped', st.shipped);
+            setStat('completed', st.completed); setStat('returning', st.returning);
+            setStat('closed', st.closed);
+
+            // 绑定手机号表单预填
+            document.getElementById('phoneInput').value = u.phone || '';
+            document.getElementById('nickInput').value = u.nickname || '';
+            var ps = document.getElementById('phoneState');
+            ps.innerHTML = u.phone
+                ? '当前已绑定：<b class="text-brand-700">' + esc(u.phone) + '</b>'
+                : '<span class="text-sunset-600">尚未绑定手机号，建议尽快绑定以便认领历史订单。</span>';
+        } catch (e) {
+            if (!/登录/.test(e.message)) toast(e.message, 'error');
+        }
+    }
+    function setStat(key, val) {
+        var el = document.querySelector('[data-stat="' + key + '"]');
+        if (el) el.textContent = (val == null ? 0 : val);
+    }
+
+    // ── 订单列表 ───────────────────────────────────────────
+    function renderOrders(list) {
+        var box = document.getElementById('ordersList');
+        if (!list || !list.length) {
+            box.innerHTML = '<div class="text-center text-ink-400 text-sm py-12">这里还没有订单～</div>';
+            return;
+        }
+        box.innerHTML = list.map(renderOrder).join('');
+    }
+
+    function renderOrder(o) {
+        var html = '';
+        html += '<div class="border border-stone-200 rounded-xl p-4" data-order="' + esc(o.order_no) + '">';
+        // 头部
+        html += '<div class="flex items-start justify-between gap-3 mb-3">';
+        html += '<div class="min-w-0"><div class="text-sm font-semibold text-ink-900">订单号 ' + esc(o.order_no) + '</div>';
+        html += '<div class="text-xs text-ink-400 mt-0.5">下单：' + esc(o.created_at || '—') + '</div></div>';
+        html += statusBadge(o.status) + '</div>';
+
+        // 商品
+        html += '<div class="flex items-center gap-3 py-3 border-y border-stone-100">';
+        html += '<div class="w-12 h-12 rounded-lg bg-brand-50 text-brand-600 flex items-center justify-center shrink-0">'
+            + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:1.5em;height:1.5em" aria-hidden="true"><path d="M3 9l1-5h16l1 5M3 9v10a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V9M3 9h18"/></svg></div>';
+        html += '<div class="min-w-0 flex-1"><div class="text-sm font-medium text-ink-900 truncate">' + esc(o.product_name || '—') + '</div>';
+        if (o.product_sku) html += '<div class="text-xs text-ink-400">SKU：' + esc(o.product_sku) + '</div>';
+        html += '</div>';
+        html += '<div class="text-right shrink-0"><div class="text-sm font-semibold text-ink-900">¥' + (o.total_price || 0) + '</div>';
+        html += '<div class="text-xs text-ink-400">' + (o.quantity || 0) + ' 件 × ¥' + (o.unit_price || 0) + '</div></div>';
+        html += '</div>';
+
+        // 物流
+        if (o.ship_company || o.tracking_no) {
+            html += '<div class="text-xs text-ink-600 mb-2 flex flex-wrap items-center gap-2">'
+                + '<span class="text-ink-400">物流：</span>' + esc(o.ship_company || '—')
+                + ' <span class="font-mono text-ink-700">' + esc(o.tracking_no || '—') + '</span>';
+            if (o.tracking_no) {
+                html += '<button onclick="copyText(\'' + esc(o.tracking_no) + '\')" class="ml-1 px-2 py-0.5 border border-stone-200 rounded text-ink-500 hover:text-brand-600 hover:border-brand-300 transition">复制运单</button>';
+            }
+            html += '</div>';
+        }
+
+        // 售后信息
+        if (o.return_status) {
+            var rs = RETURN_STYLE[o.return_status] || { bg: '#EEE', fg: '#333' };
+            html += '<div class="text-xs mb-2 rounded-lg px-3 py-2" style="background:' + rs.bg + '33;color:' + rs.fg + '">';
+            html += '退货状态：<b>' + esc(o.return_status) + '</b>';
+            if (o.return_reason) html += ' · 原因：' + esc(o.return_reason);
+            if (o.return_note) html += ' · 处理：' + esc(o.return_note);
+            if (o.return_requested_at) html += ' · ' + esc(o.return_requested_at) + ' 申请';
+            html += '</div>';
+        }
+        if (o.cancel_reason && (o.status === '已取消' || o.status === '已退货')) {
+            html += '<div class="text-xs text-ink-500 mb-2">备注：' + esc(o.cancel_reason) + '</div>';
+        }
+
+        // 操作按钮
+        var acts = o.actions || [];
+        if (acts.length) {
+            html += '<div class="flex flex-wrap gap-2 mt-3">';
+            if (acts.indexOf('confirm') >= 0)
+                html += actBtn(o.order_no, 'confirm', '确认收货', 'bg-brand-600 text-white hover:bg-brand-700');
+            if (acts.indexOf('return') >= 0)
+                html += actBtn(o.order_no, 'return', '申请退货', 'bg-sunset-500 text-white hover:bg-sunset-600');
+            if (acts.indexOf('cancel') >= 0)
+                html += actBtn(o.order_no, 'cancel', '取消订单', 'border border-stone-300 text-ink-600 hover:bg-stone-50');
+            if (acts.indexOf('withdraw_return') >= 0)
+                html += actBtn(o.order_no, 'withdraw-return', '撤销退货', 'border border-stone-300 text-ink-600 hover:bg-stone-50');
+            html += '</div>';
+        }
+        html += '</div>';
+        return html;
+    }
+    function actBtn(orderNo, action, label, cls) {
+        return '<button onclick="doAction(\'' + esc(orderNo) + '\',\'' + action + '\')" '
+            + 'class="px-3.5 py-1.5 text-xs font-semibold rounded-full transition shadow-sm ' + cls + '">' + label + '</button>';
+    }
+
+    async function loadOrders(filter, page, append) {
+        state.filter = filter || '';
+        state.page = page || 1;
+        try {
+            var url = '/api/me/orders/?page=' + state.page + (state.filter ? '&status=' + state.filter : '');
+            var d = await api(url);
+            if (append) {
+                var box = document.getElementById('ordersList');
+                // 去掉「加载中/空」占位
+                var more = d.orders.map(renderOrder).join('');
+                box.insertAdjacentHTML('beforeend', more);
+            } else {
+                renderOrders(d.orders);
+            }
+            state.hasMore = !!d.has_more;
+            document.getElementById('loadMoreWrap').classList.toggle('hidden', !state.hasMore);
+            // 刷新统计卡
+            if (d.stats) {
+                setStat('pending', d.stats.pending); setStat('shipped', d.stats.shipped);
+                setStat('completed', d.stats.completed); setStat('returning', d.stats.returning);
+                setStat('closed', d.stats.closed);
+            }
+        } catch (e) {
+            if (!append) document.getElementById('ordersList').innerHTML = '<div class="text-center text-ink-400 text-sm py-12">加载失败：' + esc(e.message) + '</div>';
+            if (!/登录/.test(e.message)) toast(e.message, 'error');
+        }
+    }
+
+    function loadMore() { if (state.hasMore) loadOrders(state.filter, state.page + 1, true); }
+
+    // 暴露给内联 onclick
+    window.setFilter = function (key) {
+        document.querySelectorAll('.filter-tab').forEach(function (b) {
+            var active = b.getAttribute('data-key') === (key || '');
+            b.classList.toggle('bg-brand-600', active);
+            b.classList.toggle('text-white', active);
+            b.classList.toggle('text-ink-600', !active);
+        });
+        loadOrders(key, 1, false);
+    };
+    window.loadMore = loadMore;
+
+    window.copyText = function (text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function () { toast('运单号已复制', 'success'); },
+                function () { fallbackCopy(text); });
+        } else { fallbackCopy(text); }
+    };
+    function fallbackCopy(text) {
+        var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta);
+        ta.select(); try { document.execCommand('copy'); toast('运单号已复制', 'success'); }
+        catch (e) { toast('复制失败，请手动复制', 'error'); }
+        document.body.removeChild(ta);
+    }
+
+    window.doAction = async function (orderNo, action) {
+        var reason = '';
+        if (action === 'return') {
+            reason = prompt('请填写退货原因（至少 2 个字）：', '');
+            if (reason === null) return;            // 取消
+            if (reason.trim().length < 2) { toast('退货原因太短', 'error'); return; }
+        } else if (action === 'cancel') {
+            reason = prompt('取消原因（选填）：', '');
+            if (reason === null) return;
+        } else if (action === 'confirm') {
+            if (!confirm('确认已收到货品？确认后订单将标记为已完成。')) return;
+        } else if (action === 'withdraw-return') {
+            if (!confirm('确定撤销这笔退货申请吗？')) return;
+        }
+        // 二次确认防误触
+        if (action === 'cancel' && reason !== null && !confirm('确定取消该订单？')) return;
+
+        try {
+            var body = reason ? JSON.stringify({ reason: reason }) : '{}';
+            var d = await api('/api/me/orders/' + encodeURIComponent(orderNo) + '/' + action + '/', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body
+            });
+            toast(d.message || '操作成功', 'success');
+            await loadProfile();
+            loadOrders(state.filter, 1, false);
+        } catch (e) {
+            toast(e.message, 'error');
+        }
+    };
+
+    // ── 绑定手机号 ──────────────────────────────────────────
+    window.submitPhone = async function (e) {
+        e.preventDefault();
+        var phone = document.getElementById('phoneInput').value.trim();
+        var nick = document.getElementById('nickInput').value.trim();
+        try {
+            var d = await api('/api/me/profile/', {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: phone, nickname: nick })
+            });
+            toast(d.message || '已保存', 'success');
+            if (d.user) {
+                document.getElementById('accPhone').textContent = d.user.phone || '未绑定';
+                document.getElementById('accNick').textContent = d.user.nickname || '';
+                document.getElementById('phoneInput').value = d.user.phone || '';
+                document.getElementById('nickInput').value = d.user.nickname || '';
+            }
+        } catch (err) { toast(err.message, 'error'); }
+        return false;
+    };
+
+    // ── 修改密码 ────────────────────────────────────────────
+    window.submitPassword = async function (e) {
+        e.preventDefault();
+        var oldP = document.getElementById('oldPwd').value;
+        var newP = document.getElementById('newPwd').value;
+        var cfm = document.getElementById('confirmPwd').value;
+        var revoke = document.getElementById('revokeOthers').checked;
+        if (!oldP || !newP || !cfm) { toast('请填写完整密码信息', 'error'); return false; }
+        if (newP !== cfm) { toast('两次新密码不一致', 'error'); return false; }
+        try {
+            var payload = { old_password: oldP, new_password: newP, confirm_password: cfm };
+            if (revoke) payload.refresh = AUTH.getRefresh() || '';
+            var d = await api('/api/me/password/', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            toast(d.message || '密码已修改', 'success');
+            // 清空表单
+            document.getElementById('oldPwd').value = '';
+            document.getElementById('newPwd').value = '';
+            document.getElementById('confirmPwd').value = '';
+            if (d.revoked) {
+                // 其它设备被踢，本设备也需重新登录（refresh 已失效）
+                setTimeout(function () { AUTH.logout(); }, 1200);
+            }
+        } catch (err) { toast(err.message, 'error'); }
+        return false;
+    };
+
+    // ── 初始化 ─────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', async function () {
+        var ok = await AUTH.init({ requireAuth: true, reason: '登录后即可查看个人中心' });
+        if (!ok) return;                 // 未登录：已跳登录页
+        await loadProfile();
+        window.setFilter('');            // 默认全部
+    });
+})();
+</script>
+</body>
+</html>

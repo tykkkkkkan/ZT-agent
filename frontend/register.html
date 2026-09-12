@@ -149,8 +149,9 @@
                     });
                     const d = await resp.json();
                     if (resp.ok) {
-                        // 注册成功自动登录；next 参数优先（回跳登录前想访问的页面），否则首页
-                        AUTH.setTokens(d.access, d.refresh);
+                        // 注册成功自动登录；默认仅当前会话有效（关闭浏览器需重新登录）；
+                        // next 参数优先（回跳注册前想访问的页面），否则首页
+                        AUTH.setTokens(d.access, d.refresh, false);
                         AUTH.setUser(d.user);
                         const next = new URLSearchParams(location.search).get('next');
                         location.href = next ? decodeURIComponent(next) : '/index.html';

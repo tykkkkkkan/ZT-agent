@@ -37,6 +37,17 @@
                     <p class="text-sm text-ink-500 mt-1">登录中渔天下，查看您的订单与报价</p>
                 </div>
 
+                <!-- 退出登录提示 -->
+                <div id="logoutNotice" class="hidden mb-5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-4 py-3 text-sm">
+                    <div class="flex items-center gap-2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;flex-shrink:0" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+                        <span>您已安全退出，请重新登录。</span>
+                    </div>
+                </div>
+
+                <!-- 守卫拦截提示（登录态失效 / 需登录才能继续操作） -->
+                <div id="loginReason" class="hidden mb-5 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm"></div>
+
                 <!-- 全局错误 -->
                 <div id="loginError" class="hidden mb-5 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm"></div>
 
@@ -55,6 +66,17 @@
                                class="form-input w-full px-4 py-3 border border-stone-200 rounded-xl text-sm transition" placeholder="请输入密码" />
                         <p id="f-password-error" class="field-error hidden"></p>
                     </div>
+
+                    <!-- 登录状态保持策略 -->
+                    <div class="flex items-start gap-2.5 pt-1">
+                        <input id="f-remember" name="remember" type="checkbox"
+                               class="mt-0.5 w-4 h-4 rounded border-stone-300 text-brand-600 focus:ring-brand-500 cursor-pointer" />
+                        <label for="f-remember" class="text-sm text-ink-600 leading-snug cursor-pointer select-none">
+                            记住我（7 天内免登录）
+                            <span class="block text-xs text-ink-400 mt-0.5">不勾选时，关闭浏览器即需重新登录</span>
+                        </label>
+                    </div>
+
                     <button type="submit" id="submitBtn" class="w-full py-3.5 bg-gradient-to-r from-brand-600 to-lake-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-brand-500/30 transition flex items-center justify-center gap-2">
                         <span id="submitBtnIcon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></svg></span> <span id="submitBtnText">登录</span>
                     </button>
@@ -75,6 +97,24 @@
             const form = document.getElementById('loginForm');
             const SPINNER = '<svg class="animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.2-8.56"/></svg>';
             const LOGIN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></svg>';
+
+            // ── URL 提示语：退出成功 / 被守卫拦截 / 登录态失效 ──
+            (function showUrlNotice() {
+                const params = new URLSearchParams(location.search);
+                if (params.get('logout') === '1') {
+                    document.getElementById('logoutNotice').classList.remove('hidden');
+                }
+                const reason = params.get('reason');
+                if (reason) {
+                    const box = document.getElementById('loginReason');
+                    box.textContent = decodeURIComponent(reason);
+                    box.classList.remove('hidden');
+                }
+            })();
+
+            // 默认勾选状态回填（上次选择过「记住我」）
+            const rememberEl = document.getElementById('f-remember');
+            if (AUTH.isRemembered && AUTH.isRemembered()) rememberEl.checked = true;
 
             function setFieldError(el, msg) {
                 const tip = document.getElementById(el.id + '-error');
@@ -112,7 +152,8 @@
                     });
                     const d = await resp.json();
                     if (resp.ok) {
-                        AUTH.setTokens(d.access, d.refresh);
+                        // 记住我 → token 落 localStorage（跨会话）；否则仅当前会话有效
+                        AUTH.setTokens(d.access, d.refresh, !!rememberEl.checked);
                         AUTH.setUser(d.user);
                         // 跳转：next 参数优先，否则首页
                         const next = new URLSearchParams(location.search).get('next');

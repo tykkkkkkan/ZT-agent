@@ -20,47 +20,58 @@
 
 <!-- ====== 顶部导航栏 ====== -->
 <nav id="navbar" aria-label="主导航" class="sticky top-0 z-50 bg-white/80 backdrop-blur-md transition-all">
-    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <a href="index.html" class="flex items-center gap-2 text-xl font-bold text-ink-900">
+    <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
+        <a href="index.html" class="flex items-center gap-2 text-xl font-bold text-ink-900 shrink-0">
             <span class="text-brand-600" style="display:inline-flex"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.5em;height:1.5em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></span>
             <span>中渔天下</span>
         </a>
-        <div class="hidden md:flex items-center gap-1">
-            <a href="index.html" class="nav-link active px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition" aria-current="page">首页</a>
-            <a href="products.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">产品</a>
-            <a href="factory.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">工厂</a>
-            <a href="custom.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">定制</a>
-            <a href="order.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">下单</a>
-            <a href="order_query.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">查订单</a>
-            <a href="contact.html" class="nav-link px-4 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">联系</a>
-            <a href="#ai-section" class="ml-3 inline-flex items-center gap-1.5 px-5 py-2 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition shadow-sm">
+
+        <!-- 桌面端：导航链接 / 账号入口 / 咨询 AI 同处一个右对齐容器，避免被 justify-between 拆散 -->
+        <div class="hidden lg:flex items-center">
+            <a href="index.html" class="nav-link active px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition" aria-current="page">首页</a>
+            <a href="products.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">产品</a>
+            <a href="factory.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">工厂</a>
+            <a href="custom.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">定制</a>
+            <a href="order.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">下单</a>
+            <a href="order_query.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">查订单</a>
+            <a href="profile.html" data-auth-nav="user" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition hidden">我的</a>
+            <a href="contact.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">联系</a>
+            <span class="w-px h-5 bg-stone-200 mx-2.5" aria-hidden="true"></span>
+            <a href="login.html" data-auth-nav="guest" class="px-2.5 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">登录</a>
+            <a href="register.html" data-auth-nav="guest" class="px-3.5 py-2 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition shadow-sm">注册</a>
+            <div data-auth-nav="user" class="hidden items-center gap-1">
+                <span class="text-sm text-ink-600 whitespace-nowrap">你好，<span data-auth-username class="font-semibold text-brand-600"></span></span>
+                <button onclick="AUTH.logout()" class="px-2.5 py-2 text-sm text-ink-600 hover:text-red-600 transition">退出</button>
+            </div>
+            <a href="#ai-section" class="ml-2 inline-flex items-center gap-1.5 px-5 py-2 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition shadow-sm whitespace-nowrap">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 咨询 AI
             </a>
         </div>
-                <div class="hidden md:flex items-center gap-1">
-            <a href="login.html" data-auth-nav="guest" class="px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">登录</a>
-            <a href="register.html" data-auth-nav="guest" class="px-4 py-2 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition shadow-sm">注册</a>
-            <div data-auth-nav="user" class="hidden items-center gap-2">
-                <span class="text-sm text-ink-600">你好，<span data-auth-username class="font-semibold text-brand-600"></span></span>
-                <button onclick="AUTH.logout()" class="px-3 py-2 text-sm text-ink-600 hover:text-red-600 transition">退出</button>
-            </div>
-        </div>
 
-        <button class="md:hidden p-2 text-ink-600" onclick="document.getElementById('navLinks').classList.toggle('hidden')">
+        <button class="lg:hidden p-2 text-ink-600" aria-label="展开导航菜单"
+                onclick="var m=document.getElementById('navLinks');m.classList.toggle('hidden');this.setAttribute('aria-expanded', !m.classList.contains('hidden'));">
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
     </div>
-    <div id="navLinks" class="hidden md:hidden bg-white border-t border-stone-200 px-6 py-3 space-y-1">
-        <a href="index.html" class="block py-2 text-sm text-ink-700">首页</a>
+
+    <!-- 移动端菜单 -->
+    <div id="navLinks" class="hidden lg:hidden bg-white border-t border-stone-200 px-6 py-3 space-y-1">
+        <a href="index.html" class="block py-2 text-sm font-semibold text-brand-700">首页</a>
         <a href="products.html" class="block py-2 text-sm text-ink-700">产品</a>
         <a href="factory.html" class="block py-2 text-sm text-ink-700">工厂</a>
         <a href="custom.html" class="block py-2 text-sm text-ink-700">定制</a>
         <a href="order.html" class="block py-2 text-sm text-ink-700">下单</a>
         <a href="order_query.html" class="block py-2 text-sm text-ink-700">查订单</a>
-        <a href="contact.html" class="block py-2 text-sm text-ink-700">联系</a>        <a href="login.html" data-auth-nav="guest" class="block py-2 text-sm text-ink-700">登录</a>
-        <a href="register.html" data-auth-nav="guest" class="block py-2 text-sm text-ink-700">注册</a>
-        <div data-auth-nav="user" class="hidden py-2 text-sm text-ink-700">你好，<span data-auth-username class="font-semibold text-brand-600"></span> <button onclick="AUTH.logout()" class="ml-1 text-red-600">退出</button></div>
-
+        <a href="profile.html" data-auth-nav="user" class="hidden block py-2 text-sm font-medium text-ink-700">我的</a>
+        <a href="contact.html" class="block py-2 text-sm text-ink-700">联系</a>
+        <div class="pt-2 mt-2 border-t border-stone-100 space-y-1">
+            <a href="login.html" data-auth-nav="guest" class="block py-2 text-sm text-ink-700">登录</a>
+            <a href="register.html" data-auth-nav="guest" class="block py-2 text-sm font-semibold text-brand-700">注册</a>
+            <div data-auth-nav="user" class="hidden py-2 text-sm text-ink-700">你好，<span data-auth-username class="font-semibold text-brand-600"></span> <button onclick="AUTH.logout()" class="ml-1 text-red-600">退出</button></div>
+        </div>
+        <a href="#ai-section" class="flex items-center justify-center gap-1.5 mt-2 px-5 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-full">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 咨询 AI
+        </a>
     </div>
 </nav>
 
@@ -547,6 +558,10 @@
     // ====== 弹窗会话管理 ======
     const SESSION_KEY = 'zyt_session_id';
     const MODAL_WELCOME = '您好，我是「中渔小助」\n中渔天下的专属饵料顾问，全天在线。\n\n产品、库存、报价、订单、售后、钓鱼技巧都能问我，试试看～';
+    const MODAL_LOGIN_PROMPT = '您好，我是「中渔小助」。\n\n为了记录您的咨询与订单信息，请先登录后再开始对话。登录后我可以帮您查价格、查库存、算批发报价、下单和查售后。';
+
+    // 当前是否已登录（AI 对话与历史均需登录态）
+    function isGuest() { return !(window.AUTH && AUTH.isLoggedIn()); }
 
     function getSid() {
         let sid = localStorage.getItem(SESSION_KEY);
@@ -590,6 +605,33 @@
         modalMessages.appendChild(wrap);
         modalMessages.scrollTop = modalMessages.scrollHeight;
         return b;
+    }
+
+    // 未登录引导卡片（含去登录按钮）
+    function appendLoginCard() {
+        const wrap = document.createElement('div');
+        wrap.className = 'flex justify-start items-end gap-2';
+        const av = document.createElement('div');
+        av.className = 'w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-lake-600 text-white flex items-center justify-center text-sm flex-shrink-0 shadow-sm';
+        av.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg>';
+        wrap.appendChild(av);
+        const card = document.createElement('div');
+        card.className = 'max-w-[85%] overflow-hidden rounded-2xl border border-brand-200 shadow-lg bg-white';
+        card.innerHTML = `
+            <div class="px-4 py-2 bg-gradient-to-r from-brand-600 to-lake-600 text-white flex items-center gap-2">
+                <span class="font-semibold text-sm">需要先登录</span>
+            </div>
+            <div class="px-4 py-3 space-y-2">
+                <p class="text-xs text-ink-600">登录后即可与「中渔小助」对话，历史咨询与订单信息会一并保留。</p>
+                <div class="grid grid-cols-2 gap-2 pt-1">
+                    <a href="/login.html?next=index.html" class="text-center px-2 py-2 bg-brand-600 text-white text-xs font-semibold rounded-lg hover:bg-brand-700 transition">去登录</a>
+                    <a href="/register.html?next=index.html" class="text-center px-2 py-2 bg-white text-ink-700 text-xs font-semibold rounded-lg border border-brand-100 hover:border-brand-400 transition">注册新账号</a>
+                </div>
+            </div>
+        `;
+        wrap.appendChild(card);
+        modalMessages.appendChild(wrap);
+        modalMessages.scrollTop = modalMessages.scrollHeight;
     }
 
     // 渲染订单成功卡片
@@ -652,9 +694,21 @@
     // 从后端恢复历史消息
     async function loadModalHistory() {
         modalMessages.innerHTML = '';
+        // 未登录：不请求历史接口，直接给登录引导
+        if (isGuest()) {
+            appendBubble('ai', MODAL_LOGIN_PROMPT);
+            appendLoginCard();
+            return;
+        }
         const sid = getSid();
         try {
-            const resp = await fetch(`/api/agent/history/${sid}/`);
+            const resp = await AUTH.authFetch(`/api/agent/history/${sid}/`, {}, { silentAuthFail: true });
+            if (resp.status === 401) {
+                // 首页是公开页：未登录/登录已过期只降级为登录引导，不强制跳转
+                appendBubble('ai', MODAL_LOGIN_PROMPT);
+                appendLoginCard();
+                return;
+            }
             const data = await resp.json();
             if (data.success && Array.isArray(data.messages) && data.messages.length > 0) {
                 data.messages.forEach(m => {
@@ -669,6 +723,7 @@
     }
 
     // 打开弹窗：先加载历史再显示
+    // 未登录也允许打开（用户能看到 AI 客服能做什么），但对话前会强制跳登录
     function openModal() {
         document.getElementById('aiModal').classList.remove('hidden');
         loadModalHistory();
@@ -676,6 +731,12 @@
 
     // 新对话
     function modalNewChat() {
+        if (isGuest()) {
+            modalMessages.innerHTML = '';
+            appendBubble('ai', MODAL_LOGIN_PROMPT);
+            appendLoginCard();
+            return;
+        }
         newSid();
         modalMessages.innerHTML = '';
         appendBubble('ai', MODAL_WELCOME);
@@ -689,6 +750,10 @@
         const input = document.getElementById('modalInput');
         const text = input.value.trim();
         if (!text) return;
+
+        // 登录守卫：未登录 / 登录态失效 → 跳登录页并带回跳参数
+        if (!window.AUTH || !(await AUTH.ensureLogin('登录后即可与中渔小助对话'))) return;
+
         input.value = '';
 
         appendBubble('user', text);
@@ -699,11 +764,17 @@
         let guideCard = false;
 
         try {
-            const resp = await fetch('/api/agent/chat/', {
+            const resp = await AUTH.authFetch('/api/agent/chat/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message: text, session_id: sid }),
             });
+            if (resp.status === 401) {
+                bubble.innerHTML = '';
+                bubble.textContent = '登录状态已失效，请重新登录后再试。';
+                bubble.className += ' bg-amber-50 text-amber-800 border border-amber-200';
+                return;
+            }
             if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
             const reader = resp.body.getReader();
@@ -747,6 +818,6 @@
     }
 </script>
 
-<script>document.addEventListener('DOMContentLoaded', function(){ if (window.AUTH) AUTH.syncNav(); });</script>
+<script>document.addEventListener('DOMContentLoaded', function(){ if (window.AUTH) AUTH.init(); });</script>
 </body>
 </html>

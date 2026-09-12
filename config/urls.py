@@ -22,6 +22,7 @@ load_dotenv()
 
 from agent import views as views_agent
 from agent import auth_views
+from agent import me_views
 from agent.middleware import metrics_view
 from agent.views_admin import admin_dashboard
 from agent.manage_views import manage_login, manage_logout
@@ -148,6 +149,12 @@ urlpatterns = [
     path("manage/logout/", manage_logout, name="manage_logout"),
     path("test-ai/", test_ai, name="test_ai"),
     path("api/agent/", include("agent.urls")),
+    # 个人中心（C 端「我的」）：资料 / 改密码 / 我的订单 / 用户侧售后与收货操作
+    path("api/me/profile/", me_views.MeProfileView.as_view(), name="me_profile"),
+    path("api/me/password/", me_views.MePasswordView.as_view(), name="me_password"),
+    path("api/me/orders/", me_views.MeOrderListView.as_view(), name="me_orders"),
+    path("api/me/orders/<str:order_no>/<str:action>/",
+         me_views.MeOrderActionView.as_view(), name="me_order_action"),
     # 认证（JWT：注册/登录/刷新/退出/当前用户）
     path("api/auth/register/", auth_views.RegisterView.as_view(), name="auth_register"),
     path("api/auth/login/", auth_views.LoginView.as_view(), name="auth_login"),
@@ -162,6 +169,8 @@ urlpatterns = [
     # 库存列表 + 库存调整（P0 补齐）
     path("api/inventory/", views_agent.inventory_list_api, name="api_inventory_list"),
     path("api/inventory/<int:product_id>/", views_agent.inventory_update_api, name="api_inventory_update"),
+    # L5 多智能体编排：接收侧「接收钩子」（仅营销 Agent 经 mkt_bot JWT 调）
+    path("api/coordination/inbound/", views_agent.coordination_inbound_api, name="api_coordination_inbound"),
     # 订单相关
     path("api/orders/", views_agent.create_order_api, name="api_create_order"),
     # 注意：query/ 与 ship/cancel/return 三个子路径必须放在 <str:order_no>/ 之前，否则会被它抢匹配
@@ -178,6 +187,7 @@ urlpatterns = [
     path("contact.html", serve_frontend_file, {"filename": "contact.html"}),
     path("order.html", serve_frontend_file, {"filename": "order.html"}),
     path("order_query.html", serve_frontend_file, {"filename": "order_query.html"}),
+    path("profile.html", serve_frontend_file, {"filename": "profile.html"}),
     path("login.html", serve_frontend_file, {"filename": "login.html"}),
     path("register.html", serve_frontend_file, {"filename": "register.html"}),
     path("auth.js", serve_frontend_file, {"filename": "auth.js"}),

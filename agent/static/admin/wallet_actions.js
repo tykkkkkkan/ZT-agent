@@ -1,12 +1,17 @@
 /**
  * 钱包「充值 / 扣款」按钮
- * 在钱包详情页（/admin/agent/wallet/1/change/）右下角注入「充值」「扣款」两个按钮，
- * 点击弹窗输入金额与备注，fetch 提交到 /admin/agent/wallet/adjust/，成功后刷新显示新余额。
+ * 在钱包总览页（/admin/agent/wallet/...）与收支账本页（/admin/agent/transaction/）
+ * 右下角注入「充值」「扣款」两个按钮：弹窗输入金额 + **必填**的款项说明，
+ * fetch 提交到 /admin/agent/wallet/adjust/，成功后刷新。
+ *
+ * 说明必填的原因：公司钱包要"每一笔钱款都有据可查"，只记金额不记来源，
+ * 事后对账时无法判断这笔钱是哪来的。
  */
 (function () {
     if (document.getElementById('zy-wallet-style')) return;
-    // 在钱包列表页与详情页（/admin/agent/wallet/...）启用
-    if (window.location.pathname.indexOf('/admin/agent/wallet/') !== 0) return;
+    // 钱包总览页 + 收支账本页都启用
+    var p = window.location.pathname;
+    if (p.indexOf('/admin/agent/wallet/') !== 0 && p.indexOf('/admin/agent/transaction/') !== 0) return;
 
     var style = document.createElement('style');
     style.id = 'zy-wallet-style';
@@ -42,7 +47,8 @@
         '<div class="zy-panel">' +
         '<h3 id="zy-wtitle">充值</h3>' +
         '<label>金额(元) *</label><input id="zy-amount" type="number" step="0.01" min="0.01">' +
-        '<label>备注</label><input id="zy-note" placeholder="如：客户张老板货款 / 采购饵料支出">' +
+        '<label>款项说明 * <span style="color:#9AA89F;font-weight:400">（这笔钱从哪来 / 花到哪去）</span></label>' +
+        '<input id="zy-note" placeholder="如：客户张老板货款 / 采购饵料支出 / 提现到公户">' +
         '<div class="zy-err" id="zy-werr"></div>' +
         '<div class="zy-btns">' +
         '<button type="button" class="zy-cancel" id="zy-wcancel">取消</button>' +
@@ -74,7 +80,9 @@
 
     document.getElementById('zy-wsubmit').addEventListener('click', function () {
         var amount = document.getElementById('zy-amount').value;
+        var note = document.getElementById('zy-note').value.trim();
         if (!amount || parseFloat(amount) <= 0) { err('请输入大于 0 的金额'); return; }
+        if (!note) { err('请填写款项说明（这笔钱从哪来 / 花到哪去）'); return; }
         var btn = document.getElementById('zy-wsubmit');
         btn.disabled = true; btn.textContent = '处理中…';
         fetch('/admin/agent/wallet/adjust/', {
@@ -83,7 +91,7 @@
             body: JSON.stringify({
                 direction: curDirection,
                 amount: amount,
-                note: document.getElementById('zy-note').value.trim(),
+                note: note,
             }),
         }).then(function (r) { return r.json(); }).then(function (d) {
             if (d.success) { window.location.reload(); }

@@ -12,10 +12,20 @@ agent/services.py — 库存联动 + 订单状态机（事务安全）
 状态机
 ------
 
-    [PENDING] --发货--> [SHIPPED]    （扣减 stock 和 reserved_stock）
-        │
-        └---取消--> [CANCELLED]      （释放 reserved_stock）
-        └---退货--> [RETURNED]       （视具体实现，见 return_inventory）
+       ┌──发货──▶ [SHIPPED] ──用户确认收货──▶ [COMPLETED]
+       │             │                         │
+   [PENDING]        └──用户申请退货──▶ [RETURNING] ◀──┘
+       │                                  │   │
+       └──取消──▶ [CANCELLED]   商家同意──┘   └──商家拒绝──▶ 回到申请前状态
+                                [RETURNED]
+                                （库存回滚 + 退款）
+
+    · 发货：扣减 stock 和 reserved_stock，自动记「订单收入」
+    · 取消：释放 reserved_stock
+    · 完成：不动库存、不再记账（发货时已完成物权与计账）
+    · 申请退货：只登记申请，**不动库存不动账**（防止用户单方触发资金/库存变动）
+    · 同意退货：库存回滚 + 自动记「订单退款」
+    · 拒绝退货：仅回退状态 + 记录理由
 
 调用样例
 --------
@@ -25,7 +35,7 @@ agent/services.py — 库存联动 + 订单状态机（事务安全）
         transition_order(
             order, to_status=OrderStatus.SHIPPED,
             ship_company="顺丰", tracking_no="SF1234567890",
-            actor="admin",
+            operator=request.user,
         )
     except OrderTransitionError as e:
         # 业务校验失败（库存不足、状态非法等）
@@ -40,7 +50,9 @@ from typing import Optional
 from django.db import transaction
 from django.utils import timezone
 
-from agent.models import Inventory, Orders, OrderStatus, Wallet, Transaction, TxType, TxCategory
+from agent.models import (
+    Inventory, Orders, OrderStatus, ReturnStatus, Wallet, Transaction, TxType, TxCategory,
+)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -244,6 +256,41 @@ def manual_wallet_adjust(amount, *, direction: str = "income", note: str = "", o
     )
 
 
+def adjust_inventory_stock(inventory: Inventory, delta: int, *, note: str = "") -> Inventory:
+    """后台手动增减库存（补货入库 / 盘点出库）。
+
+    与订单状态机无耦合：只改 `stock`，不动 `reserved_stock`
+    （预占库存由订单的 reserve/deduct/release 负责，手工调整不应介入，
+    否则会出现「可用库存」与订单对不上账）。
+
+    :param inventory: 待调整的库存记录
+    :param delta: 增量，正数为入库、负数为出库
+    :param note: 备注（当前仅用于服务端日志，便于事后追溯）
+    :raises OrderTransitionError: 结果会小于 0 时（不允许负库存）
+    :return: 保存后的库存记录（含新 stock）
+    """
+    delta = int(delta)
+    if delta == 0:
+        return inventory
+
+    with transaction.atomic():
+        inv = _lock_inventory(inventory.product_id)
+        if inv is None:
+            raise OrderTransitionError(
+                f"产品 {inventory.product_id} 暂无库存记录，请先在库存表新增一行。",
+                code="no_inventory",
+            )
+        new_stock = (inv.stock or 0) + delta
+        if new_stock < 0:
+            raise OrderTransitionError(
+                f"出库 {abs(delta)} 包会超出当前库存（现有 {inv.stock or 0} 包），已取消。",
+                code="insufficient_stock",
+            )
+        inv.stock = new_stock
+        inv.save(update_fields=["stock", "updated_at"])
+        return inv
+
+
 # ════════════════════════════════════════════════════════════════
 # 订单状态机
 # ════════════════════════════════════════════════════════════════
@@ -261,6 +308,8 @@ def transition_order(
     ship_company: str = "",
     tracking_no: str = "",
     cancel_reason: str = "",
+    return_reason: str = "",
+    operator=None,
 ) -> OrderTransitionResult:
     """统一订单状态机入口（在事务内完成"改状态 + 动库存"）。
 
@@ -268,12 +317,25 @@ def transition_order(
     :param to_status: 目标状态（OrderStatus.*）
     :param ship_company / tracking_no: 发货时必填
     :param cancel_reason: 取消时建议填
+    :param return_reason: 用户申请退货时填写的理由
+    :param operator: 操作人（后台处理退货时记录，便于追溯）
     :raises OrderTransitionError: 非法跃迁 / 业务校验失败
+
+    完整跃迁图：
+        未发货 ──发货──▶ 已发货 ──用户确认收货──▶ 已完成
+          │                │                     │
+          │                └──用户申请退货──▶ 退货申请中
+          │                                     │  │
+          └──取消──▶ 已取消             商家同意 │  │ 商家拒绝
+                                              ▼  ▼
+                                          已退货  回到申请前(已发货/已完成)
     """
     allowed = {
         OrderStatus.SHIPPED: {OrderStatus.PENDING},
+        OrderStatus.COMPLETED: {OrderStatus.SHIPPED},                      # 用户确认收货
+        OrderStatus.RETURNING: {OrderStatus.SHIPPED, OrderStatus.COMPLETED},  # 用户申请退货
         OrderStatus.CANCELLED: {OrderStatus.PENDING},
-        OrderStatus.RETURNED: {OrderStatus.SHIPPED},
+        OrderStatus.RETURNED: {OrderStatus.SHIPPED, OrderStatus.COMPLETED, OrderStatus.RETURNING},
     }
     if to_status not in allowed:
         raise OrderTransitionError(f"未知目标状态：{to_status}", code="unknown_status")
@@ -308,29 +370,89 @@ def transition_order(
             inv = release_inventory_on_cancel(order)
             msg = f"订单已取消，预占库存已释放。" if inv else "订单已取消。"
 
-        elif to_status == OrderStatus.RETURNED:
+        elif to_status == OrderStatus.COMPLETED:
+            # 用户确认收货：交易完结。库存已在发货时扣减，这里不再动库存、不再记账。
+            order.completed_at = timezone.now()
+            msg = "订单已完成，感谢您的支持！"
+
+        elif to_status == OrderStatus.RETURNING:
+            # 用户提交退货申请：只登记申请，不动库存也不退款 ——
+            # 库存回滚与退款必须等商家同意（已退货）才发生，避免用户单方面触发资金/库存变动。
+            if order.status == OrderStatus.RETURNING:
+                raise OrderTransitionError("该订单已在退货申请中，请勿重复提交。", code="duplicate_return")
+            order.return_status = ReturnStatus.PENDING
+            order.return_reason = (return_reason or "").strip()[:200]
+            order.return_requested_at = timezone.now()
+            order.return_handled_at = None
+            order.return_note = ""
+            msg = "退货申请已提交，我们会尽快与您联系确认。"
+
+        else:  # OrderStatus.RETURNED
             order.cancelled_at = timezone.now()  # 复用为退货时间
-            order.cancel_reason = cancel_reason or "客户退货"
+            order.cancel_reason = return_reason or cancel_reason or "客户退货"
             inv = restock_inventory_on_return(order)
             # 退货：库存回滚 + 自动记一笔「订单退款」
             record_order_refund(order, note=f"订单 {order.order_no} 退货退款")
-            msg = f"订单已退货，库存已回滚 {order.quantity} 包。"
+            order.return_status = ReturnStatus.APPROVED
+            order.return_handled_at = timezone.now()
+            if return_reason:
+                order.return_reason = order.return_reason or return_reason
+            msg = f"订单已退货，库存已回滚 {order.quantity} 包，款项已原路退回账户。"
 
         order.status = to_status
         order.save(update_fields=[
             "status", "ship_company", "tracking_no", "shipped_at",
-            "cancelled_at", "cancel_reason", "updated_at",
+            "cancelled_at", "cancel_reason", "completed_at",
+            "return_status", "return_reason", "return_requested_at",
+            "return_handled_at", "return_note", "updated_at",
         ])
 
     return OrderTransitionResult(order=order, inventory=inv, message=msg)
 
 
+def reject_return_request(
+    order: Orders, *, reason: str = "", operator=None,
+) -> OrderTransitionResult:
+    """商家拒绝退货申请：把订单退回申请前的状态，并记录拒绝理由。
+
+    - 申请前状态由「是否已确认收货」推断：`completed_at` 有值 → 已完成，否则 → 已发货
+    - 不动库存、不动账（申请阶段本来就没动过，天然对称）
+    """
+    if order.status != OrderStatus.RETURNING:
+        raise OrderTransitionError(
+            f"订单 {order.order_no} 当前状态为「{order.status}」，没有待处理的退货申请。",
+            code="invalid_transition",
+        )
+    with transaction.atomic():
+        order = Orders.objects.select_for_update().get(pk=order.pk)
+        back_to = OrderStatus.COMPLETED if order.completed_at else OrderStatus.SHIPPED
+        order.status = back_to
+        order.return_status = ReturnStatus.REJECTED
+        order.return_handled_at = timezone.now()
+        order.return_note = (reason or "").strip()[:200]
+        order.save(update_fields=[
+            "status", "return_status", "return_handled_at", "return_note", "updated_at",
+        ])
+    return OrderTransitionResult(
+        order=order, inventory=None,
+        message=f"已拒绝退货申请，订单回到「{back_to}」（{order.return_note or '未填写理由'}）。",
+    )
+
+
 def revert_shipped_to_pending(order: Orders, operator=None) -> OrderTransitionResult:
     """把已发货订单退回"待发货"（admin 纠错用）。
 
-    若之前已记过「订单收入」，会自动记一笔「订单退款」冲账。
+    三方回滚（与发货时的动作严格对称）：
+      · 状态：已发货 → 待发货，清空物流公司/运单号/发货时间；
+      · 库存：发货时扣了 stock、减了 reserved_stock，这里原样加回来
+        （商品回到可售库存 + 重新预占该订单数量）。⚠️ 缺了这一步会导致
+        「每撤回一次，库存就永久少一单的数量」——可用库存虚高，存在超卖风险；
+      · 账目：若之前记过「订单收入」，自动记一笔「订单退款」冲账。
+
+    注：仅在库存记录存在时联动（历史订单 product 为空则跳过，保持原行为）。
+    允许从「已发货」或「已完成」撤回（用户已确认收货后商家仍可能需要纠错）。
     """
-    if order.status != OrderStatus.SHIPPED:
+    if order.status not in (OrderStatus.SHIPPED, OrderStatus.COMPLETED):
         raise OrderTransitionError(
             f"订单 {order.order_no} 当前状态为「{order.status}」，无法撤回。",
             code="invalid_transition",
@@ -340,16 +462,70 @@ def revert_shipped_to_pending(order: Orders, operator=None) -> OrderTransitionRe
         prev_income = Transaction.objects.filter(
             order=order, tx_type=TxType.INCOME, category=TxCategory.ORDER_INCOME,
         ).exists()
+        qty = order.quantity or 0
+
+        inventory = None
+        if order.product_id and qty:
+            inventory = _lock_inventory(order.product_id)
+            if inventory is not None:
+                inventory.stock = (inventory.stock or 0) + qty
+                inventory.reserved_stock = (inventory.reserved_stock or 0) + qty
+                inventory.save(update_fields=["stock", "reserved_stock", "updated_at"])
+
         order.status = OrderStatus.PENDING
         order.ship_company = ""
         order.tracking_no = ""
         order.shipped_at = None
+        # 撤回 = 回到"下单后未发货"的初始态，售后/收货痕迹一并清空，
+        # 否则残留的「已完成时间 / 退货申请」会让用户端显示与实际状态矛盾的信息。
+        order.completed_at = None
+        order.return_status = ""
+        order.return_reason = ""
+        order.return_requested_at = None
+        order.return_handled_at = None
+        order.return_note = ""
         order.save(update_fields=[
-            "status", "ship_company", "tracking_no", "shipped_at", "updated_at",
+            "status", "ship_company", "tracking_no", "shipped_at",
+            "completed_at", "return_status", "return_reason",
+            "return_requested_at", "return_handled_at", "return_note", "updated_at",
         ])
         if prev_income:
             record_order_refund(order, operator=operator, note=f"订单 {order.order_no} 撤回发货冲账")
     return OrderTransitionResult(
-        order=order, inventory=None,
-        message="已撤回到待发货，金额已自动冲账。" if prev_income else "已撤回到待发货。",
+        order=order, inventory=inventory,
+        message="已撤回到待发货（库存已回滚），金额已自动冲账。" if prev_income
+                else "已撤回到待发货（库存已回滚）。",
+    )
+
+
+def withdraw_return_request(order: Orders) -> OrderTransitionResult:
+    """用户自行撤销退货申请（仅限商家尚未处理的待审核申请）。
+
+    与 reject_return_request 的区别：这是用户主动撤回，不留「已拒绝」痕迹，
+    退回申请前的状态，便于用户反悔后再重新提交。
+    """
+    if order.status != OrderStatus.RETURNING:
+        raise OrderTransitionError(
+            f"订单 {order.order_no} 当前没有进行中的退货申请。", code="invalid_transition",
+        )
+    if order.return_status != ReturnStatus.PENDING:
+        raise OrderTransitionError(
+            f"退货申请已被商家处理（{order.return_status}），无法自行撤销。",
+            code="already_handled",
+        )
+    with transaction.atomic():
+        order = Orders.objects.select_for_update().get(pk=order.pk)
+        back_to = OrderStatus.COMPLETED if order.completed_at else OrderStatus.SHIPPED
+        order.status = back_to
+        order.return_status = ""
+        order.return_reason = ""
+        order.return_requested_at = None
+        order.return_handled_at = None
+        order.return_note = ""
+        order.save(update_fields=[
+            "status", "return_status", "return_reason", "return_requested_at",
+            "return_handled_at", "return_note", "updated_at",
+        ])
+    return OrderTransitionResult(
+        order=order, inventory=None, message=f"已撤销退货申请，订单回到「{back_to}」。",
     )

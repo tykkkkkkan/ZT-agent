@@ -1,0 +1,70 @@
+/* ══════════════════════════════════════════════════════════════
+   中渔天下 · 后台列表「快速操作」列样式
+   用于订单（发货/取消/退货/撤回）、库存（± 调整）、
+   留言/定制（已读切换）、产品（上/下架）等行内按钮。
+   ══════════════════════════════════════════════════════════════ */
+
+.zy-op {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.zy-op-link,
+.zy-op-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 9px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background .12s, color .12s, border-color .12s;
+  background: #F1F4F2;
+  color: #3A473F;
+}
+
+/* 主操作：发货 / 上架 / 标记已读 */
+.zy-op-go {
+  background: #DCEDE6;
+  color: #134435;
+  border-color: rgba(31, 107, 84, .22);
+}
+.zy-op-go:hover { background: #C6E2D7; color: #0E3328; }
+
+/* 提醒类：退货 */
+.zy-op-warn {
+  background: #FDF0E8;
+  color: #B5481C;
+  border-color: rgba(226, 112, 58, .3);
+}
+.zy-op-warn:hover { background: #F8DFD0; }
+
+/* 危险类：取消 */
+.zy-op-danger {
+  background: #FDECEA;
+  color: #C73320;
+  border-color: rgba(199, 51, 32, .25);
+}
+.zy-op-danger:hover { background: #F8DAD5; }
+
+/* 次要类：撤回 / 标记未读 */
+.zy-op-mute { background: #F1F1EE; color: #5B6670; }
+.zy-op-mute:hover { background: #E5E5E0; }
+
+.zy-op-none { color: #9AA89F; font-size: 12px; }
+
+/* 深色模式（Unfold 以 html.dark 切换） */
+.dark .zy-op-link,
+.dark .zy-op-btn { background: #232C28; color: #C9D6D0; }
+.dark .zy-op-go { background: #1C3A31; color: #9BDCC3; border-color: rgba(155, 220, 195, .25); }
+.dark .zy-op-go:hover { background: #23493D; }
+.dark .zy-op-warn { background: #3A2718; color: #F4B495; }
+.dark .zy-op-danger { background: #3B1F1A; color: #F0A79B; }
+.dark .zy-op-mute { background: #262E2A; color: #A9B5AF; }
+.dark .zy-op-none { color: #6C7873; }

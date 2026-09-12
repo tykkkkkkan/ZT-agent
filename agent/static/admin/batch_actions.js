@@ -55,10 +55,15 @@
             if (/删除/i.test(a.label)) btn.classList.add('zy-danger');
             btn.addEventListener('click', function () {
                 var isDelete = /删除/i.test(a.label);
-                var msg = isDelete
-                    ? '⚠️ 确认删除选中的 ' + n + ' 条记录？此操作不可恢复！'
-                    : '确认对选中的 ' + n + ' 条执行「' + a.label + '」？';
-                if (!window.confirm(msg)) return;
+                // 「下一步」类动作只是跳到表单页（如发货页还要填物流），
+                // 在那边仍有取消按钮 → 这里不再多一次确认，少点一次。
+                var isNavigate = /下一步/.test(a.label);
+                if (!isNavigate) {
+                    var msg = isDelete
+                        ? '⚠️ 确认删除选中的 ' + n + ' 条记录？此操作不可恢复！'
+                        : '确认对选中的 ' + n + ' 条执行「' + a.label + '」？';
+                    if (!window.confirm(msg)) return;
+                }
                 actionSelect.value = a.value;
                 var form = document.getElementById('changelist-form');
                 if (form) form.submit();
