@@ -68,11 +68,38 @@ def _jwt_staff_user(request):
 
 
 def _resolve_request_user(request):
-    """统一解析请求身份（session 优先，其次 JWT）。返回 (user, ok)。"""
+    """统一解析请求身份。返回 (user, ok)。
+
+    ⚠️ 顺序很重要：**显式携带的 JWT 优先于 session**，不是反过来。
+
+    为什么必须这样（这是一个真实踩过的坑，症状很反直觉）：
+      前端每次请求都由 auth.js 带上 `Authorization: Bearer <access>` —— 这是
+      调用方**声明的身份**；而 session cookie 是**环境性**的。同一个浏览器里
+      只要登录过 `/admin/`，session 就是管理员身份。如果 session 优先，就会出现：
+
+        同一浏览器（既登录了后台、又登录了 C 端）
+          → 前端下单：后端把订单记到**管理员**名下（Orders.user_id = 管理员 id）
+            → 后台订单列表看得见，但 C 端「我的订单」按 user_id 查不到；
+              手机号兜底那条规则又要求 `user_id IS NULL`，同样排除在外
+            → **订单在前端"消失"了**
+          → 前端查订单：拿管理员的 UserProfile.phone（空字符串）去和用户输入的
+            真实手机号比对 → 必然不等 → 403「只能查询当前账号绑定的手机号」
+            → **明明绑了号却查不出来**
+
+      更隐蔽的是：`/api/me/*` 是 DRF 视图（只认 JWT），`/api/orders/*` 是普通视图
+      （原先 session 优先）—— 同一浏览器里两个接口解析出**两个不同的人**，
+      前端看到的资料与查询结果自然对不上。
+
+    改造后的一致性保证：所有接口都拿"请求里声明的那个身份"，
+    后台页面（不发 Authorization 头）依旧走 session，行为不变。
+    """
+    user, ok = _jwt_user(request)
+    if ok:
+        return user, True
     user = getattr(request, "user", None)
     if user is not None and user.is_authenticated:
         return user, True
-    return _jwt_user(request)
+    return None, False
 
 
 def login_required(view_func):
@@ -547,14 +574,20 @@ def query_orders(request):
 
     my_phone = (get_profile(me).phone or "").strip()
     if phone and phone != my_phone:
-        # 只允许查自己的手机号；用 403 明确拒绝，不泄露该号码是否存在订单
+        # 只允许查自己的手机号；用 403 明确拒绝，且不泄露该号码是否存在订单。
+        # 但要把「你绑定的是哪个号」告知调用方（这是其本人的资料，不涉隐私），
+        # 否则用户会遇到"我明明绑了号却查不出来"却不知道错在哪。
+        if my_phone:
+            masked = my_phone[:3] + "****" + my_phone[-4:] if len(my_phone) >= 7 else my_phone
+            hint = f"当前账号绑定的是 {masked}，请先用该号码查询，或到「个人中心」更换绑定。"
+        else:
+            hint = "当前账号还没有绑定手机号，请先到「个人中心」绑定。"
         return JsonResponse({
             "success": False,
             "code": "PHONE_NOT_BOUND",
-            "message": (
-                "只能查询当前账号绑定的手机号订单。"
-                "如需查询该手机号的历史订单，请先在「个人中心」绑定它。"
-            ),
+            "message": f"只能查询当前账号绑定的手机号订单。{hint}",
+            "bound_phone_masked": (my_phone[:3] + "****" + my_phone[-4:]
+                                   if len(my_phone) >= 7 else my_phone),
         }, status=403)
 
     try:

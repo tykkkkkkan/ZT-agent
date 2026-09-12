@@ -16,6 +16,7 @@
 import json
 import os
 import sys
+import uuid
 
 import django
 
@@ -25,8 +26,9 @@ django.setup()
 
 from django.contrib.auth import get_user_model          # noqa: E402
 from django.test import Client, override_settings       # noqa: E402
+from django.utils import timezone                       # noqa: E402
 
-from agent.models import Orders, Products, UserProfile  # noqa: E402
+from agent.models import Orders, OrderStatus, Products, UserProfile  # noqa: E402
 
 PASS, FAIL = [], []
 
@@ -177,15 +179,41 @@ def main():
         by_phone = qs.filter(user__isnull=True, phone=phone).count()
         check("可见订单 = user_id 归属 + 未认领同号", qs.count() == by_user + by_phone,
               f"{qs.count()} == {by_user} + {by_phone}")
-        assigned_other = Orders.objects.filter(phone=phone, user__isnull=False) \
-            .exclude(user=user).count() if phone else 0
-        if assigned_other:
-            print(f"    注：同号有 {assigned_other} 笔已被其它账号认领 → 按规则不展示（预期隔离），"
-                  f"这正是改造前「查订单」比「我的」多出来的那几笔")
-            old_style = Orders.objects.filter(phone=phone).count()
-            check("改造后查订单不再返回被他人认领的同号订单",
-                  old_style != qs.count() and q.get("total") == qs.count(),
-                  f"旧口径 {old_style} 笔 / 新口径 {qs.count()} 笔")
+
+        # 「同号订单已被他人认领 → 不应展示」这一条**不能依赖库里碰巧有这种数据**
+        # （第一次跑时正巧有 2 笔，修完归属后就没了，该断言随之静默失效）。
+        # 这里自己造一笔临时订单，用后即删 —— 让这条规则回归测试永远有效。
+        print("    构造「同号但已被他人认领」的临时订单来验证隔离规则……")
+        ghost = None
+        try:
+            other_user = User.objects.filter(is_staff=True).exclude(pk=user.pk).first()
+            if phone and other_user:
+                ghost = Orders.objects.create(
+                    order_no=f"DDGHOST{uuid.uuid4().hex[:10].upper()}",
+                    customer_name="同号隔离测试",
+                    phone=phone,                      # 与我同号
+                    user_id=other_user.id,            # 但已归属别人
+                    quantity=1, unit_price=1, total_price=1,
+                    status=OrderStatus.PENDING,
+                    created_at=timezone.now(),
+                )
+                st_g, q_g = jpost(c, "/api/orders/query/", {"phone": phone}, auth)
+                ghost_nos = {o["order_no"] for o in q_g.get("orders", [])}
+                check("同号但已被他人认领的订单不出现在「查订单」里",
+                      ghost.order_no not in ghost_nos,
+                      f"临时单 {ghost.order_no}（应被隔离）")
+                check("「查订单」条数未因该临时单增加",
+                      q_g.get("total") == qs.count(),
+                      f"{q_g.get('total')} vs {qs.count()}")
+                st_me, me_g = jget(c, "/api/me/orders/?page=1", auth)
+                check("该临时单也不出现在「我的订单」里",
+                      ghost.order_no not in {o["order_no"] for o in me_g.get("orders", [])})
+            else:
+                print("    (缺手机号或其它账号，跳过该隔离用例)")
+        finally:
+            if ghost is not None:
+                ghost.delete()
+                print("    已删除临时订单")
 
         # ── ⑥ 下单后资料认领不再覆盖手机号 ──────────────────────
         print("\n⑥ 下单后自动认领：不覆盖已绑手机号")

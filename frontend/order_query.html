@@ -130,8 +130,14 @@
                 <div v-if="errorMsg" class="mt-4 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-4 py-3">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg> {{ errorMsg }}
                     <div v-if="notBound" class="mt-3 flex flex-wrap gap-2">
-                        <a href="profile.html" class="px-3.5 py-1.5 bg-brand-600 text-white text-xs font-semibold rounded-full hover:bg-brand-700 transition">去个人中心绑定该手机号</a>
-                        <a href="profile.html" class="px-3.5 py-1.5 bg-white border border-amber-300 text-amber-800 text-xs font-semibold rounded-full hover:bg-amber-50 transition">查看我的订单</a>
+                        <button v-if="boundPhoneMasked" type="button"
+                                @click="useBoundPhone"
+                                class="px-3.5 py-1.5 bg-brand-600 text-white text-xs font-semibold rounded-full hover:bg-brand-700 transition">
+                            改查我绑定的手机号
+                        </button>
+                        <a href="profile.html" class="px-3.5 py-1.5 bg-white border border-amber-300 text-amber-800 text-xs font-semibold rounded-full hover:bg-amber-50 transition">
+                            去个人中心查看／更换绑定
+                        </a>
                     </div>
                 </div>
             </div>
@@ -333,6 +339,7 @@
             const truncated = ref(false);
             const errorMsg = ref('');
             const notBound = ref(false);      // 403：手机号不属于当前账号
+            const boundPhoneMasked = ref(''); // 后端回带的「我绑定的号」掩码，用于一键改查
 
             // 状态映射：与「个人中心」「后台订单列表」保持同一套配色与标签。
             // 改造前这里只有「已发货 / 其他」两色，导致已完成、退货申请中、已取消的订单
@@ -395,10 +402,32 @@
                         errorMsg.value = d.message || '网络异常，请稍后重试';
                         if (e.response && e.response.status === 403) {
                             notBound.value = true;
+                            boundPhoneMasked.value = d.bound_phone_masked || '';
                         }
                         queried.value = false;
                     })
                     .finally(() => { loading.value = false; });
+            }
+
+            // 一键改用「我绑定的手机号」——403 时把 masking 后的号回填并重查。
+            // 后端只回掩码（166****8191），所以这里先取完整号再查（走 /api/me/profile/）。
+            function useBoundPhone() {
+                if (!window.AUTH || !AUTH.isLoggedIn()) { location.href = 'login.html'; return; }
+                AUTH.authFetch('/api/me/profile/')
+                    .then(r => (r.ok ? r.json() : null))
+                    .then(d => {
+                        const p = (d && d.user && d.user.phone) || '';
+                        if (!p) { toast('当前账号还没有绑定手机号，请先到个人中心绑定'); return; }
+                        phone.value = p;
+                        notBound.value = false;
+                        doQuery();
+                    })
+                    .catch(() => { toast('获取绑定手机号失败，请稍后重试'); });
+            }
+
+            function toast(msg) {
+                // 轻量提示：404 之外不引入额外依赖
+                window.alert(msg);
             }
 
             // 预填当前账号绑定的手机号：与「我的订单」用同一个号，避免用户手输别的号码被拒
@@ -418,6 +447,7 @@
             });
 
             return { phone, loading, queried, orders, total, truncated, errorMsg, notBound,
+                     boundPhoneMasked, useBoundPhone,
                      doQuery, formatTime, money, copyText, statusStyle, statusLabel };
         },
     }).mount('#app');

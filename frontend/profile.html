@@ -149,6 +149,10 @@
                             <button data-key="completed" class="filter-tab whitespace-nowrap px-3.5 py-1.5 text-sm font-medium rounded-full transition">已完成</button>
                             <button data-key="returning" class="filter-tab whitespace-nowrap px-3.5 py-1.5 text-sm font-medium rounded-full transition">退货中</button>
                             <button data-key="closed"    class="filter-tab whitespace-nowrap px-3.5 py-1.5 text-sm font-medium rounded-full transition">已关闭</button>
+                            <button id="refreshBtn" onclick="refreshNow()" title="重新拉取最新订单状态"
+                                    class="ml-auto whitespace-nowrap px-3 py-1.5 text-xs font-semibold text-brand-700 border border-brand-200 rounded-full hover:bg-brand-50 transition disabled:opacity-50">
+                                刷新
+                            </button>
                         </div>
 
                         <div id="ordersList" class="p-4 space-y-4">
@@ -592,7 +596,45 @@
         if (!ok) return;                 // 未登录：已跳登录页
         await loadProfile();
         window.setFilter('');            // 默认全部
+        bindAutoRefresh();
     });
+
+    // ── 自动刷新：回到本页时同步最新订单 ─────────────────────
+    // 「不及时更新」的常见场景：在另一个标签页下了单 / 客服在后台改了状态，
+    // 切回「我的」时列表还是旧的。这里在页面重新可见或获得焦点时静默刷新一次
+    // （3 秒节流，避免频繁切换标签页反复打接口）。
+    function bindAutoRefresh() {
+        var last = Date.now();
+        var THROTTLE = 3000;
+        async function refresh() {
+            if (document.visibilityState !== 'visible') return;
+            if (Date.now() - last < THROTTLE) return;
+            last = Date.now();
+            try {
+                await loadProfile();
+                await loadOrders(state.filter, 1, false);
+            } catch (e) { /* 静默：自动刷新失败不打扰用户 */ }
+        }
+        document.addEventListener('visibilitychange', refresh);
+        window.addEventListener('focus', refresh);
+        // 页面从 bfcache 恢复（浏览器后退）时也刷新
+        window.addEventListener('pageshow', function (e) { if (e.persisted) refresh(); });
+    }
+
+    // 手动刷新按钮（给不想等自动刷新的用户）
+    window.refreshNow = async function () {
+        var btn = document.getElementById('refreshBtn');
+        if (btn) btn.disabled = true;
+        try {
+            await loadProfile();
+            await loadOrders(state.filter, 1, false);
+            toast('已更新', 'success');
+        } catch (e) {
+            toast(e.message || '刷新失败', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    };
 })();
 </script>
 </body>
