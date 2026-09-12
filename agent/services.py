@@ -43,6 +43,7 @@ agent/services.py — 库存联动 + 订单状态机（事务安全）
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional
@@ -53,6 +54,8 @@ from django.utils import timezone
 from agent.models import (
     Inventory, Orders, OrderStatus, ReturnStatus, Wallet, Transaction, TxType, TxCategory,
 )
+
+logger = logging.getLogger(__name__)
 
 
 # ════════════════════════════════════════════════════════════════
@@ -256,12 +259,50 @@ def manual_wallet_adjust(amount, *, direction: str = "income", note: str = "", o
     )
 
 
+def auto_resume_stockout_pause(inventory: Inventory) -> Optional[str]:
+    """补货后自动解除「因断货而暂停接单」的覆盖，返回解除说明（无动作则 None）。
+
+    不这么做会形成死锁（真实事故）：
+        营销 Agent 巡检发现可用库存为 0 → 下发 pause_product 并挂上
+        「暂时缺货，恢复库存后即可下单」的客户提示；
+        之后运营把库存补齐 → 但那条覆盖**永远不会自己消失**
+        → 后台库存显示充足，前台却一直显示不可购买。
+
+    安全边界（只解除"该解除的"）：
+      · 仅当 `is_auto_resumable`（pause_reason 为 stockout 或历史空值）才动；
+        人工暂停（manual，如质量问题）一律保留，只能由人在后台恢复
+      · 仅当解除后确实可售（可用库存 > 0）才解除，否则保留暂停（免得刚补一点又放出）
+      · 解除时顺手清掉陈旧的「暂时缺货」提示语，否则客户看到自相矛盾的信息
+    """
+    from agent.models import ProductCoordination
+
+    coord = ProductCoordination.objects.filter(product_id=inventory.product_id).first()
+    if coord is None or not coord.is_auto_resumable:
+        return None
+    if (inventory.available_stock or 0) <= 0:
+        return None
+
+    coord.purchase_paused = False
+    coord.pause_reason = ""
+    coord.customer_notice = ""          # 清掉陈旧的"暂时缺货"文案
+    coord.updated_by = "system:auto_resume（补货后自动恢复接单）"
+    coord.save(update_fields=["purchase_paused", "pause_reason", "customer_notice",
+                             "updated_by", "updated_at"])
+    name = inventory.product.name if inventory.product else f"#{inventory.product_id}"
+    return (f"「{name}」可用库存已恢复到 {inventory.available_stock} 包，"
+            f"已自动解除断货暂停、恢复接单")
+
+
 def adjust_inventory_stock(inventory: Inventory, delta: int, *, note: str = "") -> Inventory:
     """后台手动增减库存（补货入库 / 盘点出库）。
 
     与订单状态机无耦合：只改 `stock`，不动 `reserved_stock`
     （预占库存由订单的 reserve/deduct/release 负责，手工调整不应介入，
     否则会出现「可用库存」与订单对不上账）。
+
+    ⚠️ 补货（delta > 0）成功后，会尝试解除该商品「因断货而暂停接单」的跨 Agent
+    覆盖（见 `auto_resume_stockout_pause`）—— 否则就会出现
+    「后台库存已补齐、前台却仍显示不可购买」的死锁。
 
     :param inventory: 待调整的库存记录
     :param delta: 增量，正数为入库、负数为出库
@@ -288,6 +329,13 @@ def adjust_inventory_stock(inventory: Inventory, delta: int, *, note: str = "") 
             )
         inv.stock = new_stock
         inv.save(update_fields=["stock", "updated_at"])
+
+        # 补货后解除"断货型"暂停：不解除就是死锁（后台有货、前台买不了）
+        if delta > 0:
+            resumed = auto_resume_stockout_pause(inv)
+            if resumed:
+                logger.info("补货后自动恢复接单：%s", resumed)
+
         return inv
 
 

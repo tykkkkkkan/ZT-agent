@@ -42,44 +42,85 @@ def check(label, cond, detail=""):
 MISLEADING = ("库存充足", "建议尽快下单", "可正常接单")
 
 
+def _temp_paused(product, reason=None):
+    """上下文管理器：临时把某商品置为「暂停接单」，退出时精确还原。
+
+    为什么要自己造场景：本节原先依赖"库里存在被暂停的商品"，结果那条死锁
+    被修掉之后，**本节 7 项断言全部静默消失**（测试总数 26 → 19）——
+    而它恰恰是这一层最关键的用例（AI 不得对客户承诺买不到的东西）。
+    """
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _ctx():
+        coord = ProductCoordination.objects.filter(product_id=product.id).first()
+        snap = None if coord is None else (
+            coord.pk, coord.purchase_paused, coord.pause_reason,
+            coord.customer_notice, coord.updated_by)
+        created = False
+        if coord is None:
+            coord = ProductCoordination.objects.create(product_id=product.id)
+            created = True
+        coord.purchase_paused = True
+        coord.pause_reason = reason or ProductCoordination.PAUSE_MANUAL
+        coord.customer_notice = "「%s」暂时缺货，可先收藏或咨询客服。" % product.name
+        coord.updated_by = "verify_agent_tools_sync"
+        coord.save()
+        try:
+            yield
+        finally:
+            if created:
+                coord.delete()
+            else:
+                pk, paused, rsn, notice, by = snap
+                ProductCoordination.objects.filter(pk=pk).update(
+                    purchase_paused=paused, pause_reason=rsn or "",
+                    customer_notice=notice or "", updated_by=by or "")
+
+    return _ctx()
+
+
 def main():
-    # ── ① 暂停接单商品 ──────────────────────────────────────────
-    paused = None
-    for coord in ProductCoordination.objects.filter(purchase_paused=True):
-        p = Products.objects.filter(pk=coord.product_id).first()
-        if p and p.is_active:
-            paused = p
-            break
+    # ── ① 暂停接单商品（自己造场景，不依赖库里碰巧有的数据）──────
+    paused = next(
+        (p for p in Products.objects.filter(is_active=True)
+         if Inventory.objects.filter(product_id=p.id, stock__gt=0).exists()),
+        None,
+    )
 
-    if paused:
-        inv = Inventory.objects.filter(product_id=paused.id).first()
-        verdict = evaluate(paused, inv, ProductCoordination.objects.filter(
-            product_id=paused.id).first())
-        print(f"① 暂停接单商品：#{paused.id} {paused.name}"
-              f"（stock={inv.stock if inv else '-'} reserved={inv.reserved_stock if inv else '-'}）")
+    if paused is not None:
+        with _temp_paused(paused):
+            inv = Inventory.objects.filter(product_id=paused.id).first()
+            coord = ProductCoordination.objects.filter(product_id=paused.id).first()
+            verdict = evaluate(paused, inv, coord)
+            print(f"① 暂停接单商品（临时构造，用后还原）：#{paused.id} {paused.name}"
+                  f"（stock={inv.stock if inv else '-'} reserved={inv.reserved_stock if inv else '-'}）")
+            check("构造生效：该商品已不可购", verdict["can_buy"] is False,
+                  f"can_buy={verdict['can_buy']} reason={verdict['reason']}")
 
-        out = tools.query_product(paused.name)
-        check("query_product 明确告知不可下单", "暂不可下单" in out or "暂停接单" in out,
-              out.splitlines()[-1][:60])
-        check("query_product 不出现误导表述",
-              not any(w in out for w in MISLEADING),
-              next((w for w in MISLEADING if w in out), "无"))
+            out = tools.query_product(paused.name)
+            check("query_product 明确告知不可下单", "暂不可下单" in out or "暂停接单" in out,
+                  out.splitlines()[-1][:60])
+            check("query_product 不出现误导表述",
+                  not any(w in out for w in MISLEADING),
+                  next((w for w in MISLEADING if w in out), "无"))
 
-        out2 = tools.check_inventory(paused.name)
-        check("check_inventory 明确告知不可购", "⛔" in out2 or "暂不可下单" in out2,
-              out2.splitlines()[-1][:60])
-        check("check_inventory 不出现误导表述",
-              not any(w in out2 for w in MISLEADING),
-              next((w for w in MISLEADING if w in out2), "无"))
-        check("check_inventory 引导换购/留资，而非让客户下单",
-              "换购" in out2 or "补货" in out2, out2.splitlines()[-1][:60])
+            out2 = tools.check_inventory(paused.name)
+            check("check_inventory 明确告知不可购", "⛔" in out2 or "暂不可下单" in out2,
+                  out2.splitlines()[-1][:60])
+            check("check_inventory 不出现误导表述",
+                  not any(w in out2 for w in MISLEADING),
+                  next((w for w in MISLEADING if w in out2), "无"))
+            check("check_inventory 引导换购/留资，而非让客户下单",
+                  "换购" in out2 or "补货" in out2, out2.splitlines()[-1][:60])
 
-        out3 = tools.calculate_quote([{"name": paused.name, "qty": 2}])
-        check("calculate_quote 标注不可下单", "不可下单" in out3 or "无法按本单数量" in out3,
-              out3.splitlines()[-1][:60])
-        check("calculate_quote 仍给出金额（报价不因缺货消失）", "合计" in out3)
+            out3 = tools.calculate_quote([{"name": paused.name, "qty": 2}])
+            check("calculate_quote 标注不可下单", "不可下单" in out3 or "无法按本单数量" in out3,
+                  out3.splitlines()[-1][:60])
+            check("calculate_quote 仍给出金额（报价不因缺货消失）", "合计" in out3)
+        print("    (已还原该商品原先的接单状态)")
     else:
-        print("① 当前无「暂停接单」商品，跳过（可通过营销侧下发 pause_product 造场景）")
+        print("① 无在售且有库存的商品，无法构造暂停场景，跳过")
 
     # ── ② / ③ 可购商品：工具结论 == purchase_guard 判定 ──────────
     print("\n②③ 可购商品：工具结论与 purchase_guard 一致")
@@ -106,18 +147,29 @@ def main():
                   str(v["available_stock"]) in out_i and str(v["available_stock"]) in out_p,
                   f"guard={v['available_stock']}")
 
-    # 预占场景：总库存 != 可用库存时必须区分
-    print("\n③ 总库存与可用库存的区分")
-    reserved_case = Inventory.objects.filter(reserved_stock__gt=0, stock__gt=0).first()
-    if reserved_case:
-        p = reserved_case.product
-        out = tools.check_inventory(p.name)
-        avail = reserved_case.available_stock
-        check("工具同时给出总库存与可用库存",
-              "总库存" in out and "可用库存" in out and f"预占 {reserved_case.reserved_stock}" in out,
-              f"{p.name}: stock={reserved_case.stock} reserved={reserved_case.reserved_stock} avail={avail}")
+    # 预占场景：总库存 != 可用库存时必须区分（同样自己造，不靠现有数据）
+    print("\n③ 总库存与可用库存的区分（临时构造预占）")
+    target = Inventory.objects.filter(stock__gt=3).select_related('product').first()
+    if target is None:
+        print("  (无可用库存基数足够的商品，跳过)")
     else:
-        print("  (当前无预占中的库存，跳过)")
+        old_reserved = target.reserved_stock or 0
+        try:
+            Inventory.objects.filter(pk=target.pk).update(reserved_stock=old_reserved + 3)
+            target.refresh_from_db()
+            p = target.product
+            out = tools.check_inventory(p.name)
+            avail = target.available_stock
+            check("工具同时给出总库存与可用库存",
+                  "总库存" in out and "可用库存" in out
+                  and f"预占 {target.reserved_stock}" in out,
+                  f"{p.name}: stock={target.stock} reserved={target.reserved_stock} avail={avail}")
+            check("可用库存 = 总库存 − 预占（工具没自己算错）",
+                  avail == (target.stock or 0) - (target.reserved_stock or 0),
+                  f"{target.stock} - {target.reserved_stock} = {avail}")
+        finally:
+            Inventory.objects.filter(pk=target.pk).update(reserved_stock=old_reserved)
+            print(f"    (已还原 {target.product.name} 的预占为 {old_reserved})")
 
     # ── ④ 订单状态：物流（含已完成）+ 售后进展 ──────────────────
     print("\n④ get_order_status 的物流与售后")

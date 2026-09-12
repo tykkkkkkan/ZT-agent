@@ -13,9 +13,11 @@ agent/admin.py — 注册所有模型到 Django Admin 后台
 """
 import csv
 import json
+import logging
 import threading
 from decimal import Decimal
 from django.db.models import F, Sum, Q, Count
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.utils import timezone
 from django.utils.html import format_html
@@ -29,12 +31,15 @@ from unfold.admin import ModelAdmin as _UnfoldModelAdmin
 from agent.models import (
     Products, Inventory, Orders, Conversations, ContactMessage, CustomRequest,
     KnowledgeChunk, Wallet, Transaction, TxType, TxCategory, OrderStatus, ReturnStatus,
+    ProductCoordination,
 )
 from agent.services import (
     transition_order, revert_shipped_to_pending, manual_wallet_adjust,
     adjust_inventory_stock, reject_return_request, OrderTransitionError,
 )
 from agent.knowledge_data import invalidate_rag_cache
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_json_body(request):
@@ -172,21 +177,62 @@ class ProductsAdmin(ZYQuickToggleAdmin):
 # 库存管理 — 状态可视化
 # ══════════════════════════════════════════════════════════════
 class StockStateFilter(admin.SimpleListFilter):
+    """库存状态筛选。
+
+    ⚠️ 口径：一律按**可用库存**（stock − reserved_stock）判定，与
+    「数据看板」「营销侧库存健康度」「前台可购性」保持一致。
+    原先这里只看 `stock`，于是「总库存 10、已被订单预占 10」的商品
+    会被归为"正常"，但前台实际一包都卖不了 —— 典型的口径不一致。
+    """
     title = '库存状态'
     parameter_name = 'stock_state'
 
     def lookups(self, request, model_admin):
-        return (('out', '缺货(≤0)'), ('low', '低于预警线'), ('ok', '正常'))
+        return (('out', '无可用库存(=0)'), ('low', '可用低于预警线'), ('ok', '正常'))
 
     def queryset(self, request, queryset):
+        qs = queryset.annotate(
+            _avail=F('stock') - Coalesce(F('reserved_stock'), 0),
+        ).filter(stock__isnull=False)
         if self.value() == 'out':
-            return queryset.filter(stock__isnull=False, stock__lte=0)
+            return qs.filter(_avail__lte=0)
         if self.value() == 'low':
-            return queryset.filter(stock__isnull=False, alert_line__isnull=False,
-                                    stock__gt=0, stock__lte=F('alert_line'))
+            return qs.filter(alert_line__isnull=False, _avail__gt=0, _avail__lte=F('alert_line'))
         if self.value() == 'ok':
-            return queryset.filter(stock__isnull=False, alert_line__isnull=False,
-                                    stock__gt=F('alert_line'))
+            return qs.filter(alert_line__isnull=False, _avail__gt=F('alert_line'))
+        return queryset
+
+
+class CoordStateFilter(admin.SimpleListFilter):
+    """接单状态筛选：快速找出「前台买不了」的商品（含被跨 Agent 暂停的）。"""
+    title = '接单状态'
+    parameter_name = 'coord_state'
+
+    def lookups(self, request, model_admin):
+        return (('paused', '已暂停接单'), ('no_avail', '有总库存但无可用'), ('buyable', '可下单'))
+
+    def _split(self):
+        from agent.models import ProductCoordination
+        paused_ids = list(ProductCoordination.objects
+                          .filter(purchase_paused=True)
+                          .values_list('product_id', flat=True))
+        return paused_ids
+
+    def queryset(self, request, queryset):
+        v = self.value()
+        if not v:
+            return queryset
+        paused_ids = self._split()
+        if v == 'paused':
+            return queryset.filter(product_id__in=paused_ids)
+        if v == 'no_avail':
+            return queryset.annotate(
+                _avail=F('stock') - Coalesce(F('reserved_stock'), 0),
+            ).exclude(product_id__in=paused_ids).filter(_avail__lte=0)
+        if v == 'buyable':
+            return queryset.annotate(
+                _avail=F('stock') - Coalesce(F('reserved_stock'), 0),
+            ).exclude(product_id__in=paused_ids).filter(_avail__gt=0)
         return queryset
 
 
@@ -200,12 +246,21 @@ class InventoryAdmin(ZYModelAdmin):
       2) 每行「± 调整」按钮 → 弹窗输增量（+100 / -20）即改即生效，
          适合日常零散补货，不用进详情页；
       3) 补充「预占库存 / 可用库存」列，避免只看 stock 就误判可卖数量。
+
+    ⚠️ 「接单状态」列（本轮新增，解决"后端有货、前端却买不了"）：
+      前端能否购买 = 在售 × 未被跨 Agent 暂停 × 可用库存 > 0。
+      原先后台只显示 stock，于是出现"库存 100 却买不了"时无从排查 ——
+      实际是营销 Agent 断货时下发的暂停覆盖还挂着（补货后未解除）。
+      本列同时给出暂停原因与「是否会随补货自动恢复」，并可一键恢复/暂停接单。
+      · list_editable 直接改 stock 时也会触发"补货后自动恢复接单"
+        （见 save_model）—— 否则在列表里补货仍会留下死锁。
     """
     list_display = ('id', 'product_name_display', 'stock', 'reserved_display',
-                    'available_display', 'alert_line', 'stock_status', 'quick_ops')
+                    'available_display', 'alert_line', 'stock_status',
+                    'coord_status', 'quick_ops')
     search_fields = ('product__name',)
     list_select_related = ('product',)
-    list_filter = (StockStateFilter,)
+    list_filter = (StockStateFilter, CoordStateFilter)
     list_editable = ('stock', 'alert_line')     # 列表内直接改（批量盘点主路径）
     ordering = ('id',)                                       # id 升序
     list_per_page = 25
@@ -215,8 +270,83 @@ class InventoryAdmin(ZYModelAdmin):
         custom = [
             path('quick-adjust/', self.admin_site.admin_view(self.quick_adjust_view),
                  name='agent_inventory_quick_adjust'),
+            path('coord-toggle/', self.admin_site.admin_view(self.coord_toggle_view),
+                 name='agent_inventory_coord_toggle'),
         ]
         return custom + urls
+
+    def save_model(self, request, obj, form, change):
+        """列表内直接改 stock 也要走「补货后自动恢复接单」。
+
+        ⚠️ 必须在这里挂钩：`list_editable` 保存的是 ModelForm，**不经过**
+        `services.adjust_inventory_stock`，所以"± 调整"弹窗能自动恢复、
+        而在列表里直接改数字却不能 —— 那会留下新的死锁。
+        """
+        old_stock = None
+        if change and obj.pk:
+            old_stock = Inventory.objects.filter(pk=obj.pk) \
+                .values_list('stock', flat=True).first()
+        super().save_model(request, obj, form, change)
+        increased = (old_stock is None) or ((obj.stock or 0) > (old_stock or 0))
+        if increased:
+            try:
+                from agent.services import auto_resume_stockout_pause
+                inv = Inventory.objects.select_related('product').get(pk=obj.pk)
+                msg = auto_resume_stockout_pause(inv)
+                if msg:
+                    self.message_user(request, f'✓ {msg}')
+            except Exception:  # noqa: BLE001 — 库存已保存成功，恢复接单失败不该报错
+                logger.exception('补货后自动恢复接单失败：inventory=%s', obj.pk)
+
+    def coord_toggle_view(self, request):
+        """POST JSON：{id, action: resume|pause, reason, notice} → 恢复/暂停接单。
+
+        「暂停接单」写 manual 原因 → 永不自动解除（质量问题等）；
+        「恢复接单」清空覆盖与陈旧的"暂时缺货"提示语。
+        """
+        if request.method != 'POST':
+            return JsonResponse({'success': False, 'message': '仅支持 POST'}, status=405)
+        data = _parse_json_body(request)
+        if data is None:
+            return JsonResponse({'success': False, 'message': '请求体必须是 JSON'}, status=400)
+
+        inv = Inventory.objects.filter(pk=data.get('id')).select_related('product').first()
+        if inv is None:
+            return JsonResponse({'success': False, 'message': '库存记录不存在'}, status=404)
+
+        from agent.models import ProductCoordination
+        action = (data.get('action') or '').strip()
+        coord, _created = ProductCoordination.objects.get_or_create(product_id=inv.product_id)
+        name = inv.product.name if inv.product else f'#{inv.product_id}'
+
+        if action == 'resume':
+            coord.purchase_paused = False
+            coord.pause_reason = ''
+            coord.customer_notice = ''
+            coord.updated_by = f'admin:{request.user.username}'
+            coord.save(update_fields=['purchase_paused', 'pause_reason',
+                                      'customer_notice', 'updated_by', 'updated_at'])
+            return JsonResponse({
+                'success': True,
+                'message': f'「{name}」已恢复接单，前台即可正常下单。',
+                'paused': False,
+            })
+
+        if action == 'pause':
+            notice = (data.get('notice') or '').strip()[:500]
+            coord.purchase_paused = True
+            coord.pause_reason = ProductCoordination.PAUSE_MANUAL
+            coord.customer_notice = notice or f'「{name}」暂时无法下单，请联系客服。'
+            coord.updated_by = f'admin:{request.user.username}'
+            coord.save(update_fields=['purchase_paused', 'pause_reason',
+                                      'customer_notice', 'updated_by', 'updated_at'])
+            return JsonResponse({
+                'success': True,
+                'message': f'「{name}」已暂停接单（人工，补货不会自动恢复）。',
+                'paused': True,
+            })
+
+        return JsonResponse({'success': False, 'message': f'不支持的操作：{action}'}, status=400)
 
     def quick_adjust_view(self, request):
         """POST JSON：{id, delta, note} → 按增量调整库存（正数入库 / 负数出库）。"""
@@ -239,10 +369,24 @@ class InventoryAdmin(ZYModelAdmin):
             inv = adjust_inventory_stock(inv, delta, note=(data.get('note') or '').strip())
         except OrderTransitionError as e:
             return JsonResponse({'success': False, 'message': e.message}, status=400)
+
+        # 补货可能顺带解除了"断货暂停"，把这件事告诉操作者，
+        # 否则他不知道为什么前台突然能买了（或仍不能买）
+        extra = ''
+        try:
+            from agent.models import ProductCoordination
+            coord = ProductCoordination.objects.filter(product_id=inv.product_id).first()
+            if coord and coord.purchase_paused:
+                extra = ('　⚠️ 该商品当前仍处于「暂停接单」'
+                         f'（{"人工暂停" if coord.pause_reason == "manual" else "断货暂停"}），'
+                         '前台暂时买不了，可在本页点「恢复接单」。')
+        except Exception:  # noqa: BLE001
+            pass
+
         return JsonResponse({
             'success': True,
             'message': f"「{inv.product.name}」库存已{'增加' if delta > 0 else '减少'} "
-                       f"{abs(delta)}，现为 {inv.stock} 包。",
+                       f"{abs(delta)}，现为 {inv.stock} 包。{extra}",
             'stock': inv.stock,
         })
 
@@ -273,19 +417,81 @@ class InventoryAdmin(ZYModelAdmin):
             return format_html('<span style="color:#E2703A;font-weight:600;">● 预警</span>')
         return format_html('<span style="color:#1F6B54;font-weight:600;">● 正常</span>')
 
+    # ── 接单状态（跨 Agent 覆盖）──────────────────────────────
+    def _coord_map(self):
+        """一次性取覆盖表，避免逐行查询（列表页 25 行会变 25 次查询）。"""
+        from agent.models import ProductCoordination
+        if not hasattr(self, '_coord_cache'):
+            self._coord_cache = {c.product_id: c for c in ProductCoordination.objects.all()}
+        return self._coord_cache
+
+    @admin.display(description='接单状态')
+    def coord_status(self, obj):
+        """告诉运营「后台有货，但前台是不是真的能买」。
+
+        这是排查"库存够却买不了"最需要的一列：把前端可购性的三个条件
+        （在售 × 未被暂停 × 可用>0）在后台一次显示清楚。
+        """
+        coord = self._coord_map().get(obj.product_id)
+        paused = bool(coord and coord.purchase_paused)
+        avail = obj.available_stock
+        name = obj.product.name if obj.product else ''
+
+        if not paused and avail > 0:
+            return format_html('<span style="color:#1F6B54;font-weight:600;">● 可下单</span>')
+
+        if paused:
+            why = '人工暂停' if (coord.pause_reason == ProductCoordination.PAUSE_MANUAL) \
+                else '断货暂停'
+            auto = '' if coord.pause_reason == ProductCoordination.PAUSE_MANUAL \
+                else '（补货后自动恢复）'
+            tone = '#B5481C' if avail > 0 else '#E2703A'
+            return format_html(
+                '<span style="color:{};font-weight:600;">⛔ 暂停接单</span>'
+                '<br><span style="color:#738079;font-size:11.5px;">{} {}</span>',
+                tone, why, auto,
+            )
+
+        # 未暂停但可用库存为 0
+        return format_html(
+            '<span style="color:#B5481C;font-weight:600;">⛔ 无可售库存</span>'
+            '<br><span style="color:#738079;font-size:11.5px;">'
+            '总库存 {} / 预占 {}，补货后即可下单</span>',
+            obj.stock or 0, obj.reserved_stock or 0,
+        )
+
     @admin.display(description='快速操作')
     def quick_ops(self, obj):
-        """行内「± 调整」：弹窗输增量，即改即生效，不用进详情页。"""
+        """行内「± 调整」+「恢复/暂停接单」。"""
         name = obj.product.name if obj.product else f'#{obj.product_id}'
+        coord = self._coord_map().get(obj.product_id)
+        paused = bool(coord and coord.purchase_paused)
+        url = reverse('admin:agent_inventory_coord_toggle')
+
+        toggle = format_html(
+            '<button type="button" class="zy-op-btn"'
+            ' data-zy-coord="1"'
+            ' data-zy-url="{}"'
+            ' data-zy-id="{}"'
+            ' data-zy-name="{}"'
+            ' data-zy-action="{}">'
+            '{} 接单</button>',
+            url, obj.pk, name,
+            'resume' if paused else 'pause',
+            '恢复' if paused else '暂停',
+        )
         return format_html(
+            '<div class="zy-op">'
             '<button type="button" class="zy-op-btn zy-op-go"'
             ' data-zy-stock="1"'
             ' data-zy-url="{}"'
             ' data-zy-id="{}"'
             ' data-zy-name="{}"'
-            ' data-zy-now="{}">± 调整</button>',
+            ' data-zy-now="{}">± 调整</button>'
+            '{}</div>',
             reverse('admin:agent_inventory_quick_adjust'),
             obj.pk, name, obj.stock or 0,
+            toggle,
         )
 
 

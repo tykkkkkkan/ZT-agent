@@ -9,6 +9,9 @@
  *      一键翻转类（留言已读、产品上下架）：POST JSON {id}，成功后整页刷新。
  *   3. <button data-zy-stock="1" data-zy-url=".." data-zy-id=".." data-zy-now="..">
  *      库存「± 调整」：弹窗输增量（正数入库 / 负数出库），提交后刷新。
+ *   4. <button data-zy-coord="1" data-zy-url=".." data-zy-id=".." data-zy-action="resume|pause">
+ *      接单状态「恢复/暂停接单」：暂停时弹窗收客户提示语；恢复时直接提交。
+ *      用途：跨 Agent 覆盖导致"后台有货但前台买不了"时，运营可在此一键恢复。
  */
 (function () {
     'use strict';
@@ -184,10 +187,54 @@
         });
     }
 
+    /* ── 4. 接单状态：恢复 / 暂停接单 ──────────────────────── */
+    function bindCoordButtons() {
+        var btns = document.querySelectorAll('button[data-zy-coord="1"]');
+        if (!btns.length) return;
+
+        Array.prototype.forEach.call(btns, function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.preventDefault();
+                var action = btn.getAttribute('data-zy-action');
+                var name = btn.getAttribute('data-zy-name') || '该商品';
+                var payload = { id: btn.getAttribute('data-zy-id'), action: action };
+
+                if (action === 'pause') {
+                    // 暂停是人工决定（质量问题等），补货不会自动恢复，需让操作者知情
+                    var notice = window.prompt(
+                        '暂停「' + name + '」接单。\n' +
+                        '提示：人工暂停不会随补货自动恢复，需在此手动恢复。\n\n' +
+                        '给客户看的提示语（可留空用默认）：', '');
+                    if (notice === null) return;          // 取消
+                    payload.notice = notice;
+                } else if (!window.confirm(
+                        '恢复「' + name + '」接单？\n恢复后前台即可正常下单。')) {
+                    return;
+                }
+
+                var old = btn.textContent;
+                btn.disabled = true;
+                btn.textContent = '…';
+                postJSON(btn.getAttribute('data-zy-url'), payload,
+                    function (d) {
+                        // 顺带把返回的说明提示出来，操作完刷新可见新状态
+                        if (d && d.message) { window.alert(d.message); }
+                        window.location.reload();
+                    },
+                    function (msg) {
+                        alert(msg);
+                        btn.disabled = false;
+                        btn.textContent = old;
+                    });
+            });
+        });
+    }
+
     function init() {
         try { bindBackLinks(); } catch (e) { /* 忽略，不影响其它交互 */ }
         try { bindPostButtons(); } catch (e) { /* 同上 */ }
         try { bindStockButtons(); } catch (e) { /* 同上 */ }
+        try { bindCoordButtons(); } catch (e) { /* 同上 */ }
     }
 
     if (document.readyState === 'loading') {

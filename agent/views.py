@@ -1071,8 +1071,20 @@ def coordination_inbound_api(request):
     defaults = {}
     if event == "pause_product":
         defaults["purchase_paused"] = True
+        # 记录暂停原因，决定"补货后能否自动解除"：
+        #   营销侧的 pause_product 只由「可用库存 ≤ 0」触发 → 默认 stockout；
+        #   补货后 services.auto_resume_stockout_pause 会自动恢复接单，
+        #   否则会形成"后台库存够了、前台却永远买不了"的死锁。
+        #   调用方显式传 reason=manual 时视为人工暂停，永不自动解除。
+        req_reason = (body.get("reason") or "").strip().lower()
+        defaults["pause_reason"] = (
+            ProductCoordination.PAUSE_MANUAL if req_reason == "manual"
+            else ProductCoordination.PAUSE_STOCKOUT
+        )
     elif event == "resume_product":
         defaults["purchase_paused"] = False
+        defaults["pause_reason"] = ""
+        defaults["customer_notice"] = ""       # 恢复接单时清掉"暂时缺货"旧文案
     if "customer_notice" in body:
         defaults["customer_notice"] = (body.get("customer_notice") or "")[:500]
 
@@ -1085,6 +1097,7 @@ def coordination_inbound_api(request):
         "data": {
             "product_id": product_id,
             "purchase_paused": obj.purchase_paused,
+            "pause_reason": obj.pause_reason,
             "customer_notice": obj.customer_notice or "",
             "updated_by": obj.updated_by,
             "updated_at": obj.updated_at.isoformat() if obj.updated_at else None,

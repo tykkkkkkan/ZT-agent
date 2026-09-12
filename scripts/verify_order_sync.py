@@ -28,7 +28,9 @@ from django.contrib.auth import get_user_model          # noqa: E402
 from django.test import Client, override_settings       # noqa: E402
 from django.utils import timezone                       # noqa: E402
 
-from agent.models import Orders, OrderStatus, Products, UserProfile  # noqa: E402
+from agent.models import (                              # noqa: E402
+    Inventory, Orders, OrderStatus, ProductCoordination, Products, UserProfile,
+)
 
 PASS, FAIL = [], []
 
@@ -70,6 +72,50 @@ def pick_user_with_phone():
     return su, (p.phone if p else "")
 
 
+def _temp_pause(prods):
+    """上下文管理器：临时把某个可购商品置为「暂停接单」，退出时精确还原。
+
+    :param prods: {product_id: 产品接口返回的 dict}
+    :return: 一个上下文管理器，`as` 得到被暂停的商品 dict（无法构造时为 None）
+    """
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _ctx():
+        target = next((p for p in prods.values()
+                       if p["can_buy"] and p["available_stock"] > 0), None)
+        if target is None:
+            yield None
+            return
+
+        coord = ProductCoordination.objects.filter(product_id=target["id"]).first()
+        snap = None if coord is None else (
+            coord.pk, coord.purchase_paused, coord.pause_reason,
+            coord.customer_notice, coord.updated_by)
+        created = False
+        if coord is None:
+            coord = ProductCoordination.objects.create(product_id=target["id"])
+            created = True
+        coord.purchase_paused = True
+        coord.pause_reason = ProductCoordination.PAUSE_MANUAL   # manual：不会被补货逻辑自动解除
+        coord.customer_notice = f"「{target['name']}」暂时缺货，可先收藏或咨询客服。"
+        coord.updated_by = "verify_order_sync"
+        coord.save()
+        try:
+            yield target
+        finally:
+            if created:
+                coord.delete()
+            else:
+                pk, pz, rsn, notice, by = snap
+                ProductCoordination.objects.filter(pk=pk).update(
+                    purchase_paused=pz, pause_reason=rsn or "",
+                    customer_notice=notice or "", updated_by=by or "")
+            print("    (已还原该商品的接单状态)")
+
+    return _ctx()
+
+
 def main():
     User = get_user_model()
     user, phone = pick_user_with_phone()
@@ -85,7 +131,11 @@ def main():
     with override_settings(ALLOWED_HOSTS=["testserver"]):
         c = Client()
 
-        # ── ① 可购买性口径一致（营销侧暂停购买） ────────────────
+        # ── ① 可购买性口径一致（前台标不可购 ⇔ 下单被拦） ───────
+        # 这里**自己造暂停场景并全程保持**：库里若没有暂停商品，
+        # 之前的写法会让这段最关键的用例随数据修复而静默消失。
+        # ⚠️ 造的场景必须覆盖到「下单被拦」那一步才能还原，否则下单时暂停已解除
+        #    → 断言假失败、还顺手多下一单（这个坑已经踩过一次）。
         print("\n① 前台产品接口 × 下单接口：可购买性口径")
         code, data = jget(c, "/api/products/", auth)
         prods = {p["id"]: p for p in data.get("products", [])}
@@ -94,23 +144,34 @@ def main():
         check("产品接口返回 purchase_paused 字段",
               bool(prods) and all("purchase_paused" in p for p in prods.values()))
 
-        paused = [p for p in prods.values() if p.get("purchase_paused")]
-        print(f"    当前被暂停购买的商品：{[(p['id'], p['name']) for p in paused]}")
-        if paused:
-            p0 = paused[0]
-            check(f"暂停商品 #{p0['id']} 在接口里标记为不可购", p0["can_buy"] is False,
-                  f"can_buy={p0['can_buy']}")
-            check("不可购原因码为 purchase_paused",
-                  p0["buy_block_reason"] == "purchase_paused", p0["buy_block_reason"])
-            st, res = jpost(c, "/api/orders/", {
-                "customer_name": "口径测试", "phone": phone or "13800000000",
-                "product_id": p0["id"], "quantity": 1,
-            }, auth)
-            check("对暂停商品下单被拒绝", st == 400, f"HTTP {st} {res.get('message', '')}")
-            check("拒绝原因码与产品接口一致",
-                  res.get("code") == "purchase_paused", res.get("code", ""))
-        else:
-            print("    (当前无暂停商品，跳过对比；字段契约已校验)")
+        pause_ctx = _temp_pause(prods)
+        with pause_ctx as target_p:
+            if target_p is not None:
+                print(f"    (临时构造暂停商品 #{target_p['id']} {target_p['name']}，本段结束即还原)")
+            _code, _data = jget(c, "/api/products/", auth)
+            prods_now = {p["id"]: p for p in _data.get("products", [])}
+            paused = [p for p in prods_now.values() if p.get("purchase_paused")]
+            print(f"    当前被暂停购买的商品：{[(p['id'], p['name']) for p in paused]}")
+            if paused:
+                p0 = paused[0]
+                check(f"暂停商品 #{p0['id']} 在接口里标记为不可购", p0["can_buy"] is False,
+                      f"can_buy={p0['can_buy']}")
+                check("不可购原因码为 purchase_paused",
+                      p0["buy_block_reason"] == "purchase_paused", p0["buy_block_reason"])
+                st, res = jpost(c, "/api/orders/", {
+                    "customer_name": "口径测试", "phone": phone or "13800000000",
+                    "product_id": p0["id"], "quantity": 1,
+                }, auth)
+                check("对暂停商品下单被拒绝", st == 400,
+                      f"HTTP {st} {res.get('message', '')}")
+                check("拒绝原因码与产品接口一致",
+                      res.get("code") == "purchase_paused", res.get("code", ""))
+            else:
+                print("    (无法构造暂停场景，跳过对比；字段契约已校验)")
+
+        # 还原后再拉一次，后面的"可购商品"用例才拿得到真正的可购商品
+        _code, _data = jget(c, "/api/products/", auth)
+        prods = {p["id"]: p for p in _data.get("products", [])}
 
         from agent.purchase_guard import check_buyable
         buyable = next((p for p in prods.values() if p.get("can_buy")), None)

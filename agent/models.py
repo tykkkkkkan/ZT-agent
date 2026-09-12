@@ -175,11 +175,26 @@ class ProductCoordination(models.Model):
 
     与 products/inventory 业务表解耦——后者是 managed=False 的历史表，
     这里用一张独立托管表承载「多 Agent 协商后的临时状态」，可随时清除、不污染业务数据。
+
+    ⚠️ `pause_reason` 决定这条暂停**能不能自动解除**（真实事故换来的教训）：
+      营销 Agent 的 pause_product 只在「可用库存 ≤ 0」时发出。若补货后不解除，
+      就形成死锁 —— **后台库存明明够了，前台却永远买不了**：
+        商品#5 于 10:48 因断货被暂停（当时 stock=0），随后补到 100，
+        但覆盖表里 purchase_paused 仍为 True、提示语还写着「暂时缺货」。
+      · stockout（断货）：补货后**自动解除** —— 暂停的目的已达成，必须放行
+      · manual（人工）  ：不自动解除（可能是质量问题或主动下架），只能人工恢复
     """
+
+    PAUSE_STOCKOUT = "stockout"
+    PAUSE_MANUAL = "manual"
 
     product_id = models.IntegerField(db_index=True, unique=True, verbose_name="商品ID")
     purchase_paused = models.BooleanField(default=False, verbose_name="暂停购买")
     customer_notice = models.TextField(blank=True, null=True, verbose_name="客户提示")
+    pause_reason = models.CharField(
+        max_length=20, blank=True, default="", verbose_name="暂停原因",
+        db_comment="stockout=断货(补货后自动解除) / manual=人工(不自动解除)",
+    )
     updated_at = models.DateTimeField(auto_now=True, null=True, blank=True, verbose_name="更新时间")
     updated_by = models.CharField(max_length=64, blank=True, null=True, verbose_name="更新者")
 
@@ -188,6 +203,15 @@ class ProductCoordination(models.Model):
         db_table = "product_coordination"
         verbose_name = "商品协调覆盖"
         verbose_name_plural = "商品协调覆盖"
+
+    @property
+    def is_auto_resumable(self) -> bool:
+        """是否属于「补货后应自动恢复」的暂停。
+
+        历史数据没有 pause_reason（该列是后加的），而它们全部由营销侧的断货巡检
+        写入 —— 所以空值按 stockout 处理，否则老数据会永久卡死前台。
+        """
+        return self.purchase_paused and self.pause_reason in ("", self.PAUSE_STOCKOUT)
 
     def __str__(self):
         return f"商品#{self.product_id} 暂停购买={self.purchase_paused}"
