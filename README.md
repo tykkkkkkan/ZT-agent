@@ -58,6 +58,7 @@ flowchart LR
 - [x] **顾问引导式客服（不代客下单）**：AI 先帮顾客明确产品选择（查产品/库存/报价），顾客表达购买或定制意向时调用 `guide_to_contact` 引导，前端自动渲染「定制服务 / 联系我们」按钮卡片收尾，由人工承接交易
 - [x] **在线下单**：消费者通过 `/order.html` 主动下单（产品下拉 + 单价联动 + 总额自动计算，填写收货地址与期望交期），后端自动生成订单号并**预占库存**；Django Admin 可按状态筛选、一键发货/取消/退货
 - [x] **模拟支付与订单跟踪**：订单带与状态机**正交**的支付维度（`payment_status` / `paid_at`）。未支付的订单**不可发货**（服务层统一拦截）；下单页与个人中心均可一键「模拟支付」；超过时限未支付用 `manage.py cancel_unpaid_orders --apply` 批量取消并**释放预占库存**。本项目不接真实支付渠道，因此不引入任何需要企业资质的第三方依赖
+- [x] **商品评价**：对「已完成」订单打分（1–5 星）并留言，**一单一评**由数据库唯一约束兜底；商品页展示真实均分与评价条数（点开看评价列表，姓名脱敏）；后台评价管理**只读**（评分不可人工改）。AI 客服查产品时会带上真实口碑，不凭空夸
 - [x] **RAG 检索增强问答**：企业知识库问答走完整 RAG Pipeline（文档切块 → 向量化存储 → 余弦召回 → BM25 重排），替代原硬编码关键词匹配
 - [x] **真·流式输出**：`stream=True` 边生成边输出，非"先全量再逐字回放"，打字机体验更真实
 - [x] **Prompt 版本管理**：System Prompt 独立到 `prompts/` 目录，`load_prompt(name)` 按版本加载，便于实验与调优
@@ -269,6 +270,8 @@ docker compose up -d --build
 | POST | `/api/orders/` | 创建订单（下单页提交） |
 | POST | `/api/orders/query/` | 按手机号查询订单（隐私脱敏：仅返回订单号/产品/数量/状态/时间，不返回姓名/电话；带 order_no 时为双重验证查单个） |
 | POST | `/api/orders/<order_no>/pay/` | 模拟支付（需登录 + 归属校验；落 `paid_at` 与 `payment_status=已支付`，幂等） |
+| POST | `/api/orders/<order_no>/review/` | 发表商品评价（需登录 + 归属校验；仅「已完成」订单可评，一单一评，评分 1–5 星） |
+| GET | `/api/products/<product_id>/reviews/` | 商品评价列表（**公开**，与产品页同口径；姓名脱敏，`review_count` 为真实总数） |
 | GET | `/api/orders/<order_no>/` | 查询单个订单（脱敏 + 归属校验；staff 可跨用户查；返回支付状态与可执行操作） |
 | GET | `/admin/` | Django Admin 后台管理（含产品/库存/订单/留言/对话/定制） |
 | GET | `/order.html` | 在线下单页面 |
@@ -305,7 +308,7 @@ data: {"done": true, "session_id": "abc123"}
 
 | 工具名 | 输入 | 输出 | 数据来源 |
 |--------|------|------|----------|
-| `query_product` | 产品名（如"红虫颗粒"） | 规格、适用鱼种、零售/批发价、可购状态 | `products` 表 + `purchase_guard` |
+| `query_product` | 产品名（如"红虫颗粒"） | 规格、适用鱼种、零售/批发价、可购状态、**真实评分与评价条数** | `products` 表 + `purchase_guard` + `reviews` |
 | `check_inventory` | 产品名（如"螺鲤3号"） | 总库存 / 已预占 / **可用库存**、是否低于预警线 | `inventory` + `products` 表 |
 | `get_order_status` | 订单号（如"DD20240801"） | 订单状态、商品、金额、**支付状态**、收货地址与期望交期、物流、售后进展 | `orders` 表 |
 | `query_orders_by_phone` | 下单手机号 | 该号码名下全部订单（真实总笔数 + 物流 + 售后） | `orders` 表 |

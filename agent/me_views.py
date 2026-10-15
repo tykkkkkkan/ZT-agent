@@ -21,6 +21,7 @@ agent/me_views.py — 个人中心（C 端「我的」）接口
     POST   /api/me/orders/<order_no>/return/       申请退货 → 退货申请中
     POST   /api/me/orders/<order_no>/cancel/       取消订单（仅未发货）
     POST   /api/me/orders/<order_no>/pay/          模拟支付（仅未发货 + 未支付）
+    POST   /api/me/orders/<order_no>/review/       评价已完成订单（1–5 星，一单一评）
     POST   /api/me/orders/<order_no>/withdraw-return/  撤销退货申请
 """
 from django.contrib.auth.password_validation import validate_password
@@ -33,6 +34,7 @@ from rest_framework.response import Response
 
 from agent.me_helpers import get_profile, my_orders_q, phone_taken_by_other
 from agent.models import OrderStatus, Orders
+from agent.reviews import ReviewError, create_review, serialize_review
 from agent.services import (
     OrderTransitionError, mark_order_paid, transition_order, withdraw_return_request,
 )
@@ -57,7 +59,7 @@ def _err(message, code=400):
 
 def _my_order_or_none(user, order_no):
     """按归属规则取订单；不属于我 / 不存在 → None（统一 404，不泄露存在性）。"""
-    return Orders.objects.filter(my_orders_q(user), order_no=order_no).select_related('product').first()
+    return Orders.objects.filter(my_orders_q(user), order_no=order_no).select_related('product', 'review').first()
 
 
 def _user_payload(user, profile):
@@ -220,7 +222,7 @@ class MeOrderListView(views.APIView):
 
     def get(self, request):
         status_key = (request.GET.get('status') or '').strip()
-        qs = Orders.objects.filter(my_orders_q(request.user)).select_related('product')
+        qs = Orders.objects.filter(my_orders_q(request.user)).select_related('product', 'review')
 
         if status_key in STATUS_GROUPS:
             qs = qs.filter(status__in=[s.value for s in STATUS_GROUPS[status_key]])
@@ -281,10 +283,28 @@ class MeOrderActionView(views.APIView):
             elif action == 'pay':
                 # 模拟支付（任务书五·1）。不改订单状态机，只落支付状态与支付时间。
                 result = mark_order_paid(order, operator=request.user)
+            elif action == 'review':
+                # 商品评价（任务书六·4）。同样不碰状态机，另建一条评价记录。
+                # 这里直接 return —— 返回体与下面的通用分支不同（没有 result.message）。
+                review = create_review(
+                    order,
+                    rating=request.data.get('rating'),
+                    content=request.data.get('content') or '',
+                    user=request.user,
+                )
+                return Response({
+                    "success": True,
+                    "message": "评价提交成功，感谢你的反馈！",
+                    "review": serialize_review(review),
+                    "order": _serialize_order(order, with_actions=True),
+                })
             elif action == 'withdraw-return':
                 result = withdraw_return_request(order)
             else:
                 return _err(f"不支持的操作：{action}", code=404)
+        except ReviewError as e:
+            # 评分非法 / 未完成 / 重复评价 —— 都是用户可自行修正的问题，返回 400 与原因
+            return _err(e.message, code=400)
         except OrderTransitionError as e:
             return _err(e.message, code=400)
         except Exception:  # noqa: BLE001

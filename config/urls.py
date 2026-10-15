@@ -165,6 +165,8 @@ urlpatterns = [
     path("api/products/", views_agent.product_list, name="api_product_list"),
     # 产品全量管理（含下架）+ 单产品 CRUD（P0 补齐）
     path("api/products/all/", views_agent.products_collection, name="api_products_all"),
+    # 商品评价列表【公开】—— 必须放在 <int:product_id>/ 之前，语义更清晰（Django 也不会误匹配）
+    path("api/products/<int:product_id>/reviews/", views_agent.product_reviews_api, name="api_product_reviews"),
     path("api/products/<int:product_id>/", views_agent.product_detail_api, name="api_product_detail"),
     # 库存列表 + 库存调整（P0 补齐）
     path("api/inventory/", views_agent.inventory_list_api, name="api_inventory_list"),
@@ -181,6 +183,8 @@ urlpatterns = [
     path("api/orders/<str:order_no>/return/", views_agent.return_order_api, name="api_return_order"),
     # 模拟支付（任务书五·1）：C 端「立即支付」按钮。归属校验与订单详情同源。
     path("api/orders/<str:order_no>/pay/", views_agent.pay_order_api, name="api_pay_order"),
+    # 商品评价（任务书六·4）：对已完成订单发表评价【需登录 + 归属校验】
+    path("api/orders/<str:order_no>/review/", views_agent.create_review_api, name="api_create_review"),
     path("api/orders/<str:order_no>/", views_agent.order_detail, name="api_order_detail"),
     path("index.html", serve_frontend_file, {"filename": "index.html"}),
     path("products.html", serve_frontend_file, {"filename": "products.html"}),

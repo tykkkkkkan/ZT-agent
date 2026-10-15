@@ -344,17 +344,21 @@ def product_list(request):
     """
     from agent.models import Products, Inventory, ProductCoordination
     from agent.purchase_guard import evaluate
+    from agent import reviews as review_helper
     try:
         qs = Products.objects.all().order_by("id")
         if request.GET.get("include_inactive") != "1":
             qs = qs.filter(is_active=True)
-        # 一次性把 inventory / 协调覆盖拿出来，避免 N+1
+        products = list(qs)                       # 先实体化：下面要拿 id 列表批量查评分
+        # 一次性把 inventory / 协调覆盖 / 评分聚合拿出来，避免 N+1
         inv_map = {i.product_id: i for i in Inventory.objects.all()}
         coord_map = {c.product_id: c for c in ProductCoordination.objects.all()}
+        rating_map = review_helper.rating_summary([p.id for p in products])
         data = []
-        for p in qs:
+        for p in products:
             inv = inv_map.get(p.id)
             coord = coord_map.get(p.id)
+            rating = rating_map.get(p.id) or {}
             verdict = evaluate(p, inv, coord)
             data.append({
                 "id": p.id,
@@ -377,6 +381,9 @@ def product_list(request):
                 "purchase_paused": bool(coord and coord.purchase_paused),
                 "customer_notice": verdict["customer_notice"],
                 "reserved_stock": (inv.reserved_stock or 0) if inv else 0,
+                # ── 商品评价（任务书六·4）：无评价时 count=0、avg=0 ──
+                "rating_avg": rating.get("rating_avg", 0.0),
+                "review_count": rating.get("review_count", 0),
             })
         return JsonResponse({"success": True, "products": data})
     except Exception as e:
@@ -631,7 +638,7 @@ def query_orders(request):
         }, status=403)
 
     try:
-        qs = Orders.objects.filter(my_orders_q(me)).select_related("product")
+        qs = Orders.objects.filter(my_orders_q(me)).select_related("product", "review")
 
         # 单订单详情查询
         if order_no:
@@ -671,9 +678,8 @@ def _order_actions(order):
 
     规则集中在这里，前端只按返回的按钮名渲染，避免前后端各写一套状态判断而漂移。
     """
-    from agent.models import OrderStatus, ReturnStatus
-
-    from agent.models import PaymentStatus
+    from agent.models import OrderStatus, PaymentStatus, ReturnStatus
+    from agent import reviews as review_helper
 
     s = order.status
     acts = []
@@ -688,6 +694,10 @@ def _order_actions(order):
         acts.append('return')                       #        可申请退货
     if s == OrderStatus.COMPLETED:
         acts.append('return')                       # 已完成：仍可申请售后
+        # 任务书六·4：已完成（=已确认收货）且尚未评价 → 可评价。
+        # 判定统一问 reviews.can_review，不在这里复写"已完成 + 未评价"的条件。
+        if review_helper.can_review(order):
+            acts.append('review')
     if s == OrderStatus.RETURNING and order.return_status == ReturnStatus.PENDING:
         acts.append('withdraw_return')              # 退货待审核：可自行撤销
     return acts
@@ -735,6 +745,16 @@ def _serialize_order(order, with_actions=False):
                               if order.return_handled_at else ''),
         "return_note": order.return_note or '',
     }
+    # 任务书六·4：评价。已完成订单才可能评价，但历史已评价的订单（万一状态被回退过）
+    # 也要把评价原文带出来，免得用户"评价过却看不到"。
+    from agent import reviews as review_helper
+    from agent.models import OrderStatus
+    rv = review_helper.order_review(order)
+    data["review"] = review_helper.serialize_review(rv) if rv else None
+    data["review_block_reason"] = (
+        review_helper.reviewable_reason(order)
+        if order.status == OrderStatus.COMPLETED and not rv else ""
+    )
     if with_actions:
         data["actions"] = _order_actions(order)
     return data
@@ -769,7 +789,7 @@ def order_detail(request, order_no):
         qs = Orders.objects.all()
         if not me.is_staff:
             qs = qs.filter(my_orders_q(me))
-        order = qs.filter(order_no=order_no).select_related("product").first()
+        order = qs.filter(order_no=order_no).select_related("product", "review").first()
         if order is None:
             # 不存在与无权访问统一 404：不泄露"这个订单号确实存在"
             return JsonResponse(
@@ -814,7 +834,7 @@ def pay_order_api(request, order_no):
         qs = Orders.objects.all()
         if not me.is_staff:
             qs = qs.filter(my_orders_q(me))
-        order = qs.filter(order_no=order_no).select_related("product").first()
+        order = qs.filter(order_no=order_no).select_related("product", "review").first()
         if order is None:
             return JsonResponse(
                 {"success": False, "message": "订单不存在，或不属于当前账号"}, status=404,
@@ -830,6 +850,96 @@ def pay_order_api(request, order_no):
         return JsonResponse({"success": False, "message": e.message, "code": e.code}, status=400)
     except Exception as e:
         return _server_error(e)
+
+
+# ══════════════════════════════════════════════════════════════
+# 商品评价（任务书六·4）
+# ══════════════════════════════════════════════════════════════
+@csrf_exempt
+@require_POST
+@login_required
+def create_review_api(request, order_no):
+    """POST /api/orders/<order_no>/review/ — 对已完成订单发表评价【需登录 + 归属校验】
+
+    Body: {rating: 1-5, content?: string}
+      · rating  必填，1–5 星
+      · content 选填，允许"只打分不写字"
+
+    业务规则（谁能评、一单一评、评分范围）全部在 `agent.reviews` 里，
+    本视图只负责「鉴权 → 拿到属于我的订单 → 转交 → 包装返回」，
+    保证网页端与个人中心（DRF）两条入口的判断完全一致。
+
+    归属校验与 `order_detail` 一致：staff 可跨用户，普通用户只能评自己的订单；
+    不存在与无权统一 404，不泄露订单号是否存在。
+    """
+    from agent.models import Orders
+    from agent.me_helpers import my_orders_q
+    from agent import reviews as review_helper
+
+    me, ok = _resolve_request_user(request)
+    if not ok or me is None:
+        return JsonResponse(
+            {"success": False, "code": "LOGIN_REQUIRED", "message": "请先登录后再评价"},
+            status=401,
+        )
+
+    try:
+        body = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"success": False, "message": "请求体必须是 JSON"}, status=400)
+
+    rating = body.get("rating")
+    content = body.get("content") or ""
+
+    try:
+        qs = Orders.objects.all()
+        if not me.is_staff:
+            qs = qs.filter(my_orders_q(me))
+        order = qs.filter(order_no=order_no).select_related("product", "review").first()
+        if order is None:
+            return JsonResponse(
+                {"success": False, "message": "订单不存在，或不属于当前账号"}, status=404,
+            )
+
+        review = review_helper.create_review(
+            order, rating=rating, content=content, user=me,
+        )
+        return JsonResponse({
+            "success": True,
+            "message": "评价提交成功，感谢你的反馈！",
+            "review": review_helper.serialize_review(review),
+            "order": _serialize_order(order, with_actions=True),
+        })
+    except review_helper.ReviewError as e:
+        return JsonResponse({"success": False, "message": e.message, "code": e.code}, status=400)
+    except Exception as e:
+        return _server_error(e)
+
+
+@csrf_exempt
+@require_GET
+def product_reviews_api(request, product_id):
+    """GET /api/products/<product_id>/reviews/ — 商品评分概览与评价列表【公开】
+
+    参数：?limit=20（1–50，默认 20）
+
+    商品页是公开页面，评价也对外公开（姓名已脱敏），因此**不加登录校验** ——
+    与 `/api/products/` 同一口径。返回 `review_count` 为真实总数、`showing` 为本次
+    返回条数，两个数分开报，避免「实际 37 条却说共 20 条」的历史问题重演。
+    """
+    from agent import reviews as review_helper
+
+    raw = request.GET.get("limit") or 20
+    try:
+        limit = int(raw)
+    except (TypeError, ValueError):
+        return JsonResponse({"success": False, "message": "limit 必须是整数"}, status=400)
+
+    try:
+        data = review_helper.product_reviews(product_id, limit=limit)
+    except Exception as e:
+        return _server_error(e)
+    return JsonResponse({"success": True, "product_id": product_id, **data})
 
 
 # ══════════════════════════════════════════════════════════════
@@ -936,9 +1046,14 @@ def return_order_api(request, order_no):
 # ══════════════════════════════════════════════════════════════
 # 产品 CRUD（P0 补齐）
 # ══════════════════════════════════════════════════════════════
-def _serialize_product(p, inv_map=None):
-    """产品序列化（含 SKU 与实时库存），inv_map 用于批量避免 N+1"""
+def _serialize_product(p, inv_map=None, rating_map=None):
+    """产品序列化（含 SKU 与实时库存），inv_map 用于批量避免 N+1
+
+    :param rating_map: {product_id: {"rating_avg","review_count"}}，来自
+        `reviews.rating_summary()`；不传则评分字段按「暂无评价」返回。
+    """
     inv = (inv_map or {}).get(p.id)
+    rating = (rating_map or {}).get(p.id) or {}
     return {
         "id": p.id,
         "sku": p.sku,
@@ -953,6 +1068,9 @@ def _serialize_product(p, inv_map=None):
         "reserved_stock": (inv.reserved_stock if inv else 0),
         "available_stock": (inv.available_stock if inv else 0),
         "alert_line": (inv.alert_line if inv else 0),
+        # 商品评价（任务书六·4）
+        "rating_avg": rating.get("rating_avg", 0.0),
+        "review_count": rating.get("review_count", 0),
         "created_at": p.created_at.strftime("%Y-%m-%d %H:%M:%S") if p.created_at else "",
         "updated_at": p.updated_at.strftime("%Y-%m-%d %H:%M:%S") if p.updated_at else "",
     }
@@ -966,14 +1084,16 @@ def products_collection(request):
     POST /api/products/all/  新建产品【需管理员】
     """
     from agent.models import Products, Inventory
+    from agent import reviews as review_helper
 
     if request.method == "GET":
         try:
+            products = list(Products.objects.all().order_by("-created_at", "-id"))
             inv_map = {i.product_id: i for i in Inventory.objects.all()}
-            qs = Products.objects.all().order_by("-created_at", "-id")
+            rating_map = review_helper.rating_summary([p.id for p in products])
             return JsonResponse({
                 "success": True,
-                "products": [_serialize_product(p, inv_map) for p in qs],
+                "products": [_serialize_product(p, inv_map, rating_map) for p in products],
             })
         except Exception as e:
             return _server_error(e)
@@ -1032,13 +1152,15 @@ def products_collection(request):
 def product_detail_api(request, product_id):
     """GET/PATCH/PUT/DELETE /api/products/<id>/ — 单产品 CRUD【需管理员】"""
     from agent.models import Products, Inventory
+    from agent import reviews as review_helper
     try:
         p = Products.objects.get(id=product_id)
     except Products.DoesNotExist:
         return JsonResponse({"success": False, "message": "产品不存在"}, status=404)
 
     if request.method == "GET":
-        return JsonResponse({"success": True, "product": _serialize_product(p)})
+        rating_map = review_helper.rating_summary([p.id])
+        return JsonResponse({"success": True, "product": _serialize_product(p, None, rating_map)})
 
     if request.method == "DELETE":
         # 软删除：is_active=False（保护历史订单）

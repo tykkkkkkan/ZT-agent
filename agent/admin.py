@@ -31,7 +31,7 @@ from unfold.admin import ModelAdmin as _UnfoldModelAdmin
 from agent.models import (
     Products, Inventory, Orders, Conversations, ContactMessage, CustomRequest,
     KnowledgeChunk, Wallet, Transaction, TxType, TxCategory, OrderStatus, ReturnStatus,
-    PaymentStatus, ProductCoordination,
+    PaymentStatus, ProductCoordination, Review,
 )
 from agent.services import (
     transition_order, revert_shipped_to_pending, manual_wallet_adjust,
@@ -1555,6 +1555,74 @@ class WalletAdmin(ZYModelAdmin):
             head,
             mark_safe(''.join(str(r) for r in rows)),
         )
+
+
+# ══════════════════════════════════════════════════════════════
+# 商品评价（任务书六·4）
+# ══════════════════════════════════════════════════════════════
+@admin.register(Review)
+class ReviewAdmin(ZYModelAdmin):
+    """商品评价 —— 客户对「已完成」订单的打分与留言（每单一条）。
+
+    设计立场：**评价是客户资产，后台只读**。
+      · 不提供「新增」：评分只能由真实已完成订单产生，不接受人工补录；
+      · 所有字段只读：均分一旦被人为改动，商品口碑数据就不可信了；
+      · 保留删除：用于处理违规内容（删除后该订单可重新评价，这是有意的）。
+    列表默认「最新在前」，方便观察新品/新批次的口碑变化。
+    """
+    list_display = ('id', 'created_at', 'product_link', 'stars_display',
+                    'content_short', 'nickname_display', 'order_link')
+    list_display_links = ('id', 'created_at')
+    list_filter = ('rating', 'created_at')
+    search_fields = ('content', 'order__order_no', 'order__customer_name', 'product_id')
+    date_hierarchy = 'created_at'
+    list_per_page = 30
+    ordering = ('-created_at', '-id')
+    readonly_fields = ('order', 'product_id', 'user', 'rating', 'content',
+                       'created_at', 'updated_at')
+
+    def has_add_permission(self, request):
+        # 后台不人工造评价 —— 评分必须来自真实已完成订单
+        return False
+
+    @admin.display(description='商品', ordering='product_id')
+    def product_link(self, obj):
+        p = Products.objects.filter(id=obj.product_id).first()
+        if p is None:
+            # 商品被硬删或历史脏数据：仍显示 id，别让这一行看起来"没关联"
+            return format_html('<span style="color:#999">#{}</span>', obj.product_id)
+        url = reverse('admin:agent_products_change', args=[p.pk])
+        return format_html('<a href="{}">{} {}</a>', url, p.sku or '', p.name)
+
+    @admin.display(description='评分', ordering='rating')
+    def stars_display(self, obj):
+        # 4–5 星暖色、3 星灰、1–2 星红色：一眼看出差评
+        color = '#E6A23C' if obj.rating >= 4 else ('#909399' if obj.rating == 3 else '#F56C6C')
+        return format_html(
+            '<span style="color:{};letter-spacing:1px">{}</span>'
+            '<span style="color:#999;margin-left:6px">{}</span>',
+            color, obj.stars, obj.rating,
+        )
+
+    @admin.display(description='评价内容')
+    def content_short(self, obj):
+        text = (obj.content or '').strip()
+        if not text:
+            return mark_safe('<span style="color:#bbb">— 仅打分 —</span>')
+        return text[:40] + ('…' if len(text) > 40 else '')
+
+    @admin.display(description='评价人')
+    def nickname_display(self, obj):
+        # 后台看得见（客服需要回访），前台商品页由 reviews.mask_name 脱敏 —— 宽严分明
+        name = (obj.order.customer_name if obj.order_id else '') or ''
+        return name or '匿名客户'
+
+    @admin.display(description='关联订单')
+    def order_link(self, obj):
+        if not obj.order_id:
+            return '—'
+        url = reverse('admin:agent_orders_change', args=[obj.order_id])
+        return format_html('<a href="{}">{}</a>', url, obj.order.order_no)
 
 
 @admin.register(Transaction)

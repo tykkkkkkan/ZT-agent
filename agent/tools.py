@@ -198,6 +198,24 @@ def _payment_parts(order) -> list:
     return []
 
 
+def _rating_line(product) -> list:
+    """商品评价概览（任务书六·4）。
+
+    客户问「这个饵料好用吗 / 口碑怎么样」时，AI 不该凭空夸产品 ——
+    把真实均分与评价条数交给它，让它给出有依据的回答。
+    没有评价时返回空列表：不主动说"暂无评价"，免得听起来像在暗示商品不好。
+    """
+    from agent import reviews as review_helper
+
+    try:
+        summary = review_helper.rating_summary([product.id]).get(product.id)
+    except Exception:                                    # noqa: BLE001
+        return []
+    if not summary or not summary.get("review_count"):
+        return []
+    return [f"客户评价：{summary['rating_avg']} 分（{summary['review_count']} 条评价）"]
+
+
 # ──────────────────────────────────────────────────────────────
 # 产品查询
 # ──────────────────────────────────────────────────────────────
@@ -227,6 +245,8 @@ def query_product(name: str) -> str:
         lines.append(f"可用库存：{inv.available_stock} 包（已预占 {inv.reserved_stock}）")
     # 可购性：与前台产品页/下单页同源判定，避免 AI 承诺了却下不了单
     lines.append(_availability_line(product, inv))
+    # 真实口碑（任务书六·4）——AI 引用它回答"好不好用"，而不是自己夸
+    lines.extend(_rating_line(product))
     if product.description:
         lines.append(f"描述：{product.description}")
     return "\n".join(lines)

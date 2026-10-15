@@ -271,6 +271,37 @@
 <!-- Toast -->
 <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-[60] hidden px-5 py-3 rounded-xl text-sm font-medium shadow-lg bg-ink-900 text-white"></div>
 
+<!-- 商品评价弹窗（任务书六·4）：只有「已完成」的订单才有入口 -->
+<div id="reviewModal" class="fixed inset-0 z-[70] hidden items-center justify-center p-4" style="background:rgba(15,32,25,.55)">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div class="flex items-start justify-between gap-3 mb-1">
+            <h3 class="text-lg font-bold text-ink-900">评价商品</h3>
+            <button onclick="closeReviewModal()" class="text-ink-400 hover:text-ink-700 text-2xl leading-none" aria-label="关闭">&times;</button>
+        </div>
+        <p id="reviewProdName" class="text-xs text-ink-400 mb-4 truncate">—</p>
+
+        <div class="mb-4">
+            <div class="text-sm text-ink-600 mb-1.5">商品评分 <span class="text-sunset-500">*</span></div>
+            <div id="reviewStars" class="flex items-center gap-1"></div>
+            <div id="reviewStarHint" class="text-xs text-ink-400 mt-1.5">请点击星星打分（1–5 星）</div>
+        </div>
+
+        <div class="mb-5">
+            <div class="text-sm text-ink-600 mb-1.5">评价内容
+                <span class="text-ink-400 font-normal">（选填，最多 500 字）</span></div>
+            <textarea id="reviewContent" rows="4" maxlength="500"
+                      placeholder="说说这次的使用体验，帮助其他钓友做参考…"
+                      class="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-brand-400 resize-none"></textarea>
+            <div class="text-right text-xs text-ink-400 mt-1"><span id="reviewCount">0</span>/500</div>
+        </div>
+
+        <div class="flex justify-end gap-2">
+            <button onclick="closeReviewModal()" class="px-4 py-2 text-sm rounded-full border border-stone-300 text-ink-600 hover:bg-stone-50 transition">取消</button>
+            <button id="reviewSubmit" onclick="submitReview()" class="px-5 py-2 text-sm font-semibold rounded-full bg-brand-600 text-white hover:bg-brand-700 transition disabled:opacity-50">提交评价</button>
+        </div>
+    </div>
+</div>
+
 <script>
 /* ════════════════════════════════════════════════════════════
    个人中心 profile.html — 调用 /api/me/* 接口
@@ -280,6 +311,10 @@
     'use strict';
 
     var state = { filter: '', page: 1, hasMore: false };
+    // 评价弹窗状态（任务书六·4）
+    var reviewCtx = {};                                   // 订单号 → {name, price}，见 renderOrder
+    var reviewState = { orderNo: '', rating: 0 };
+    var STAR_LABELS = ['', '很差', '不太满意', '一般', '满意', '非常满意'];
 
     // ── 状态徽标配色（与后台一致） ───────────────────────────
     var STATUS_STYLE = {
@@ -385,6 +420,10 @@
     }
 
     function renderOrder(o) {
+        // 评价弹窗要显示"评价的是哪个商品"，但商品名可能带引号，塞进 onclick 会截断字符串。
+        // 所以只把订单号写进 onclick，商品名暂存在这里供弹窗读取。
+        reviewCtx[o.order_no] = { name: o.product_name || '', price: o.total_price || 0 };
+
         var html = '';
         html += '<div class="border border-stone-200 rounded-xl p-4" data-order="' + esc(o.order_no) + '">';
         // 头部
@@ -438,6 +477,19 @@
             html += '</div>';
         }
 
+        // 商品评价（任务书六·4）：评过就展示我的评分与内容；已完成但不可评时说明原因
+        if (o.review) {
+            html += '<div class="text-xs mb-2 rounded-lg px-3 py-2 border border-stone-200 bg-stone-50 text-ink-600">'
+                + '我的评价：<b style="letter-spacing:1px;color:#E6A23C">' + esc(o.review.stars) + '</b>'
+                + (o.review.content
+                    ? ' · ' + esc(o.review.content)
+                    : ' · <span class="text-ink-400">未填写内容</span>')
+                + '<span class="text-ink-400"> · ' + esc(o.review.created_at) + '</span>'
+                + '</div>';
+        } else if (o.review_block_reason) {
+            html += '<div class="text-xs text-ink-400 mb-2">' + esc(o.review_block_reason) + '</div>';
+        }
+
         // 售后信息
         if (o.return_status) {
             var rs = RETURN_STYLE[o.return_status] || { bg: '#EEE', fg: '#333' };
@@ -461,6 +513,12 @@
                 html += actBtn(o.order_no, 'pay', '立即支付 ¥' + (o.total_price || 0), 'bg-gradient-to-r from-brand-600 to-lake-600 text-white hover:opacity-90');
             if (acts.indexOf('confirm') >= 0)
                 html += actBtn(o.order_no, 'confirm', '确认收货', 'bg-brand-600 text-white hover:bg-brand-700');
+            if (acts.indexOf('review') >= 0)
+                // 评价需要「星级 + 文字」两个输入，原生 prompt 撑不住 → 走自定义弹窗。
+                // 因此这里不走 doAction，直接打开就地带表单的弹窗。
+                html += '<button onclick="openReviewModal(\'' + esc(o.order_no) + '\')" '
+                    + 'class="px-3.5 py-1.5 text-xs font-semibold rounded-full transition shadow-sm '
+                    + 'bg-sunset-500 text-white hover:bg-sunset-600">★ 评价商品</button>';
             if (acts.indexOf('return') >= 0)
                 html += actBtn(o.order_no, 'return', '申请退货', 'bg-sunset-500 text-white hover:bg-sunset-600');
             if (acts.indexOf('cancel') >= 0)
@@ -564,6 +622,87 @@
             toast(e.message, 'error');
         }
     };
+
+    // ── 商品评价（任务书六·4） ──────────────────────────────
+    // 只有「已完成」的订单能评价（后端 reviews.can_review 判定，前端只按 actions 渲染）。
+    // 一单一评：评过的订单后端不再下发 review 动作，这里改为展示我的评分。
+    function paintStars() {
+        var box = document.getElementById('reviewStars');
+        if (!box) return;
+        var html = '';
+        for (var i = 1; i <= 5; i++) {
+            var on = i <= reviewState.rating;
+            html += '<button type="button" onclick="pickStar(' + i + ')" '
+                + 'class="text-3xl leading-none transition hover:scale-110" '
+                + 'style="color:' + (on ? '#E6A23C' : '#D8D3CB') + '" '
+                + 'aria-label="' + i + ' 星">★</button>';
+        }
+        box.innerHTML = html;
+    }
+
+    window.openReviewModal = function (orderNo) {
+        reviewState.orderNo = orderNo;
+        reviewState.rating = 0;
+        var ctx = reviewCtx[orderNo] || {};
+        document.getElementById('reviewProdName').textContent = ctx.name || '—';
+        document.getElementById('reviewContent').value = '';
+        document.getElementById('reviewCount').textContent = '0';
+        document.getElementById('reviewStarHint').textContent = '请点击星星打分（1–5 星）';
+        paintStars();
+        var m = document.getElementById('reviewModal');
+        m.classList.remove('hidden');
+        m.classList.add('flex');
+    };
+
+    window.closeReviewModal = function () {
+        var m = document.getElementById('reviewModal');
+        if (!m) return;
+        m.classList.add('hidden');
+        m.classList.remove('flex');
+        reviewState.orderNo = '';
+        reviewState.rating = 0;
+    };
+
+    window.pickStar = function (n) {
+        reviewState.rating = n;
+        document.getElementById('reviewStarHint').textContent =
+            '已选 ' + n + ' 星 · ' + STAR_LABELS[n];
+        paintStars();
+    };
+
+    window.submitReview = async function () {
+        if (!reviewState.rating) { toast('请先点击星星打分', 'error'); return; }
+        var btn = document.getElementById('reviewSubmit');
+        btn.disabled = true;
+        try {
+            var d = await api('/api/me/orders/' + encodeURIComponent(reviewState.orderNo) + '/review/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    rating: reviewState.rating,
+                    content: document.getElementById('reviewContent').value.trim()
+                })
+            });
+            closeReviewModal();
+            toast(d.message || '评价提交成功', 'success');
+            loadOrders(state.filter, 1, false);
+        } catch (e) {
+            toast(e.message, 'error');
+        } finally {
+            btn.disabled = false;
+        }
+    };
+
+    // 字数计数 + Esc 关闭
+    (function bindReviewModal() {
+        var ta = document.getElementById('reviewContent');
+        if (ta) ta.addEventListener('input', function () {
+            document.getElementById('reviewCount').textContent = this.value.length;
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') closeReviewModal();
+        });
+    })();
 
     // ── 绑定手机号 ──────────────────────────────────────────
     window.submitPhone = async function (e) {

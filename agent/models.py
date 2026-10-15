@@ -527,3 +527,73 @@ class UserProfile(models.Model):
 
     def __str__(self):
         return f'{self.user.username}｜{self.phone or "未绑定手机号"}'
+
+
+# ════════════════════════════════════════════════════════════════
+# 商品评价（任务书六·4）
+# ════════════════════════════════════════════════════════════════
+class Review(models.Model):
+    """客户对已完成订单的商品评价。
+
+    两个设计要点
+    ------------
+    1. **一单一评由数据库保证**：`order` 用 `OneToOneField`（唯一约束），
+       而不是应用层 `if Review.objects.filter(order=...).exists()`。
+       后者在并发下两次提交会双双通过检查，落两条评价 —— 唯一约束不会。
+
+    2. **`product_id` 用 IntegerField 而不是 ForeignKey**：`products` 是
+       inspectdb 生成的 `managed=False` 老表，其 `id` 在库里是 **INT**，
+       而 Django 侧 `Products` 主键是 `BigAutoField`。若这里写成 ForeignKey，
+       建表时生成的 FK 列会是 bigint，与 `products.id INT` 不匹配，
+       MySQL 建外键会报 "Foreign key constraint is incorrectly formed"。
+       `ProductCoordination` 当初就是为了这个才用 IntegerField，此处沿用。
+
+    评分口径：`rating` 1–5 星；`content` 允许留空（只想打星不想写字也成立）。
+    """
+
+    RATING_CHOICES = [(i, f'{i} 星') for i in range(1, 6)]
+
+    # 一单一评：唯一约束落在数据库上，不靠应用层判断
+    order = models.OneToOneField(
+        Orders, models.CASCADE,
+        db_column='order_id', related_name='review',
+        verbose_name='关联订单',
+        help_text='一笔订单只能评价一次（由数据库唯一约束保证）',
+    )
+    # 冗余商品 id：产品页聚合评分时按它 group by，避免回表 orders
+    product_id = models.IntegerField(db_index=True, verbose_name='商品ID')
+    # 评价人：下单用户。历史订单（未登录下单）可能为空
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, models.SET_NULL,
+        db_column='user_id', null=True, blank=True,
+        related_name='reviews', verbose_name='评价人',
+    )
+    rating = models.PositiveSmallIntegerField(
+        choices=RATING_CHOICES, verbose_name='评分', db_comment='评分(1-5)',
+    )
+    content = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='评价内容',
+        db_comment='评价内容(可空，允许只打分)',
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True, db_index=True, verbose_name='评价时间',
+    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    class Meta:
+        db_table = 'product_reviews'
+        verbose_name = '商品评价'
+        verbose_name_plural = '商品评价'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            # 产品页按商品聚合评分 + 按时间倒序展示
+            models.Index(fields=['product_id', '-created_at'], name='idx_review_prod_created'),
+        ]
+
+    def __str__(self):
+        return f'订单 {self.order_id} 评 {self.rating} 星'
+
+    @property
+    def stars(self) -> str:
+        """纯文本星条（给 AI 工具层用，不依赖前端渲染）。"""
+        return '★' * self.rating + '☆' * (5 - self.rating)
