@@ -31,7 +31,7 @@ from unfold.admin import ModelAdmin as _UnfoldModelAdmin
 from agent.models import (
     Products, Inventory, Orders, Conversations, ContactMessage, CustomRequest,
     KnowledgeChunk, Wallet, Transaction, TxType, TxCategory, OrderStatus, ReturnStatus,
-    PaymentStatus, ProductCoordination, Review,
+    PaymentStatus, ProductCoordination, Review, UserProfile,
 )
 from agent.services import (
     transition_order, revert_shipped_to_pending, manual_wallet_adjust,
@@ -1555,6 +1555,67 @@ class WalletAdmin(ZYModelAdmin):
             head,
             mark_safe(''.join(str(r) for r in rows)),
         )
+
+
+# ══════════════════════════════════════════════════════════════
+# 用户资料（任务书二·5：客户类型 = 能不能看到批发价）
+# ══════════════════════════════════════════════════════════════
+@admin.register(UserProfile)
+class UserProfileAdmin(ZYModelAdmin):
+    """用户资料 —— 绑定手机号 / 收货人姓名 / **客户类型**。
+
+    客户类型直接决定该账号看到与成交的价格（经销商才有批发价），改这里
+    会立刻改变该账号在产品页、下单页、AI 报价里看到的价格。
+
+    「身份来源」显示是用户自己切的还是后台核定的 —— 真实业务里经销商需要
+    资质审核（营业执照），本项目为演示保留了用户自助切换，所以运营需要
+    能一眼看出哪些身份是用户自己声明的。
+    """
+    list_display = ('user_link', 'nickname', 'phone', 'customer_type_badge',
+                    'source_badge', 'updated_at')
+    list_display_links = ('user_link',)
+    list_filter = ('customer_type', 'customer_type_source')
+    search_fields = ('user__username', 'user__email', 'phone', 'nickname')
+    list_per_page = 30
+    ordering = ('user_id',)
+    readonly_fields = ('updated_at',)
+    fieldsets = (
+        ('账号', {'fields': ('user',)}),
+        ('联系与收货', {
+            'fields': ('phone', 'nickname'),
+            'description': '手机号决定「我的订单」能看到哪些历史订单（未认领订单按手机号归属）。',
+        }),
+        ('客户类型（任务书二·5）', {
+            'fields': ('customer_type', 'customer_type_source'),
+            'description': ('经销商才可见批发价，且需达到起订量才按批发价成交；'
+                            '个体钓友一律零售价。改这里会立刻影响该账号看到的价格。'),
+        }),
+        ('时间', {'fields': ('updated_at',)}),
+    )
+
+    @admin.display(description='用户', ordering='user_id')
+    def user_link(self, obj):
+        url = reverse('admin:auth_user_change', args=[obj.user_id])
+        return format_html('<a href="{}">{}</a>', url, obj.user.username)
+
+    @admin.display(description='客户类型', ordering='customer_type')
+    def customer_type_badge(self, obj):
+        wholesale = obj.customer_type == UserProfile.CustomerType.WHOLESALE
+        bg, fg = ('#DCEDE6', '#134435') if wholesale else ('#E2E5E2', '#3A473F')
+        return format_html(
+            '<span style="background:{};color:{};padding:2px 9px;border-radius:999px;'
+            'font-size:12px;font-weight:600">{}</span>',
+            bg, fg, obj.get_customer_type_display(),
+        )
+
+    @admin.display(description='身份来源', ordering='customer_type_source')
+    def source_badge(self, obj):
+        source = obj.customer_type_source or ''
+        if not source:
+            return mark_safe('<span style="color:#bbb">— 默认</span>')
+        label = UserProfile.TypeSource(source).label if source in UserProfile.TypeSource.values else source
+        color = '#E6A23C' if source == UserProfile.TypeSource.SELF else '#909399'
+        return format_html('<span style="color:{}">{}</span>', color, label)
 
 
 # ══════════════════════════════════════════════════════════════

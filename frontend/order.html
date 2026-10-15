@@ -195,11 +195,18 @@
                             <div v-if="selectedProduct" class="bg-brand-50/50 border border-brand-100 rounded-xl p-4 text-sm">
                                 <div class="flex items-center justify-between mb-2">
                                     <span class="font-semibold text-ink-800">{{ selectedProduct.name }}</span>
-                                    <span class="text-xs text-ink-500">零售价</span>
+                                    <span class="text-xs"
+                                          :class="priceTier === '批发价' ? 'text-lake-600 font-semibold' : 'text-ink-500'">
+                                        {{ priceTier }}
+                                    </span>
                                 </div>
                                 <div class="flex items-center justify-between mb-1">
                                     <span class="text-ink-500">规格：{{ selectedProduct.spec }}</span>
-                                    <span class="text-lg font-bold total-shine">¥{{ selectedProduct.retail_price.toFixed(2) }} / 包</span>
+                                    <span class="text-lg font-bold total-shine">¥{{ unitPrice.toFixed(2) }} / 包</span>
+                                </div>
+                                <!-- 经销商未达起订量时的提示：说清"再买几包能便宜"，而不是默默按零售价结算 -->
+                                <div v-if="toWholesale > 0" class="text-xs text-lake-600 mt-1">
+                                    再买 {{ toWholesale }} 包即可享批发价 ¥{{ selectedProduct.wholesale_price.toFixed(2) }}/包
                                 </div>
                                 <div class="flex items-center justify-between mb-1">
                                     <span class="text-ink-500">适用：{{ selectedProduct.target_fish }}</span>
@@ -326,7 +333,15 @@
                             </div>
                             <div class="flex justify-between text-sm">
                                 <span class="text-ink-500">单价</span>
-                                <span class="text-ink-800">¥{{ result.unit_price.toFixed(2) }}</span>
+                                <span class="text-ink-800">
+                                    ¥{{ result.unit_price.toFixed(2) }}
+                                    <!-- 任务书二·5：回显本次成交用的是哪一档价（后端给，不由前端推断） -->
+                                    <span v-if="result.price_tier"
+                                          class="ml-1 text-xs"
+                                          :class="result.price_tier === '批发价' ? 'text-lake-600 font-semibold' : 'text-ink-400'">
+                                        {{ result.price_tier }}
+                                    </span>
+                                </span>
                             </div>
                             <div class="flex justify-between text-base border-t border-brand-100 pt-2 mt-2">
                                 <span class="font-semibold text-ink-700">订单总额</span>
@@ -497,9 +512,39 @@
             const maxQuantity = computed(() =>
                 selectedProduct.value && selectedProduct.value.can_buy
                     ? Number(selectedProduct.value.available_stock || 0) : 0);
+
+            // 任务书二·5：单价按**身份 + 数量**取，规则与后端 pricing.price_for() 一致。
+            // 后端才是权威（提交后返回的 unit_price 落库），这里只求展示与结算不打架：
+            // 经销商未达起订量时前端也按零售价显示，避免"页面显示批发价、下单变零售价"。
+            const unitPrice = computed(() => {
+                const p = selectedProduct.value;
+                if (!p) return 0;
+                const qty = Number(form.quantity || 0);
+                if (p.can_see_wholesale && p.wholesale_price &&
+                    qty >= Number(p.wholesale_min_qty || 10)) {
+                    return p.wholesale_price;
+                }
+                return p.retail_price;
+            });
+            const priceTier = computed(() => {
+                const p = selectedProduct.value;
+                if (!p) return '零售价';
+                const qty = Number(form.quantity || 0);
+                const hit = p.can_see_wholesale && p.wholesale_price &&
+                    qty >= Number(p.wholesale_min_qty || 10);
+                return hit ? '批发价' : '零售价';
+            });
+            // 经销商还差几包能拿到批发价（提示用）
+            const toWholesale = computed(() => {
+                const p = selectedProduct.value;
+                if (!p || !p.can_see_wholesale || !p.wholesale_price) return 0;
+                const need = Number(p.wholesale_min_qty || 10) - Number(form.quantity || 0);
+                return need > 0 ? need : 0;
+            });
+
             const totalPrice = computed(() => {
                 if (!selectedProduct.value || !form.quantity) return 0;
-                return selectedProduct.value.retail_price * Number(form.quantity || 0);
+                return unitPrice.value * Number(form.quantity || 0);
             });
             const canSubmit = computed(() => {
                 return form.customer_name.trim() && form.phone.trim() && form.product_id &&
@@ -667,7 +712,8 @@
 
             return { products, form, loading, submitted, errorMsg, result, errors, selectedProduct, totalPrice, canSubmit,
                      onProductChange, submitOrder, resetForm, today, payNow, paying, payError,
-                     pausedCount, maxQuantity, buyTag, buyMessage };
+                     pausedCount, maxQuantity, buyTag, buyMessage,
+                     unitPrice, priceTier, toWholesale };
         },
     }).mount('#app');
 </script>

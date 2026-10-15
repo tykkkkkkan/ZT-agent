@@ -345,7 +345,11 @@ def product_list(request):
     from agent.models import Products, Inventory, ProductCoordination
     from agent.purchase_guard import evaluate
     from agent import reviews as review_helper
+    from agent import pricing
     try:
+        # 任务书二·5：本接口是公开的，但**登录后会按身份裁剪价格字段**。
+        # 这里不强制登录，只是"能认出你是谁就按你的身份给价"。
+        viewer, _logged_in = _resolve_request_user(request)
         qs = Products.objects.all().order_by("id")
         if request.GET.get("include_inactive") != "1":
             qs = qs.filter(is_active=True)
@@ -360,14 +364,12 @@ def product_list(request):
             coord = coord_map.get(p.id)
             rating = rating_map.get(p.id) or {}
             verdict = evaluate(p, inv, coord)
-            data.append({
+            row = {
                 "id": p.id,
                 "sku": p.sku,
                 "name": p.name,
                 "spec": p.spec or "",
                 "target_fish": p.target_fish or "",
-                "retail_price": float(p.retail_price or 0),
-                "wholesale_price": float(p.wholesale_price or 0),
                 "description": p.description or "",
                 "is_active": p.is_active,
                 "stock": (inv.stock or 0) if inv else 0,
@@ -384,7 +386,10 @@ def product_list(request):
                 # ── 商品评价（任务书六·4）：无评价时 count=0、avg=0 ──
                 "rating_avg": rating.get("rating_avg", 0.0),
                 "review_count": rating.get("review_count", 0),
-            })
+            }
+            # ── 价格（任务书二·5）：按身份裁剪，非经销商**不含** wholesale_price 键 ──
+            row.update(pricing.price_fields(p, viewer))
+            data.append(row)
         return JsonResponse({"success": True, "products": data})
     except Exception as e:
         return _server_error(e)
@@ -480,8 +485,12 @@ def create_order_api(request):
             "success": False, "message": block_msg, "code": block_code,
         }, status=400)
 
-    # 计算金额（按零售价）
-    unit_price = float(product.retail_price or 0)
+    # 计算金额（任务书二·5：按**登录身份**取单价，与 AI 报价同一口径）
+    # 改造前这里写死 retail_price，于是"AI 按批发价报价、下单按零售价结算"——
+    # 客户拿着报价来下单，发现价格对不上。现在两边都走 pricing.price_for()。
+    from agent import pricing
+    me, _ = _resolve_request_user(request)
+    unit_price = pricing.price_for(product, me, quantity)
     total_price = round(unit_price * quantity, 2)
 
     # 生成订单号：DD + 年月日时分秒 + 4 位随机数（时间戳降低碰撞概率，随机位防同秒重复）
@@ -498,7 +507,7 @@ def create_order_api(request):
     # 写入订单 + 预占库存（P0 修复：事务 + 行级锁）
     # 个人中心改造：写入 user_id（订单归属登录用户），并在手机号未被他人占用时
     # 自动绑定到该用户资料 —— 这样用户下次进个人中心即使不手动填手机号也能看到订单。
-    me, _ = _resolve_request_user(request)
+    # 注：me 已在上面按身份定价时解析过，直接复用，避免二次解析出现两个身份。
     try:
         with transaction.atomic():
             order = Orders.objects.create(
@@ -554,6 +563,10 @@ def create_order_api(request):
         "quantity": quantity,
         "unit_price": unit_price,
         "total_price": total_price,
+        # 任务书二·5：回显本次成交用的是哪一档价（前端展示"经销商批发价"）
+        "customer_type": pricing.customer_type_of(me),
+        "price_tier": ("批发价" if unit_price == pricing.wholesale_of(product) and pricing.is_wholesale(me)
+                       else "零售价"),
         "address": address,
         "expected_date": expected_date.isoformat() if expected_date else "",
         # 支付状态回显：前端据此决定「下单成功」面板显示「去支付」还是「已支付」
@@ -1046,22 +1059,26 @@ def return_order_api(request, order_no):
 # ══════════════════════════════════════════════════════════════
 # 产品 CRUD（P0 补齐）
 # ══════════════════════════════════════════════════════════════
-def _serialize_product(p, inv_map=None, rating_map=None):
+def _serialize_product(p, inv_map=None, rating_map=None, viewer=None, mask_pricing=True):
     """产品序列化（含 SKU 与实时库存），inv_map 用于批量避免 N+1
 
     :param rating_map: {product_id: {"rating_avg","review_count"}}，来自
         `reviews.rating_summary()`；不传则评分字段按「暂无评价」返回。
+    :param viewer: 请求者，用于按身份裁剪价格（任务书二·5）。
+    :param mask_pricing: True = 按身份裁剪（前台接口）；
+        False = 完整下发（**管理端必须显式传 False**，因为 `viewer=None` 也可能是未登录访客，
+        不能靠"有没有 viewer"来判断该不该裁）。
     """
+    from agent import pricing
+
     inv = (inv_map or {}).get(p.id)
     rating = (rating_map or {}).get(p.id) or {}
-    return {
+    data = {
         "id": p.id,
         "sku": p.sku,
         "name": p.name,
         "spec": p.spec or "",
         "target_fish": p.target_fish or "",
-        "retail_price": float(p.retail_price or 0),
-        "wholesale_price": float(p.wholesale_price or 0),
         "description": p.description or "",
         "is_active": p.is_active,
         "stock": (inv.stock if inv else 0),
@@ -1074,6 +1091,9 @@ def _serialize_product(p, inv_map=None, rating_map=None):
         "created_at": p.created_at.strftime("%Y-%m-%d %H:%M:%S") if p.created_at else "",
         "updated_at": p.updated_at.strftime("%Y-%m-%d %H:%M:%S") if p.updated_at else "",
     }
+    # 价格（任务书二·5）：统一由 pricing 下发，前台按身份裁剪
+    data.update(pricing.price_fields(p, viewer, mask=mask_pricing))
+    return data
 
 
 @csrf_exempt
@@ -1093,7 +1113,7 @@ def products_collection(request):
             rating_map = review_helper.rating_summary([p.id for p in products])
             return JsonResponse({
                 "success": True,
-                "products": [_serialize_product(p, inv_map, rating_map) for p in products],
+                "products": [_serialize_product(p, inv_map, rating_map, mask_pricing=False) for p in products],
             })
         except Exception as e:
             return _server_error(e)
@@ -1140,7 +1160,7 @@ def products_collection(request):
                 product=p, stock=initial_stock, reserved_stock=0,
                 alert_line=int(body.get("alert_line") or 50),
             )
-        return JsonResponse({"success": True, "product": _serialize_product(p)},
+        return JsonResponse({"success": True, "product": _serialize_product(p, mask_pricing=False)},
                             status=201)
     except Exception as e:
         return _server_error(e)
@@ -1160,14 +1180,14 @@ def product_detail_api(request, product_id):
 
     if request.method == "GET":
         rating_map = review_helper.rating_summary([p.id])
-        return JsonResponse({"success": True, "product": _serialize_product(p, None, rating_map)})
+        return JsonResponse({"success": True, "product": _serialize_product(p, None, rating_map, mask_pricing=False)})
 
     if request.method == "DELETE":
         # 软删除：is_active=False（保护历史订单）
         p.is_active = False
         p.save(update_fields=["is_active", "updated_at"])
         return JsonResponse({"success": True, "message": "已下架（软删除）",
-                             "product": _serialize_product(p)})
+                             "product": _serialize_product(p, mask_pricing=False)})
 
     # PATCH / PUT
     try:
@@ -1210,7 +1230,7 @@ def product_detail_api(request, product_id):
                 if "alert_line" in body:
                     inv.alert_line = max(0, int(body["alert_line"]))
                 inv.save()
-        return JsonResponse({"success": True, "product": _serialize_product(p)})
+        return JsonResponse({"success": True, "product": _serialize_product(p, mask_pricing=False)})
     except Exception as e:
         return _server_error(e)
 

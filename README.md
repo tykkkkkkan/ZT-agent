@@ -59,6 +59,7 @@ flowchart LR
 - [x] **在线下单**：消费者通过 `/order.html` 主动下单（产品下拉 + 单价联动 + 总额自动计算，填写收货地址与期望交期），后端自动生成订单号并**预占库存**；Django Admin 可按状态筛选、一键发货/取消/退货
 - [x] **模拟支付与订单跟踪**：订单带与状态机**正交**的支付维度（`payment_status` / `paid_at`）。未支付的订单**不可发货**（服务层统一拦截）；下单页与个人中心均可一键「模拟支付」；超过时限未支付用 `manage.py cancel_unpaid_orders --apply` 批量取消并**释放预占库存**。本项目不接真实支付渠道，因此不引入任何需要企业资质的第三方依赖
 - [x] **商品评价**：对「已完成」订单打分（1–5 星）并留言，**一单一评**由数据库唯一约束兜底；商品页展示真实均分与评价条数（点开看评价列表，姓名脱敏）；后台评价管理**只读**（评分不可人工改）。AI 客服查产品时会带上真实口碑，不凭空夸
+- [x] **身份差异化价格**：客户分「个体钓友 / 经销商」，**批发价只在接口层对经销商下发**（非经销商的响应体里根本没有 `wholesale_price` 这个键，抓包也看不到）；经销商未达起订量（10 包）仍走零售价。价格口径统一到 `agent/pricing.py` 唯一出口 —— **产品页展示价、AI 报价、下单落库价三处同源**，不再出现「AI 按批发价报价、客户按零售价结算」。订单单价是下单当时的**快照**，改身份不回溯旧单
 - [x] **RAG 检索增强问答**：企业知识库问答走完整 RAG Pipeline（文档切块 → 向量化存储 → 余弦召回 → BM25 重排），替代原硬编码关键词匹配
 - [x] **真·流式输出**：`stream=True` 边生成边输出，非"先全量再逐字回放"，打字机体验更真实
 - [x] **Prompt 版本管理**：System Prompt 独立到 `prompts/` 目录，`load_prompt(name)` 按版本加载，便于实验与调优
@@ -266,7 +267,7 @@ docker compose up -d --build
 | POST | `/api/agent/contact/` | 用户留言提交 |
 | POST | `/api/agent/custom/` | 定制需求提交 |
 | GET | `/api/agent/history/<session_id>/` | 查询对话历史 |
-| GET | `/api/products/` | 产品列表（下单页下拉框） |
+| GET | `/api/products/` | 产品列表（下单页下拉框）；**价格字段按登录身份裁剪**（未登录/个体钓友不下发 `wholesale_price`） |
 | POST | `/api/orders/` | 创建订单（下单页提交） |
 | POST | `/api/orders/query/` | 按手机号查询订单（隐私脱敏：仅返回订单号/产品/数量/状态/时间，不返回姓名/电话；带 order_no 时为双重验证查单个） |
 | POST | `/api/orders/<order_no>/pay/` | 模拟支付（需登录 + 归属校验；落 `paid_at` 与 `payment_status=已支付`，幂等） |
@@ -308,12 +309,12 @@ data: {"done": true, "session_id": "abc123"}
 
 | 工具名 | 输入 | 输出 | 数据来源 |
 |--------|------|------|----------|
-| `query_product` | 产品名（如"红虫颗粒"） | 规格、适用鱼种、零售/批发价、可购状态、**真实评分与评价条数** | `products` 表 + `purchase_guard` + `reviews` |
+| `query_product` | 产品名（如"红虫颗粒"） | 规格、适用鱼种、价格（**按登录身份给：钓友只有零售价，经销商多一行批发价与起订量**）、可购状态、**真实评分与评价条数** | `products` 表 + `purchase_guard` + `reviews` + `pricing` |
 | `check_inventory` | 产品名（如"螺鲤3号"） | 总库存 / 已预占 / **可用库存**、是否低于预警线 | `inventory` + `products` 表 |
 | `get_order_status` | 订单号（如"DD20240801"） | 订单状态、商品、金额、**支付状态**、收货地址与期望交期、物流、售后进展 | `orders` 表 |
 | `query_orders_by_phone` | 下单手机号 | 该号码名下全部订单（真实总笔数 + 物流 + 售后） | `orders` 表 |
 | `query_my_orders` | 无（按登录账号） | 当前登录客户自己的最近订单（含支付状态、物流与售后） | `orders` 表 + `me_helpers.my_orders_q` |
-| `calculate_quote` | 商品清单（name + qty） | 单价、小计、合计 + 不可购/超量提醒 | `products` 表 |
+| `calculate_quote` | 商品清单（name + qty） | 单价、小计、合计 + 不可购/超量提醒（单价走 `pricing.price_for`，与下单落库价同源） | `products` 表 + `pricing` |
 | `search_knowledge` | 自然语言问题 | 相关答案片段 + 来源标题 | RAG（企业知识库） |
 | `guide_to_contact` | 无 | 引导文案（去定制服务 / 联系我们） | 静态 |
 

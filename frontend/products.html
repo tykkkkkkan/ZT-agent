@@ -175,8 +175,15 @@
                             <div>
                                 <div class="text-xs text-ink-400">零售价</div>
                                 <div class="text-xl font-extrabold text-brand-600">¥{{ p.retail_price.toFixed(2) }}<span class="text-xs font-normal text-ink-400">/包</span></div>
-                                <div v-if="p.wholesale_price && p.wholesale_price < p.retail_price" class="text-xs text-ink-400 mt-0.5">
-                                    批发 ¥{{ p.wholesale_price.toFixed(2) }}（10 包起）
+                                <!-- 批发价只对经销商下发（任务书二·5）：
+                                     个体钓友/未登录访客的响应体里连 wholesale_price 这个键都没有，
+                                     所以这段天然不会渲染 —— 后端裁剪，不是前端隐藏。 -->
+                                <div v-if="p.can_see_wholesale && p.wholesale_price"
+                                     class="text-xs text-lake-600 mt-0.5 font-medium">
+                                    经销商价 ¥{{ p.wholesale_price.toFixed(2) }}（{{ p.wholesale_min_qty }} 包起）
+                                </div>
+                                <div v-else-if="!p.can_see_wholesale" class="text-xs text-ink-300 mt-0.5">
+                                    经销商可享批发价
                                 </div>
                             </div>
                             <a v-if="p.in_stock" :href="'order.html?product=' + p.id"

@@ -33,7 +33,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from agent.me_helpers import get_profile, my_orders_q, phone_taken_by_other
-from agent.models import OrderStatus, Orders
+from agent.models import OrderStatus, Orders, UserProfile
+from agent import pricing
 from agent.reviews import ReviewError, create_review, serialize_review
 from agent.services import (
     OrderTransitionError, mark_order_paid, transition_order, withdraw_return_request,
@@ -72,6 +73,13 @@ def _user_payload(user, profile):
         "is_staff": bool(user.is_staff),
         "phone": profile.phone or "",
         "nickname": profile.nickname or "",
+        # 任务书二·5：身份差异化价格。身份由 pricing 判定（不在视图里自己读字段），
+        # 保证个人中心、产品页、下单、AI 报价看到的是同一个身份。
+        "customer_type": pricing.customer_type_of(user),
+        "customer_type_label": pricing.customer_type_label(user),
+        "customer_type_source": profile.customer_type_source or "",
+        # 批发起订量（前端不硬编码"10 包起"，统一读接口下发）
+        "wholesale_min_qty": pricing.WHOLESALE_MIN_QTY,
     }
 
 
@@ -140,13 +148,28 @@ class MeProfileView(views.APIView):
                 profile.nickname = nickname
                 changed.append('nickname')
 
+        # 任务书二·5：切换客户类型 → 立刻改变该账号能看到/成交的价格
+        if 'customer_type' in data:
+            ct = (data.get('customer_type') or '').strip()
+            if ct not in set(UserProfile.CustomerType.values):
+                return _err("客户类型只能是 individual（个体钓友）或 wholesale（经销商）")
+            if profile.customer_type != ct:
+                profile.customer_type = ct
+                profile.customer_type_source = UserProfile.TypeSource.SELF
+                changed.extend(['customer_type', 'customer_type_source'])
+
         if changed:
             profile.save(update_fields=changed + ['updated_at'])
 
         visible_after = Orders.objects.filter(my_orders_q(request.user)).count()
         delta = visible_after - visible_before
 
-        if 'phone' in changed:
+        if 'customer_type' in changed:
+            message = (f"账户类型已改为「{pricing.customer_type_label(request.user)}」，"
+                       f"商品价格与 AI 报价将按新身份展示")
+            if 'phone' in changed:
+                message = f"手机号已更新（可查看 {visible_after} 笔订单）；" + message
+        elif 'phone' in changed:
             message = f"手机号已更新，当前可查看 {visible_after} 笔订单"
             if delta < 0:
                 message += f"（比之前少 {abs(delta)} 笔 —— 原手机号名下未认领的订单已不再展示）"

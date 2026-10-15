@@ -505,6 +505,22 @@ class Transaction(models.Model):
 #   为保证归属唯一，绑定时会校验该手机号未被其它账号占用。
 # ════════════════════════════════════════════════════════════════
 class UserProfile(models.Model):
+    """用户资料（C 端「我的」）。
+
+    任务书二·5「身份差异化价格」的身份就落在这里的 `customer_type`：
+    个体钓友只看到零售价，经销商才看得到批发价 —— 且裁剪发生在**接口层**，
+    不是前端隐藏（前端隐藏等于没隐藏，抓个包就看见了）。
+    价格口径的唯一出口是 `agent/pricing.py`。
+    """
+
+    class CustomerType(models.TextChoices):
+        INDIVIDUAL = 'individual', '个体钓友'
+        WHOLESALE = 'wholesale', '经销商'
+
+    class TypeSource(models.TextChoices):
+        SELF = 'self', '用户自行设置'
+        ADMIN = 'admin', '后台核定'
+
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL, models.CASCADE,
         primary_key=True, verbose_name='用户', related_name='profile',
@@ -518,6 +534,16 @@ class UserProfile(models.Model):
         max_length=50, blank=True, default='', verbose_name='收货人姓名',
         help_text='下单页会自动带入，可随时修改',
     )
+    customer_type = models.CharField(
+        max_length=20, choices=CustomerType.choices, default=CustomerType.INDIVIDUAL,
+        db_index=True, verbose_name='客户类型',
+        help_text='经销商才可见批发价；改这里会立刻改变该账号看到的价格',
+    )
+    customer_type_source = models.CharField(
+        max_length=10, choices=TypeSource.choices, blank=True, default='',
+        verbose_name='身份来源',
+        help_text='用户自行设置还是后台核定 —— 真实业务中经销商需资质审核，本项目为演示保留自助切换',
+    )
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
 
     class Meta:
@@ -526,7 +552,7 @@ class UserProfile(models.Model):
         verbose_name_plural = '用户资料'
 
     def __str__(self):
-        return f'{self.user.username}｜{self.phone or "未绑定手机号"}'
+        return f'{self.user.username}｜{self.phone or "未绑定手机号"}｜{self.get_customer_type_display()}'
 
 
 # ════════════════════════════════════════════════════════════════

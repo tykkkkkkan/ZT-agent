@@ -224,6 +224,31 @@
                         </form>
                     </div>
 
+                    <!-- 账户类型（任务书二·5：身份差异化价格） -->
+                    <div class="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
+                        <h3 class="flex items-center gap-2 text-base font-bold text-ink-900 mb-1">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;color:#1F6B54" aria-hidden="true"><path d="M20.6 9.5 12 4 3.4 9.5 12 15z"/><path d="M6 11.6V17c0 1.7 2.7 3 6 3s6-1.3 6-3v-5.4"/></svg>
+                            账户类型
+                        </h3>
+                        <p class="text-xs text-ink-500 mb-4">
+                            经销商可查看批发价（<span id="wholesaleMinQty">10</span> 包起）；
+                            个体钓友仅显示零售价。切换后产品页与 AI 报价会立刻按新身份展示。
+                        </p>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button type="button" data-ct="individual" onclick="setCustomerType('individual')"
+                                    class="ct-option text-left px-4 py-3 rounded-xl border-2 transition">
+                                <div class="text-sm font-semibold">个体钓友</div>
+                                <div class="text-xs text-ink-500 mt-0.5">按零售价购买</div>
+                            </button>
+                            <button type="button" data-ct="wholesale" onclick="setCustomerType('wholesale')"
+                                    class="ct-option text-left px-4 py-3 rounded-xl border-2 transition">
+                                <div class="text-sm font-semibold">经销商</div>
+                                <div class="text-xs text-ink-500 mt-0.5">达标享批发价</div>
+                            </button>
+                        </div>
+                        <p id="ctHint" class="text-xs text-ink-400 mt-3"></p>
+                    </div>
+
                     <!-- 快捷服务 -->
                     <div class="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
                         <h3 class="text-base font-bold text-ink-900 mb-3">快捷服务</h3>
@@ -385,6 +410,12 @@
             document.getElementById('accPhone').textContent = u.phone ? u.phone : '未绑定';
             document.getElementById('accEmail').textContent = u.email || '—';
             document.getElementById('accJoined').textContent = u.date_joined || '—';
+
+            // 账户类型（任务书二·5）
+            renderCustomerType(u.customer_type || 'individual', u.customer_type_source || '');
+            if (u.wholesale_min_qty) {
+                document.getElementById('wholesaleMinQty').textContent = u.wholesale_min_qty;
+            }
 
             // 统计卡
             setStat('pending', st.pending); setStat('shipped', st.shipped);
@@ -703,6 +734,46 @@
             if (e.key === 'Escape') closeReviewModal();
         });
     })();
+
+    // ── 账户类型（任务书二·5：身份差异化价格） ──────────────
+    // 价格裁剪在后端完成，这里只负责"告诉用户我现在是什么身份"以及切换它。
+    // 注意：即使前端把按钮渲染错了，非经销商也拿不到批发价 —— 接口层已经裁掉了。
+    var CT_ON = 'border-brand-500 bg-brand-50';
+    var CT_OFF = 'border-stone-200 hover:border-brand-300';
+
+    function renderCustomerType(ct, source) {
+        var isWholesale = ct === 'wholesale';
+        Array.prototype.forEach.call(document.querySelectorAll('.ct-option'), function (b) {
+            var on = b.getAttribute('data-ct') === ct;
+            b.className = 'ct-option text-left px-4 py-3 rounded-xl border-2 transition '
+                + (on ? CT_ON : CT_OFF);
+        });
+        var hint = document.getElementById('ctHint');
+        var src = source === 'self' ? '（用户自行设置）' : (source === 'admin' ? '（后台核定）' : '');
+        hint.textContent = isWholesale
+            ? '当前按经销商身份展示：产品页与 AI 报价会给出批发价（需满足起订量）' + src
+            : '当前按个体钓友身份展示：仅显示零售价' + src;
+    }
+
+    window.setCustomerType = async function (ct) {
+        var tip = ct === 'wholesale'
+            ? '切换为「经销商」身份？\n\n切换后产品页与 AI 报价会显示批发价。\n（毕业设计演示用；真实业务中经销商身份需提交营业执照审核）'
+            : '切换为「个体钓友」身份？\n\n切换后将不再显示批发价。';
+        if (!confirm(tip)) return;
+        try {
+            var d = await api('/api/me/profile/', {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ customer_type: ct })
+            });
+            toast(d.message || '已更新', 'success');
+            if (d.user) {
+                renderCustomerType(d.user.customer_type, d.user.customer_type_source);
+                if (d.user.wholesale_min_qty) {
+                    document.getElementById('wholesaleMinQty').textContent = d.user.wholesale_min_qty;
+                }
+            }
+        } catch (e) { toast(e.message, 'error'); }
+    };
 
     // ── 绑定手机号 ──────────────────────────────────────────
     window.submitPhone = async function (e) {

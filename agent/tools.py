@@ -216,11 +216,29 @@ def _rating_line(product) -> list:
     return [f"客户评价：{summary['rating_avg']} 分（{summary['review_count']} 条评价）"]
 
 
+def _price_lines(product, user) -> list:
+    """价格行（任务书二·5：身份差异化价格）。
+
+    唯一出口是 `agent/pricing.py` —— 这里不自己判断身份，也不自己比价。
+    个体钓友**看不到批发价这一行**：AI 看不到就不会说出口，比"叮嘱它别说"可靠。
+    """
+    from agent import pricing
+
+    lines = [f"零售价：{pricing.retail_of(product)} 元/包"]
+    if pricing.is_wholesale(user):
+        wp = pricing.wholesale_of(product)
+        if wp is not None:
+            lines.append(
+                f"批发价：{wp} 元/包（{pricing.WHOLESALE_MIN_QTY} 包起）"
+            )
+    return lines
+
+
 # ──────────────────────────────────────────────────────────────
 # 产品查询
 # ──────────────────────────────────────────────────────────────
 def query_product(name: str) -> str:
-    """按产品名查询，返回中文描述（含 SKU、库存与**可购性**）。"""
+    """按产品名查询，返回中文描述（含 SKU、库存、**可购性**与按身份裁剪的价格）。"""
     try:
         product = Products.objects.filter(name__icontains=name).first()
     except Exception as e:
@@ -238,9 +256,9 @@ def query_product(name: str) -> str:
         f"编码：{product.sku or '（未设置）'}",
         f"规格：{product.spec or '无'}",
         f"适用鱼种：{product.target_fish or '无'}",
-        f"零售价：{product.retail_price} 元/包",
-        f"批发价：{product.wholesale_price} 元/包",
     ]
+    # 价格：按当前登录身份裁剪（个体钓友没有批发价这一行）
+    lines.extend(_price_lines(product, get_current_user()))
     if inv:
         lines.append(f"可用库存：{inv.available_stock} 包（已预占 {inv.reserved_stock}）")
     # 可购性：与前台产品页/下单页同源判定，避免 AI 承诺了却下不了单
@@ -504,7 +522,14 @@ def calculate_quote(items: list) -> str:
             # 报价里的商品同样出名片（客户看完报价即可一键下单）
             _remember_product(product)
 
-            unit_price = float(product.wholesale_price or product.retail_price or 0)
+            # 任务书二·5：单价按**当前客户身份**取 —— 个体钓友走零售价，
+            # 经销商达到起订量才走批发价。改造前这里写死 `wholesale_price`，
+            # 于是"AI 报批发价、下单按零售价结算"，客户会认为报价不算数。
+            from agent import pricing
+            user = get_current_user()
+            unit_price = pricing.price_for(product, user, qty)
+            tier = "批发价" if pricing.is_wholesale(user) and unit_price == pricing.wholesale_of(product) \
+                else "零售价"
             subtotal = round(unit_price * qty, 2)
             total += subtotal
 
@@ -521,7 +546,7 @@ def calculate_quote(items: list) -> str:
                     f"本单需 {qty} 包，需先补货或拆单"
                 )
             lines.append(
-                f"  {product.name} × {qty} — 单价 {unit_price} 元 — 小计 {subtotal} 元{mark}"
+                f"  {product.name} × {qty} — 单价 {unit_price} 元（{tier}）— 小计 {subtotal} 元{mark}"
             )
         except Exception as e:
             lines.append(f"  {name} × {qty} — 查询出错：{e}")
