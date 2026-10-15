@@ -71,6 +71,7 @@ secrets.json
 
 # ===== IDE / 编辑器 =====
 .idea/
+.trae/
 .vscode/
 *.swp
 *.swo

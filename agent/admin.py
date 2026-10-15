@@ -154,10 +154,11 @@ def mark_as_read(modeladmin, request, queryset):
 # ══════════════════════════════════════════════════════════════
 @admin.register(Products)
 class ProductsAdmin(ZYQuickToggleAdmin):
-    list_display = ('id', 'sku', 'name', 'spec', 'target_fish', 'retail_price',
+    list_display = ('id', 'sku', 'name', 'category', 'spec', 'target_fish', 'retail_price',
                     'wholesale_price', 'is_active_display', 'quick_ops')
-    search_fields = ('sku', 'name', 'spec', 'description')    # P0：sku 进搜索
-    list_filter = ('target_fish', 'is_active')               # P0：可按下架筛选
+    # 任务书二·4：分类进搜索与筛选，后台是分类的唯一维护入口
+    search_fields = ('sku', 'name', 'category', 'spec', 'description')
+    list_filter = ('category', 'target_fish', 'is_active')
     list_editable = ('retail_price', 'wholesale_price')      # 列表内直接改价
     ordering = ('id',)                                       # id 升序（1,2,3...）
     list_per_page = 25

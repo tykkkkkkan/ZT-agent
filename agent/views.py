@@ -368,6 +368,8 @@ def product_list(request):
                 "id": p.id,
                 "sku": p.sku,
                 "name": p.name,
+                # ── 产品分类（任务书二·4）：产品页「展开筛选」用的真实字段 ──
+                "category": p.category or "",
                 "spec": p.spec or "",
                 "target_fish": p.target_fish or "",
                 "description": p.description or "",
@@ -1077,6 +1079,8 @@ def _serialize_product(p, inv_map=None, rating_map=None, viewer=None, mask_prici
         "id": p.id,
         "sku": p.sku,
         "name": p.name,
+        # 产品分类（任务书二·4）：产品页「按分类筛选」用的真实字段，后台可维护
+        "category": p.category or "",
         "spec": p.spec or "",
         "target_fish": p.target_fish or "",
         "description": p.description or "",
@@ -1147,6 +1151,7 @@ def products_collection(request):
             p = Products.objects.create(
                 sku=sku,
                 name=name,
+                category=(body.get("category") or "").strip(),
                 spec=(body.get("spec") or "").strip() or None,
                 target_fish=(body.get("target_fish") or "").strip() or None,
                 retail_price=body.get("retail_price") or 0,
@@ -1202,7 +1207,7 @@ def product_detail_api(request, product_id):
         if Products.objects.filter(sku=new_sku).exclude(id=p.id).exists():
             return JsonResponse({"success": False, "message": f"SKU「{new_sku}」已被其他产品占用"}, status=400)
         p.sku = new_sku
-    for f in ("name", "spec", "target_fish", "description", "is_active"):
+    for f in ("name", "category", "spec", "target_fish", "description", "is_active"):
         if f in body:
             setattr(p, f, body[f])
     for f in ("retail_price", "wholesale_price"):

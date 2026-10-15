@@ -122,6 +122,50 @@
     <!-- 产品列表 -->
     <section class="pb-20">
         <div class="max-w-7xl mx-auto px-6">
+            <!-- ── 搜索与筛选（任务书二·4：按名称、分类或适用鱼种查找） ──
+                 纯前端筛选：数据在 /api/products/ 已经一次拿全，不必为每次输入打后端。
+                 独立 v-if 块，刻意不插进下面 loading/error/grid 的 v-if–v-else 链中间
+                 （Vue 的 v-else 必须紧跟上一个分支元素，插进去会破坏整条链）。 -->
+            <div v-if="!loading && !error && products.length > 0"
+                 class="mb-8 bg-white rounded-2xl border border-stone-200 p-4 sm:p-5">
+                <div class="flex flex-col lg:flex-row gap-3 lg:items-center">
+                    <!-- 关键词：名称 / 编码 / 描述都能搜 -->
+                    <div class="relative flex-1 min-w-0">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                        </span>
+                        <input v-model="kw" type="search" aria-label="搜索产品"
+                               placeholder="搜索产品名称 / 编码 / 描述…"
+                               class="w-full pl-10 pr-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm text-ink-800 placeholder-ink-300 focus:outline-none focus:border-brand-400 focus:bg-white transition">
+                    </div>
+                    <!-- 分类 -->
+                    <select v-model="catFilter" aria-label="按分类筛选"
+                            class="px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm text-ink-700 focus:outline-none focus:border-brand-400 focus:bg-white transition lg:w-40">
+                        <option value="">全部分类</option>
+                        <option v-for="c in categoryOptions" :key="c" :value="c">{{ c }}</option>
+                    </select>
+                    <!-- 适用鱼种 -->
+                    <select v-model="fishFilter" aria-label="按适用鱼种筛选"
+                            class="px-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm text-ink-700 focus:outline-none focus:border-brand-400 focus:bg-white transition lg:w-40">
+                        <option value="">全部鱼种</option>
+                        <option v-for="f in fishOptions" :key="f" :value="f">{{ f }}</option>
+                    </select>
+                    <!-- 清空 -->
+                    <button v-if="filtering" type="button" @click="clearFilters"
+                            class="px-4 py-2.5 bg-stone-100 text-ink-600 text-sm font-semibold rounded-xl hover:bg-stone-200 transition shrink-0">
+                        清空条件
+                    </button>
+                </div>
+                <p class="mt-3 text-xs text-ink-400">
+                    <template v-if="filtering">
+                        共 {{ products.length }} 款在售产品，符合条件 <strong class="text-brand-700">{{ filteredProducts.length }}</strong> 款
+                    </template>
+                    <template v-else>
+                        共 {{ products.length }} 款在售产品
+                    </template>
+                </p>
+            </div>
+
             <div v-if="loading" class="text-center py-20">
                 <div class="inline-block w-10 h-10 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin"></div>
                 <p class="mt-3 text-ink-500">正在从数据库加载产品…</p>
@@ -132,7 +176,9 @@
             </div>
 
             <div v-else class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                <div v-for="(p, idx) in products" :key="p.id"
+                <!-- 渲染的是**筛选后**的列表；主推角标取 p.is_main（加载时按原始顺序标记），
+                     否则"筛完只剩一条"时它会被误标成主推。 -->
+                <div v-for="p in filteredProducts" :key="p.id"
                      class="product-card bg-white rounded-2xl border border-stone-200 overflow-hidden">
                     <div class="relative h-56 overflow-hidden bg-gradient-to-br from-stone-50 to-brand-50/40 flex items-center justify-center">
                         <img :src="productImage(p.name)"
@@ -140,7 +186,7 @@
                              class="w-full h-full object-contain p-4"
                              loading="lazy"
                              @error="onImgError($event, p)">
-                        <div v-if="idx === 0" class="absolute top-3 left-3 px-2.5 py-1 bg-sunset-700 text-white text-xs font-semibold rounded-full shadow z-10">主推</div>
+                        <div v-if="p.is_main" class="absolute top-3 left-3 px-2.5 py-1 bg-sunset-700 text-white text-xs font-semibold rounded-full shadow z-10">主推</div>
                         <!-- 库存/可售状态：直接取后端统一判定，与下单页、后台一致 -->
                         <div v-if="p.in_stock" class="absolute top-3 right-3 px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full z-10">
                             {{ p.stock_label }}
@@ -150,7 +196,9 @@
                         </div>
                     </div>
                     <div class="p-5">
-                        <div class="flex items-center gap-2 mb-2 text-xs text-ink-500">
+                        <div class="flex items-center gap-2 mb-2 text-xs text-ink-500 flex-wrap">
+                            <!-- 产品分类（任务书二·4）：真实字段，后台可维护 -->
+                            <span v-if="p.category" class="px-2 py-0.5 bg-lake-50 text-lake-700 rounded">{{ p.category }}</span>
                             <span class="px-2 py-0.5 bg-brand-50 text-brand-700 rounded"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg> {{ p.target_fish }}</span>
                             <span>{{ p.spec }}</span>
                         </div>
@@ -199,10 +247,19 @@
                 </div>
             </div>
 
-            <!-- 空状态 -->
+            <!-- 空状态（两条：真没商品 vs 筛没了 —— 后者要给"清空条件"的出口） -->
             <div v-if="!loading && !error && products.length === 0" class="text-center py-16 text-ink-500">
                 <div class="text-5xl mb-3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.5 2 12v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-7l-3.5-6.5A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.5z"/></svg></div>
                 暂无在售产品
+            </div>
+            <div v-else-if="!loading && !error && filteredProducts.length === 0" class="text-center py-16 text-ink-500">
+                <div class="text-5xl mb-3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div>
+                <p>没有符合条件的产品</p>
+                <p class="text-sm mt-1 text-ink-400">换个关键词，或放宽分类 / 鱼种条件试试</p>
+                <button type="button" @click="clearFilters"
+                        class="mt-5 px-5 py-2.5 bg-brand-50 text-brand-700 text-sm font-semibold rounded-xl border border-brand-100 hover:bg-brand-600 hover:text-white transition">
+                    清空筛选条件
+                </button>
             </div>
 
             <!-- 引导 -->
@@ -343,12 +400,78 @@
     const fishSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg>';
     const FISH_ICONS = Array(10).fill(fishSvg);
 
-    const { createApp, ref } = Vue;
+    // ── 产品搜索筛选（任务书二·4） ──────────────────────────────────
+    // 逻辑写成**顶层纯函数**，不塞进 setup 里，这样 scripts/verify_product_search.js
+    // 能用 Node vm 直接加载本页内联脚本并断言各分支（与 verify_auth_flow.js 同一手法）。
+    //
+    // 匹配规则：
+    //   keyword  —— 命中 名称 / 商品编码 / 分类 / 适用鱼种 / 规格 / 描述 任一即算中（子串、忽略大小写）
+    //   category —— 分类**精确相等**（下拉选项本身就是去重后的分类值）
+    //   fish     —— 适用鱼种**包含**即可（`target_fish` 形如「鲫鱼、鲤鱼」，是多值字段）
+    function matchProduct(p, keyword, category, fish) {
+        if (!p) return false;
+        const kw = String(keyword == null ? '' : keyword).trim().toLowerCase();
+        if (kw) {
+            const hay = [p.name, p.sku, p.category, p.target_fish, p.spec, p.description]
+                .filter(Boolean).join(' ').toLowerCase();
+            if (hay.indexOf(kw) === -1) return false;
+        }
+        if (category && (p.category || '') !== category) return false;
+        if (fish && String(p.target_fish || '').indexOf(fish) === -1) return false;
+        return true;
+    }
+
+    function filterProducts(list, keyword, category, fish) {
+        return (Array.isArray(list) ? list : []).filter(function (p) {
+            return matchProduct(p, keyword, category, fish);
+        });
+    }
+
+    // 适用鱼种是多值字段（「鲫鱼、鲤鱼」），下拉要拆开去重，否则选项会是一整串
+    function fishOptionsOf(list) {
+        const seen = [];
+        (Array.isArray(list) ? list : []).forEach(function (p) {
+            String((p && p.target_fish) || '').split(/[、,，\/\s]+/).forEach(function (f) {
+                if (f && seen.indexOf(f) === -1) seen.push(f);
+            });
+        });
+        return seen;
+    }
+
+    // 分类下拉选项：取出现过的非空分类，排序后给出
+    function categoryOptionsOf(list) {
+        const seen = [];
+        (Array.isArray(list) ? list : []).forEach(function (p) {
+            const c = (p && p.category) || '';
+            if (c && seen.indexOf(c) === -1) seen.push(c);
+        });
+        return seen.sort();
+    }
+
+    const { createApp, ref, computed } = Vue;
     createApp({
         setup() {
             const products = ref([]);
             const loading = ref(true);
             const error = ref('');
+
+            // 搜索筛选状态（任务书二·4）
+            const kw = ref('');
+            const catFilter = ref('');
+            const fishFilter = ref('');
+            const filtering = computed(function () {
+                return !!(String(kw.value || '').trim() || catFilter.value || fishFilter.value);
+            });
+            const filteredProducts = computed(function () {
+                return filterProducts(products.value, kw.value, catFilter.value, fishFilter.value);
+            });
+            const categoryOptions = computed(function () { return categoryOptionsOf(products.value); });
+            const fishOptions = computed(function () { return fishOptionsOf(products.value); });
+            function clearFilters() {
+                kw.value = '';
+                catFilter.value = '';
+                fishFilter.value = '';
+            }
 
             // 不可购原因码 → 中文标签（与下单页同一套映射）
             const BLOCK_TAGS = {
@@ -371,6 +494,9 @@
                         products.value = data.products.map((p, i) => ({
                             ...p,
                             icon: FISH_ICONS[i % FISH_ICONS.length],
+                            // 主推角标挂在"原始顺序第 1 条"上，而不是渲染时的 idx ——
+                            // 否则筛选后只剩一条时，那条会被误标成主推
+                            is_main: i === 0,
                             in_stock: !!p.can_buy,
                             stock_label: p.can_buy
                                 ? ('✓ 现货 ' + (p.available_stock || 0) + ' 包')
@@ -432,6 +558,9 @@
 
             return {
                 products, loading, error, loadProducts, productImage, onImgError,
+                // 搜索筛选（任务书二·4）
+                kw, catFilter, fishFilter, filtering, filteredProducts,
+                categoryOptions, fishOptions, clearFilters,
                 reviewOpen, reviewProduct, reviewLoading, reviewData,
                 openReviews, closeReviews, starsOf,
             };

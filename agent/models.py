@@ -131,6 +131,13 @@ class Products(models.Model):
         db_comment='商品编码（人类可读唯一标识）',
         default='', blank=True,
     )
+    # 任务书二·4「按名称、分类或适用鱼种查找」——「分类」需要一个真实字段，
+    # 而不是前端按商品名写死的假映射（那样答辩被问"分类字段在哪"会站不住）。
+    # 取值示例：浓腥饵 / 广谱饵 / 薯香饵 …，后台可维护。
+    category = models.CharField(
+        max_length=50, blank=True, default='', db_index=True,
+        verbose_name='产品分类', db_comment='产品分类（如 浓腥饵/广谱饵/薯香饵，后台可维护）',
+    )
     spec = models.CharField(max_length=50, blank=True, null=True, verbose_name='规格', db_comment='规格')
     target_fish = models.CharField(
         max_length=50, blank=True, null=True, db_index=True, verbose_name='适用鱼种', db_comment='适用鱼种',

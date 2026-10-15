@@ -28,6 +28,8 @@ import contextvars
 import logging
 import os
 
+from django.db.models import Q
+
 from agent.models import OrderStatus, PaymentStatus, Products, Inventory, Orders
 
 logger = logging.getLogger(__name__)
@@ -238,14 +240,25 @@ def _price_lines(product, user) -> list:
 # 产品查询
 # ──────────────────────────────────────────────────────────────
 def query_product(name: str) -> str:
-    """按产品名查询，返回中文描述（含 SKU、库存、**可购性**与按身份裁剪的价格）。"""
+    """按**名称 / 分类 / 适用鱼种**查询产品（任务书二·4），返回中文描述
+    （含 SKU、分类、库存、**可购性**与按身份裁剪的价格）。
+
+    检索范围此前只有 `name__icontains`，客户问「鲫鱼用什么」会得到"没找到"；
+    现在与产品页的三种查找方式对齐。
+    """
     try:
-        product = Products.objects.filter(name__icontains=name).first()
+        product = (
+            Products.objects.filter(
+                Q(name__icontains=name) | Q(category__icontains=name) | Q(target_fish__icontains=name)
+            )
+            .order_by("id")          # 顺序确定，避免同名/同类时结果漂移
+            .first()
+        )
     except Exception as e:
         return f"查询产品出错：{e}"
 
     if not product:
-        return f"没找到叫「{name}」的产品，麻烦确认下名字？"
+        return f"没找到「{name}」相关的产品，麻烦换个名称、分类或鱼种试试？"
 
     # 登记到本轮引用列表 —— 回答完由 agent_stream 补发「产品名片」事件（任务书四·2）
     _remember_product(product)
@@ -254,6 +267,7 @@ def query_product(name: str) -> str:
     lines = [
         f"产品：{product.name}",
         f"编码：{product.sku or '（未设置）'}",
+        f"分类：{product.category or '未分类'}",
         f"规格：{product.spec or '无'}",
         f"适用鱼种：{product.target_fish or '无'}",
     ]
@@ -635,11 +649,11 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "query_product",
-            "description": "查询中渔天下某款产品的规格、适用鱼种、零售价、批发价，以及当前是否可下单（含暂停接单/售罄/下架）。回答客户「有货吗、能买吗」前应先调用本工具，不要凭记忆回答库存",
+            "description": "查询中渔天下某款产品的分类、规格、适用鱼种、零售价、批发价，以及当前是否可下单（含暂停接单/售罄/下架）。关键词可以是**产品名、分类或适用鱼种**（如「红虫颗粒」「薯香饵」「鲫鱼」）。回答客户「有货吗、能买吗、鲫鱼用什么」前应先调用本工具，不要凭记忆回答库存",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "产品名称，如「红虫颗粒」"},
+                    "name": {"type": "string", "description": "产品名称 / 分类 / 适用鱼种，如「红虫颗粒」「薯香饵」「鲫鱼」"},
                 },
                 "required": ["name"],
             },
