@@ -645,6 +645,13 @@ class OrdersAdmin(ZYModelAdmin):
             'fields': ('product', 'product_name', 'product_sku',
                        'unit_price', 'quantity', 'total_price'),
         }),
+        ('收货与交期（C 端下单界面填写）', {
+            'fields': ('address', 'expected_date'),
+            'description': (
+                '客户在下单界面自行填写并提交（任务书四·4）。发货前请按此地址与期望交期安排；'
+                '期望交期留空表示客户未指定，按尽快发货处理。'
+            ),
+        }),
         ('物流', {
             'fields': ('ship_company', 'tracking_no', 'shipped_at'),
             'description': '物流信息在「发货」时录入；如需更正请用「撤回 → 重新发货」。',
@@ -671,6 +678,7 @@ class OrdersAdmin(ZYModelAdmin):
         'order_no', 'status_badge', 'created_at', 'updated_at',
         'customer_name', 'phone', 'user_link',
         'product', 'product_name', 'product_sku', 'unit_price', 'quantity', 'total_price',
+        'address', 'expected_date',
         'ship_company', 'tracking_no', 'shipped_at',
         'completed_at', 'return_status', 'return_reason', 'return_requested_at',
         'return_handled_at', 'return_note', 'cancelled_at', 'cancel_reason',

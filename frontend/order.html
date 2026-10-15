@@ -131,7 +131,7 @@
                                 <span class="w-6 h-6 bg-brand-100 text-brand-700 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">2</span>
                                 <div>
                                     <div class="text-sm font-semibold text-ink-800">填写信息</div>
-                                    <div class="text-xs text-ink-500 mt-0.5">姓名、电话、购买数量</div>
+                                    <div class="text-xs text-ink-500 mt-0.5">姓名、电话、收货地址、期望交期、购买数量</div>
                                 </div>
                             </li>
                             <li class="flex items-start gap-3">
@@ -237,6 +237,30 @@
                                 </div>
                             </div>
 
+                            <!-- 收货地址 + 期望交期（任务书四·4：由用户在下单界面自行填写并提交） -->
+                            <div class="grid sm:grid-cols-2 gap-4">
+                                <div class="sm:col-span-2">
+                                    <label class="block text-sm font-semibold text-ink-800 mb-2">
+                                        收货地址 <span class="text-sunset-600">*</span>
+                                    </label>
+                                    <input v-model="form.address" type="text" required maxlength="255"
+                                           placeholder="省/市/区 + 详细地址，如：山东省济南市历下区经十路1号"
+                                           :aria-invalid="!!errors.address" aria-describedby="f-address-error"
+                                           class="form-input w-full px-4 py-3 border border-stone-200 rounded-xl text-sm transition" />
+                                    <p v-if="errors.address" class="field-error">{{ errors.address }}</p>
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label class="block text-sm font-semibold text-ink-800 mb-2">
+                                        期望交期 <span class="text-ink-400 font-normal">（选填 · 留空表示尽快发货）</span>
+                                    </label>
+                                    <input v-model="form.expected_date" type="date" :min="today"
+                                           class="form-input w-full px-4 py-3 border border-stone-200 rounded-xl text-sm transition" />
+                                    <p class="text-xs text-ink-400 mt-1.5">
+                                        希望什么时候到货？我们会尽量按这个时间安排发货。
+                                    </p>
+                                </div>
+                            </div>
+
                             <!-- 数量 -->
                             <div>
                                 <label class="block text-sm font-semibold text-ink-800 mb-2">
@@ -291,6 +315,14 @@
                             <div class="flex justify-between text-sm">
                                 <span class="text-ink-500">数量</span>
                                 <span class="text-ink-800">{{ result.quantity }} 包</span>
+                            </div>
+                            <div class="flex justify-between text-sm gap-4">
+                                <span class="text-ink-500 flex-shrink-0">收货地址</span>
+                                <span class="text-ink-800 text-right">{{ result.address }}</span>
+                            </div>
+                            <div v-if="result.expected_date" class="flex justify-between text-sm">
+                                <span class="text-ink-500">期望交期</span>
+                                <span class="text-ink-800">{{ result.expected_date }} 前到货</span>
                             </div>
                             <div class="flex justify-between text-sm">
                                 <span class="text-ink-500">单价</span>
@@ -407,6 +439,8 @@
             const form = reactive({
                 customer_name: '',
                 phone: '',
+                address: '',
+                expected_date: '',
                 product_id: '',
                 quantity: 1,
             });
@@ -414,8 +448,15 @@
             const submitted = Vue.ref(false);
             const errorMsg = Vue.ref('');
             const result = reactive({});
-            const errors = reactive({ customer_name: '', phone: '', product_id: '', quantity: '' });
+            const errors = reactive({ customer_name: '', phone: '', address: '', product_id: '', quantity: '' });
             const PHONE_RE = /^1[3-9]\d{9}$/;
+
+            // 期望交期的最小可选日期（不能早于今天）
+            // 用本地时间拼，不能用 toISOString()——那是 UTC，东八区早上 8 点前会差一天
+            const _now = new Date();
+            const today = _now.getFullYear() + '-' +
+                String(_now.getMonth() + 1).padStart(2, '0') + '-' +
+                String(_now.getDate()).padStart(2, '0');
 
             // 产品页「下单」跳转带来的预选商品（order.html?product=<id>）
             const PRESELECT_ID = (function () {
@@ -509,6 +550,7 @@
                 errors.customer_name = form.customer_name.trim() ? '' : '请输入您的姓名';
                 errors.phone = !form.phone.trim() ? '请输入联系电话'
                     : (!PHONE_RE.test(form.phone.trim()) ? '请输入正确的 11 位手机号' : '');
+                errors.address = form.address.trim() ? '' : '请填写收货地址';
                 errors.product_id = form.product_id ? '' : '请选择产品';
 
                 const qty = Number(form.quantity);
@@ -522,7 +564,8 @@
                 } else {
                     errors.quantity = '';
                 }
-                return !errors.customer_name && !errors.phone && !errors.product_id && !errors.quantity;
+                return !errors.customer_name && !errors.phone && !errors.address
+                    && !errors.product_id && !errors.quantity;
             }
 
             async function submitOrder() {
@@ -534,6 +577,8 @@
                 axios.post('/api/orders/', {
                     customer_name: form.customer_name.trim(),
                     phone: form.phone.trim(),
+                    address: form.address.trim(),
+                    expected_date: form.expected_date || '',
                     product_id: form.product_id,
                     quantity: Number(form.quantity),
                 }).then(r => {
@@ -560,6 +605,8 @@
             function resetForm() {
                 form.customer_name = '';
                 form.phone = '';
+                form.address = '';
+                form.expected_date = '';
                 form.product_id = '';
                 form.quantity = 1;
                 submitted.value = false;
@@ -569,7 +616,7 @@
             }
 
             return { products, form, loading, submitted, errorMsg, result, errors, selectedProduct, totalPrice, canSubmit,
-                     onProductChange, submitOrder, resetForm,
+                     onProductChange, submitOrder, resetForm, today,
                      pausedCount, maxQuantity, buyTag, buyMessage };
         },
     }).mount('#app');

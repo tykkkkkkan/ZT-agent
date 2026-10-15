@@ -160,6 +160,7 @@ def main():
                       p0["buy_block_reason"] == "purchase_paused", p0["buy_block_reason"])
                 st, res = jpost(c, "/api/orders/", {
                     "customer_name": "口径测试", "phone": phone or "13800000000",
+                    "address": "测试收货地址（口径用例）",
                     "product_id": p0["id"], "quantity": 1,
                 }, auth)
                 check("对暂停商品下单被拒绝", st == 400,

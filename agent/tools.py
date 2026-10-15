@@ -146,6 +146,18 @@ def _logistics_parts(order) -> list:
     return parts
 
 
+def _delivery_parts(order) -> list:
+    """收货地址与期望交期（任务书四·4：客户在下单界面填写）。"""
+    parts = []
+    address = getattr(order, "address", "") or ""
+    if address:
+        parts.append(f"收货地址 {address}")
+    expected = getattr(order, "expected_date", None)
+    if expected:
+        parts.append(f"期望 {expected:%Y-%m-%d} 前到货")
+    return parts
+
+
 # ──────────────────────────────────────────────────────────────
 # 产品查询
 # ──────────────────────────────────────────────────────────────
@@ -249,6 +261,10 @@ def get_order_status(order_no: str) -> str:
         f"状态：{order.status or '未知'}",
         f"下单时间：{order.created_at or '未知'}",
     ]
+    # 收货地址与期望交期（客户下单时填写，任务书四·4）
+    delivery = _delivery_parts(order)
+    if delivery:
+        lines.append("｜".join(delivery))
     # 物流：只要发过货就给（已完成订单同样需要运单号；原先只在"已发货"时给）
     logistics = _logistics_parts(order)
     if logistics:

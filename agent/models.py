@@ -227,6 +227,10 @@ class Orders(models.Model):
     )
     customer_name = models.CharField(max_length=50, blank=True, null=True, verbose_name='客户姓名', db_comment='客户名')
     phone = models.CharField(max_length=20, blank=True, null=True, db_index=True, verbose_name='联系电话', db_comment='联系电话')
+    # 任务书四·4：收货地址与期望交期由用户在下单界面填写。
+    # 此前订单只有姓名 + 电话，商家发货前还得再打电话问一遍地址。
+    address = models.CharField(max_length=255, blank=True, default='', verbose_name='收货地址', db_comment='收货地址')
+    expected_date = models.DateField(blank=True, null=True, verbose_name='期望交期', db_comment='期望交期(期望到货日期)')
     product = models.ForeignKey(
         Products, models.PROTECT,  # P0 修复：保护式外键，禁止删带订单的产品
         db_column='product_id', null=True, blank=True, verbose_name='关联产品',

@@ -409,6 +409,16 @@
             html += '</div>';
         }
 
+        // 收货地址与期望交期（下单时填写，任务书四·4）
+        if (o.address || o.expected_date) {
+            html += '<div class="text-xs text-ink-600 mb-2 flex flex-wrap items-center gap-2">'
+                + '<span class="text-ink-400">收货：</span>' + esc(o.address || '—');
+            if (o.expected_date) {
+                html += '<span class="text-ink-400">期望交期</span>' + esc(o.expected_date) + ' 前到货';
+            }
+            html += '</div>';
+        }
+
         // 售后信息
         if (o.return_status) {
             var rs = RETURN_STYLE[o.return_status] || { bg: '#EEE', fg: '#333' };

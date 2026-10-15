@@ -385,7 +385,9 @@ def product_list(request):
 def create_order_api(request):
     """POST /api/orders/ — 前端下单页提交订单【需登录】
 
-    Body: {customer_name, phone, product_id, quantity}
+    Body: {customer_name, phone, address, expected_date?, product_id, quantity}
+          · address        收货地址（必填，任务书四·4）
+          · expected_date  期望交期 YYYY-MM-DD（选填，留空 = 尽快发货）
     Returns: {success, order_no, product_name, quantity, total_price, message}
     """
     try:
@@ -395,6 +397,8 @@ def create_order_api(request):
 
     customer_name = (body.get("customer_name") or "").strip()
     phone = (body.get("phone") or "").strip()
+    address = (body.get("address") or "").strip()
+    expected_date_raw = (body.get("expected_date") or "").strip()
     product_id = body.get("product_id")
     quantity_raw = body.get("quantity")
 
@@ -407,6 +411,24 @@ def create_order_api(request):
         return JsonResponse({"success": False, "message": "请填写联系电话"}, status=400)
     if len(phone) > 20:
         return JsonResponse({"success": False, "message": "电话最长20个字符"}, status=400)
+    # 任务书四·4：收货地址由用户在下单界面填写 —— 没有地址商家无法发货，必填
+    if not address:
+        return JsonResponse({"success": False, "message": "请填写收货地址"}, status=400)
+    if len(address) > 255:
+        return JsonResponse({"success": False, "message": "收货地址最长255个字符"}, status=400)
+    # 期望交期选填：留空表示"尽快发货"
+    expected_date = None
+    if expected_date_raw:
+        try:
+            expected_date = datetime.strptime(expected_date_raw, "%Y-%m-%d").date()
+        except ValueError:
+            return JsonResponse(
+                {"success": False, "message": "期望交期格式应为 YYYY-MM-DD"}, status=400
+            )
+        if expected_date < datetime.now().date():
+            return JsonResponse(
+                {"success": False, "message": "期望交期不能早于今天"}, status=400
+            )
     if not product_id:
         return JsonResponse({"success": False, "message": "请选择产品"}, status=400)
     try:
@@ -469,6 +491,8 @@ def create_order_api(request):
                 order_no=order_no,
                 customer_name=customer_name,
                 phone=phone,
+                address=address,                          # 新增：收货地址（任务书四·4）
+                expected_date=expected_date,              # 新增：期望交期（留空=尽快发货）
                 user_id=me.id if me else None,
                 product_id=product.id,
                 product_name=product.name,
@@ -512,6 +536,8 @@ def create_order_api(request):
         "quantity": quantity,
         "unit_price": unit_price,
         "total_price": total_price,
+        "address": address,
+        "expected_date": expected_date.isoformat() if expected_date else "",
         "message": "下单成功！我们会尽快与您联系确认发货。",
     })
 
@@ -652,6 +678,10 @@ def _serialize_order(order, with_actions=False):
     """订单脱敏序列化（不返回姓名/电话等隐私字段，含物流信息与售后状态）
 
     :param with_actions: 是否附带「用户可执行操作」列表（个人中心用）
+
+    ⚠️ 三个调用方（/api/orders/query/、/api/orders/<no>/、/api/me/orders/）**都已做归属校验**，
+    因此这里可以返回收货地址与期望交期 —— 它们是「订单本人的数据」，
+    而不是「凭手机号就能看到的他人信息」（后者由 `me_helpers.my_orders_q` 兜住）。
     """
     data = {
         "order_no": order.order_no,
@@ -662,6 +692,10 @@ def _serialize_order(order, with_actions=False):
         "unit_price": float(order.unit_price or 0),         # P0 新增：单价快照
         "total_price": float(order.total_price or 0),
         "status": order.status,
+        # 任务书四·4：下单时填写的收货地址与期望交期
+        "address": getattr(order, "address", "") or "",
+        "expected_date": (order.expected_date.strftime("%Y-%m-%d")
+                          if getattr(order, "expected_date", None) else ""),
         "ship_company": order.ship_company or '',
         "tracking_no": order.tracking_no or '',
         "shipped_at": order.shipped_at.strftime("%Y-%m-%d %H:%M:%S") if order.shipped_at else '',

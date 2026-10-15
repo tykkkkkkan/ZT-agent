@@ -110,6 +110,7 @@ def main():
         if prod:
             r3 = c.post("/api/orders/", data=json.dumps({
                 "customer_name": "身份解析测试", "phone": cust_phone,
+                "address": "测试收货地址（身份解析用例）",
                 "product_id": prod.id, "quantity": 1,
             }), content_type="application/json", **auth)
             d3 = json.loads(r3.content)
