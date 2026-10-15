@@ -25,7 +25,7 @@ flowchart LR
     U[用户 / 前端 Vue3] -->|HTTP + SSE 真流式| API[Django REST API]
     API --> JWT[JWT 鉴权]
     API --> AG[Agent 编排<br/>ReAct + Function Calling]
-    AG -->|tool_calls| T[7 个业务工具]
+    AG -->|tool_calls| T[8 个业务工具]
     T --> DB[(MySQL<br/>产品 / 库存 / 订单 / 钱包)]
     AG --> LLM[DeepSeek]
     AG --> RAG[RAG 双后端<br/>TF-IDF / bge-m3 + Chroma]
@@ -53,7 +53,8 @@ flowchart LR
 
 ## 功能特性
 
-- [x] **Agent Function Calling**：基于 OpenAI 兼容 `tools` + `tool_calls` 的标准工具调用（ReAct 循环，最多 3 轮），AI 自动判断意图并调用 `query_product` / `check_inventory` / `get_order_status` / `calculate_quote` / `search_knowledge` / `guide_to_contact`
+- [x] **Agent Function Calling**：基于 OpenAI 兼容 `tools` + `tool_calls` 的标准工具调用（ReAct 循环，最多 3 轮），AI 自动判断意图并调用 `query_product` / `check_inventory` / `get_order_status` / `query_orders_by_phone` / `query_my_orders` / `calculate_quote` / `search_knowledge` / `guide_to_contact` 共 8 个工具
+- [x] **产品名片卡片**：对话中查过商品后自动补发 `product_card` 事件，前端渲染名称 / 规格 / 图片 / 价格 / 可用库存卡片，「立即下单」深链到 `order.html?product=<id>` 并预选商品（可购性复用 `purchase_guard`，不可购时按钮置灰并说明原因）
 - [x] **顾问引导式客服（不代客下单）**：AI 先帮顾客明确产品选择（查产品/库存/报价），顾客表达购买或定制意向时调用 `guide_to_contact` 引导，前端自动渲染「定制服务 / 联系我们」按钮卡片收尾，由人工承接交易
 - [x] **在线下单**：消费者通过 `/order.html` 主动下单（产品下拉 + 单价联动 + 总额自动计算），后端自动生成订单号写入数据库；Django Admin 可按状态筛选、列表内编辑状态、`📦 标记为已发货` 一键操作
 - [x] **RAG 检索增强问答**：企业知识库问答走完整 RAG Pipeline（文档切块 → 向量化存储 → 余弦召回 → BM25 重排），替代原硬编码关键词匹配
@@ -302,10 +303,12 @@ data: {"done": true, "session_id": "abc123"}
 
 | 工具名 | 输入 | 输出 | 数据来源 |
 |--------|------|------|----------|
-| `query_product` | 产品名（如"红虫颗粒"） | 规格、适用鱼种、零售/批发价 | `products` 表 |
-| `check_inventory` | 产品名（如"螺鲤3号"） | 当前库存、是否低于预警线 | `inventory` + `products` 表 |
-| `get_order_status` | 订单号（如"DD20240801"） | 订单状态、客户、金额 | `orders` 表 |
-| `calculate_quote` | 商品清单（name + qty） | 单价、小计、合计 | `products` 表 |
+| `query_product` | 产品名（如"红虫颗粒"） | 规格、适用鱼种、零售/批发价、可购状态 | `products` 表 + `purchase_guard` |
+| `check_inventory` | 产品名（如"螺鲤3号"） | 总库存 / 已预占 / **可用库存**、是否低于预警线 | `inventory` + `products` 表 |
+| `get_order_status` | 订单号（如"DD20240801"） | 订单状态、商品、金额、收货地址与期望交期、物流、售后进展 | `orders` 表 |
+| `query_orders_by_phone` | 下单手机号 | 该号码名下全部订单（真实总笔数 + 物流 + 售后） | `orders` 表 |
+| `query_my_orders` | 无（按登录账号） | 当前登录客户自己的最近订单（含物流与售后） | `orders` 表 + `me_helpers.my_orders_q` |
+| `calculate_quote` | 商品清单（name + qty） | 单价、小计、合计 + 不可购/超量提醒 | `products` 表 |
 | `search_knowledge` | 自然语言问题 | 相关答案片段 + 来源标题 | RAG（企业知识库） |
 | `guide_to_contact` | 无 | 引导文案（去定制服务 / 联系我们） | 静态 |
 

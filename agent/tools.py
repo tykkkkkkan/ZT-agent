@@ -28,7 +28,7 @@ import contextvars
 import logging
 import os
 
-from agent.models import Products, Inventory, Orders
+from agent.models import OrderStatus, Products, Inventory, Orders
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +82,25 @@ def _remember_product(product) -> None:
     except Exception:
         # 名片登记失败不影响问答主流程
         logger.exception("登记产品名片失败（product=%s）", getattr(product, "id", None))
+
+
+# ──────────────────────────────────────────────────────────────
+# 当前登录用户 → 工具侧可见（工具函数拿不到 request）
+# ──────────────────────────────────────────────────────────────
+# 视图层在调用 agent_stream 之前注入；`query_my_orders` 依赖它按归属规则
+# 查「我的订单」，客户因此不必再报订单号或手机号。
+# 同样用 ContextVar：多线程下模块级变量会把 A 用户的身份泄漏给 B 用户。
+_current_user = contextvars.ContextVar("current_user", default=None)
+
+
+def set_current_user(user) -> None:
+    """由视图层在本轮对话开始前注入当前登录用户（可为 None = 未登录）。"""
+    _current_user.set(user)
+
+
+def get_current_user():
+    """取本轮对话的登录用户；未登录返回 None。"""
+    return _current_user.get()
 
 
 # ──────────────────────────────────────────────────────────────
@@ -330,6 +349,75 @@ def query_orders_by_phone(phone: str) -> str:
 
 
 # ──────────────────────────────────────────────────────────────
+# 我的订单（登录态直查，无需订单号/手机号）
+# ──────────────────────────────────────────────────────────────
+def query_my_orders(limit: int = 3) -> str:
+    """查询**当前登录客户自己**的最近订单（含物流与售后进展）。
+
+    任务书五·3：「用户向 Agent 询问自己的订单发到哪了，Agent 查询后给出实时进度」。
+    此前 Agent 只有 get_order_status（要订单号）与 query_orders_by_phone（要手机号），
+    客户问「我的订单到哪了」时必须先报一串号码 —— 这个工具把最后一跳补上了。
+
+    归属规则与「查订单」页、个人中心**完全一致**（复用 me_helpers.my_orders_q），
+    绝不按纯手机号查，避免越权看到他人订单。
+    """
+    user = get_current_user()
+    if user is None:
+        return (
+            "当前会话没有识别到登录用户，无法直接查「我的订单」。\n"
+            "请引导客户先登录，再回个人中心查看；"
+            "也可以请客户提供订单号，我用 get_order_status 帮他查。"
+        )
+
+    try:
+        limit = int(limit or 3)
+    except (TypeError, ValueError):
+        limit = 3
+    limit = max(1, min(limit, 10))
+
+    from agent.me_helpers import my_orders_q
+
+    try:
+        qs = Orders.objects.filter(my_orders_q(user)).order_by("-created_at", "-id")
+        total = qs.count()
+        orders = list(qs[:limit])
+    except Exception as e:
+        return f"查询我的订单出错：{e}"
+
+    if not orders:
+        return (
+            "该客户名下暂时没有查询到订单。\n"
+            "若客户刚下过单，请先确认下单时填的手机号是否与账号绑定的手机号一致；"
+            "也可以请客户提供订单号，我用 get_order_status 直接查。"
+        )
+
+    head = (
+        f"共 {total} 笔订单：" if total <= len(orders)
+        else f"共 {total} 笔订单（以下列出最近 {len(orders)} 笔）："
+    )
+    lines = [f"【该客户自己的订单】{head}"]
+    for o in orders:
+        dt = o.created_at.strftime("%Y-%m-%d") if o.created_at else "未知"
+        seg = [
+            f"订单号 {o.order_no}",
+            f"{o.product_name or '商品'} × {o.quantity or 0}",
+            f"{o.total_price or 0} 元",
+            f"状态 {o.status or '未知'}",
+            f"下单 {dt}",
+        ]
+        logistics = _logistics_parts(o)
+        if logistics:
+            seg.append("，".join(logistics))
+        elif o.status == OrderStatus.PENDING:
+            seg.append("尚未发货")
+        after_sale = _after_sale_line(o)
+        if after_sale:
+            seg.append(after_sale)
+        lines.append("｜".join(seg))
+    return "\n".join(lines)
+
+
+# ──────────────────────────────────────────────────────────────
 # 报价计算
 # ──────────────────────────────────────────────────────────────
 def calculate_quote(items: list) -> str:
@@ -459,6 +547,7 @@ TOOL_REGISTRY = {
     "check_inventory": check_inventory,
     "get_order_status": get_order_status,
     "query_orders_by_phone": query_orders_by_phone,
+    "query_my_orders": query_my_orders,
     "calculate_quote": calculate_quote,
     "search_knowledge": search_knowledge,
     "guide_to_contact": guide_to_contact,
@@ -519,6 +608,20 @@ TOOL_SCHEMAS = [
                     "phone": {"type": "string", "description": "顾客的下单手机号，如「13800138000」"},
                 },
                 "required": ["phone"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_my_orders",
+            "description": "查询**当前已登录客户自己**的最近订单（含商品、数量、金额、订单状态、物流与售后进展）。当客户说「我的订单」「我买的东西到哪了」「发货了吗」这类**不提供订单号也不提供手机号**的问法时，优先用这个工具。无需任何参数。若返回提示未登录或没有订单，再引导客户登录或提供订单号",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "返回最近几笔，默认 3，最多 10"},
+                },
+                "required": [],
             },
         },
     },

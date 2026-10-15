@@ -185,10 +185,17 @@ def chat(request):
 
     logger.info("收到聊天请求 session_id=%s msg_len=%d", session_id, len(user_message))
 
+    # 把当前登录用户注入工具层上下文 —— AI 才能回答「我的订单到哪了」（任务书五·3）：
+    # 工具函数拿不到 request，`query_my_orders` 依赖这个身份按归属规则查自己的订单。
+    from agent.tools import set_current_user
+    me, _ = _resolve_request_user(request)
+
     # 先落库用户消息
     _save_conversation(session_id, "user", user_message)
 
     def event_stream():
+        # 生成器被消费时可能处在复制出的上下文中，这里再注入一次，确保工具层一定拿得到
+        set_current_user(me)
         # 防代理缓冲：先发送 4KB+ 的注释行
         yield ":" + " " * 4096 + "\n\n"
         # 先回 session_id，前端用于持久化会话

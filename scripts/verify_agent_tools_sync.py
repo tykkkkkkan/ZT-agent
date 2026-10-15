@@ -235,6 +235,38 @@ def main():
     else:
         print("  (无可购商品，跳过)")
 
+    # ── ⑦ query_my_orders：登录态直查 + 归属隔离 ────────────────
+    # 任务书五·3：客户问「我的订单到哪了」不该还要先报订单号/手机号。
+    # 这个工具按**登录账号**查，因此最容易出的事故是"查串了"——必须验归属隔离。
+    print("\n⑦ query_my_orders 的登录态与归属隔离")
+    from django.contrib.auth import get_user_model
+
+    from agent.me_helpers import my_orders_q
+
+    tools.set_current_user(None)
+    out = tools.query_my_orders()
+    check("未登录时给出登录引导而非报错",
+          "登录" in out and "Traceback" not in out, out.splitlines()[0][:60])
+
+    owner = None
+    for u in get_user_model().objects.all():
+        if Orders.objects.filter(my_orders_q(u)).exists():
+            owner = u
+            break
+    if owner:
+        tools.set_current_user(owner)
+        out = tools.query_my_orders(limit=1)
+        mine = (Orders.objects.filter(my_orders_q(owner))
+                .order_by("-created_at", "-id").first())
+        check(f"按登录账号查到自己的订单（{owner.username}）",
+              mine.order_no in out, out.splitlines()[0][:60])
+        leak = [o.order_no for o in Orders.objects.exclude(my_orders_q(owner))[:50]
+                if o.order_no in out]
+        check("不泄露他人订单", not leak, str(leak[:3]))
+    else:
+        print("  (库中无带订单的用户，跳过)")
+    tools.set_current_user(None)
+
     print("\n" + "=" * 64)
     print(f"结果：{len(PASS)} 通过 / {len(FAIL)} 失败")
     for f in FAIL:

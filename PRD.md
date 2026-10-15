@@ -65,11 +65,14 @@
 
 | 工具名 | 输入 | 输出 | 数据来源 |
 |--------|------|------|----------|
-| `query_product` | 产品名 / 类别 | 价格、规格、用法、产品图 | MySQL `products` 表 |
-| `check_inventory` | 产品名 | 库存量、安全库存、预计到货时间 | MySQL `inventory` 表 |
-| `calculate_quote` | 产品名 + 数量 + 用户角色 | 单价、总价、折扣、阶梯建议 | `products` + `price_policy` 表 |
-| `get_order_status` | 订单号 | 订单状态、物流进度、预计送达 | MySQL `orders` 表 + 物流接口 |
-| `search_knowledge` | 自然语言问题 | 答案片段 + 来源引用 | 向量库（企业手册 RAG） |
+| `query_product` | 产品名 / 类别 | 价格、规格、用法、可购状态 | MySQL `products` 表 + `purchase_guard` |
+| `check_inventory` | 产品名 | 总库存 / 已预占 / 可用库存、预警线 | MySQL `inventory` 表 |
+| `calculate_quote` | 商品清单 + 数量 | 单价、小计、合计、不可购提醒 | `products` 表 |
+| `get_order_status` | 订单号 | 订单状态、收货地址与交期、物流、售后 | MySQL `orders` 表 |
+| `query_orders_by_phone` | 下单手机号 | 该号码名下全部订单（真实总笔数） | MySQL `orders` 表 |
+| `query_my_orders` | 无（按登录账号） | 当前登录客户自己的最近订单 | MySQL `orders` 表 + 统一归属规则 |
+| `search_knowledge` | 自然语言问题 | 答案片段 + 来源引用 | 双路 RAG（企业知识库） |
+| `guide_to_contact` | 无 | 引导文案（去定制 / 联系我们） | 静态 |
 
 **调度逻辑**：AI 根据用户输入判断意图，自动选择一个或多个工具调用，结果汇总后用自然语言回复。多工具场景（如先查库存再算价）由 Agent 串联调用。
 
