@@ -332,6 +332,26 @@
                                 <span class="font-semibold text-ink-700">订单总额</span>
                                 <span class="font-extrabold text-sunset-600 text-xl">¥{{ result.total_price.toFixed(2) }}</span>
                             </div>
+                            <!-- 支付状态（任务书五·1）：与订单状态正交的一个维度 -->
+                            <div class="flex justify-between text-sm border-t border-brand-100 pt-2 mt-2">
+                                <span class="text-ink-500">支付状态</span>
+                                <span v-if="result.payment_status === '已支付'" class="font-semibold text-brand-700">已支付</span>
+                                <span v-else class="font-semibold text-sunset-600">未支付</span>
+                            </div>
+                        </div>
+                        <!-- 未支付：把「立即支付」放在最显眼的位置；已支付则整块收起 -->
+                        <div v-if="result.payment_status !== '已支付'" class="mb-6">
+                            <button @click="payNow" :disabled="paying"
+                                    class="w-full px-4 py-3 bg-gradient-to-r from-brand-600 to-lake-600 text-white text-sm font-bold rounded-xl hover:shadow-lg hover:shadow-brand-500/30 transition disabled:opacity-60 disabled:cursor-not-allowed">
+                                {{ paying ? '支付中…' : '立即支付 ¥' + (result.total_price || 0).toFixed(2) }}
+                            </button>
+                            <p class="text-xs text-ink-400 mt-2">
+                                未支付的订单暂不安排发货；超过时限未支付将自动取消并释放库存。
+                            </p>
+                            <p v-if="payError" class="text-xs text-sunset-600 mt-1">{{ payError }}</p>
+                        </div>
+                        <div v-else class="mb-6 rounded-xl bg-brand-50 border border-brand-100 px-4 py-3 text-xs text-brand-700">
+                            支付已完成，商家将尽快安排发货。
                         </div>
                         <div class="flex gap-3">
                             <button @click="resetForm"
@@ -448,6 +468,8 @@
             const submitted = Vue.ref(false);
             const errorMsg = Vue.ref('');
             const result = reactive({});
+            const paying = Vue.ref(false);          // 模拟支付进行中
+            const payError = Vue.ref('');
             const errors = reactive({ customer_name: '', phone: '', address: '', product_id: '', quantity: '' });
             const PHONE_RE = /^1[3-9]\d{9}$/;
 
@@ -602,6 +624,33 @@
                 }).finally(() => { loading.value = false; });
             }
 
+            // 模拟支付（任务书五·1）：本项目不接真实支付渠道，点一下即完成支付。
+            // 走 AUTH.authFetch，由 auth.js 统一补 Authorization 头并处理 401 续期。
+            async function payNow() {
+                if (!result.order_no || paying.value) return;
+                if (!window.AUTH || !(await AUTH.ensureLogin('登录后即可支付'))) return;
+                paying.value = true;
+                payError.value = '';
+                try {
+                    const resp = await AUTH.authFetch(
+                        '/api/orders/' + encodeURIComponent(result.order_no) + '/pay/',
+                        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }
+                    );
+                    const d = await resp.json().catch(() => ({}));
+                    if (resp.ok && d.success) {
+                        // 用后端回传的订单覆盖本地结果，保证页面与库里一致
+                        if (d.order) Object.assign(result, d.order);
+                        else result.payment_status = '已支付';
+                    } else {
+                        payError.value = d.message || '支付失败，请稍后重试';
+                    }
+                } catch (e) {
+                    payError.value = '网络异常，请稍后重试';
+                } finally {
+                    paying.value = false;
+                }
+            }
+
             function resetForm() {
                 form.customer_name = '';
                 form.phone = '';
@@ -612,11 +661,12 @@
                 submitted.value = false;
                 Object.keys(result).forEach(k => delete result[k]);
                 errorMsg.value = '';
+                payError.value = '';
                 Object.keys(errors).forEach(k => errors[k] = '');
             }
 
             return { products, form, loading, submitted, errorMsg, result, errors, selectedProduct, totalPrice, canSubmit,
-                     onProductChange, submitOrder, resetForm, today,
+                     onProductChange, submitOrder, resetForm, today, payNow, paying, payError,
                      pausedCount, maxQuantity, buyTag, buyMessage };
         },
     }).mount('#app');

@@ -34,6 +34,26 @@ class ReturnStatus(models.TextChoices):
     REJECTED  = "已拒绝",  "已拒绝"
 
 
+class PaymentStatus(models.TextChoices):
+    """支付状态（任务书五·1：支付与订单跟踪）。
+
+    为什么不塞进 `OrderStatus`？
+    ---------------------------
+    订单状态表达的是「**货**走到哪」（未发货/已发货/已完成/退货申请中/已取消/已退货），
+    支付状态表达的是「**钱**到没到」，两者是正交维度 —— 一笔订单可以「已支付但未发货」，
+    也可以「未支付而已取消」。把它们揉进同一个枚举，会让状态机从 6 态爆炸到 12 态以上，
+    而营销 Agent 侧有 4 处**硬编码**了订单状态字符串（自动发货只挑 `未发货`、
+    成交口径、曾发货口径等），新增状态会静默地把这些链路打断。
+
+    因此采用「加一个正交字段」的轻量方案：订单状态机**一个字母都不改**，
+    发货前只多做一道「未支付不许发货」的闸门。
+    """
+    NONE     = "",       "未跟踪（历史订单）"   # 支付功能上线前的老订单，视为已结算
+    UNPAID   = "未支付",  "未支付"
+    PAID     = "已支付",  "已支付"
+    REFUNDED = "已退款",  "已退款"
+
+
 # ════════════════════════════════════════════════════════════════
 # 订单统计口径（**全项目唯一来源**，别再各处自己写 Q(status=...)）
 # ════════════════════════════════════════════════════════════════
@@ -258,6 +278,18 @@ class Orders(models.Model):
         db_column='user_id', null=True, blank=True,
         verbose_name='下单用户', related_name='orders', db_comment='下单用户(登录用户)',
     )
+    # ── 支付（任务书五·1）───────────────────────────────────────
+    # 与 status 正交：`status` 记录"货"的进度，这里记录"钱"的进度。
+    #   ''      支付功能上线前的老订单 → 视为已结算，不参与"未支付不许发货"与超时取消
+    #   未支付  新订单默认值；超过时限未支付会被自动取消并释放预占库存
+    #   已支付  用户完成（模拟）支付
+    #   已退款  退货时资金原路退回（仅从「已支付」迁移而来）
+    payment_status = models.CharField(
+        max_length=10, choices=PaymentStatus.choices, blank=True, default='',
+        db_index=True, verbose_name='支付状态',
+        db_comment='支付状态(空=历史订单/未支付/已支付/已退款)',
+    )
+    paid_at = models.DateTimeField(blank=True, null=True, verbose_name='支付时间', db_comment='支付时间')
     ship_company = models.CharField(max_length=50, blank=True, null=True, default='', verbose_name='物流公司', db_comment='物流公司')
     tracking_no = models.CharField(max_length=50, blank=True, null=True, default='', db_index=True, verbose_name='运单号', db_comment='运单号')
     shipped_at = models.DateTimeField(blank=True, null=True, verbose_name='发货时间', db_comment='发货时间')

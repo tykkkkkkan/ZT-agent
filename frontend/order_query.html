@@ -203,6 +203,16 @@
                                     <div v-if="o.shipped_at" class="text-ink-500 mt-0.5">发货时间：{{ formatTime(o.shipped_at) }}</div>
                                 </div>
 
+                                <!-- 支付状态（任务书五·1）：空值 = 支付功能上线前的历史订单，不展示 -->
+                                <div v-if="o.payment_status" class="mb-2.5 flex items-center gap-2 text-xs">
+                                    <span class="px-2 py-0.5 rounded-full font-semibold"
+                                          :class="o.payment_status === '已支付' ? 'bg-brand-50 text-brand-700' : 'bg-sunset-50 text-sunset-700'">
+                                        {{ o.payment_status }}
+                                    </span>
+                                    <span v-if="o.paid_at" class="text-ink-400">支付时间 {{ formatTime(o.paid_at) }}</span>
+                                    <span v-else-if="o.payment_status === '未支付'" class="text-ink-400">未付款的订单暂不安排发货</span>
+                                </div>
+
                                 <!-- 售后状态（退货申请中 / 已同意 / 已拒绝） -->
                                 <div v-if="o.return_status" class="mb-2.5 rounded-lg bg-sunset-50 border border-sunset-100 px-3 py-2 text-xs text-ink-700">
                                     <span class="font-semibold">退货{{ o.return_status }}</span>

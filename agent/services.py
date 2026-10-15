@@ -45,14 +45,16 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
-from typing import Optional
+from typing import List, Optional
 
 from django.db import transaction
 from django.utils import timezone
 
 from agent.models import (
-    Inventory, Orders, OrderStatus, ReturnStatus, Wallet, Transaction, TxType, TxCategory,
+    Inventory, Orders, OrderStatus, PaymentStatus, ReturnStatus,
+    Wallet, Transaction, TxType, TxCategory,
 )
 
 logger = logging.getLogger(__name__)
@@ -416,6 +418,17 @@ def transition_order(
 
         inv: Optional[Inventory] = None
         if to_status == OrderStatus.SHIPPED:
+            # 任务书五·1：未支付不许发货。
+            # 闸门放在这里（而不是各调用方各写一遍）—— 后台「订单操作页」、
+            # `/api/orders/<no>/ship/`（营销 Agent 自动发货也走这个接口）三条路径
+            # 最终都汇到本函数，一处拦截即可全覆盖。
+            # 注意：历史订单的 payment_status 为空（未跟踪），视为已结算，不拦截。
+            if order.payment_status == PaymentStatus.UNPAID:
+                raise OrderTransitionError(
+                    f"订单 {order.order_no} 尚未支付，无法发货。"
+                    f"请先完成支付，或在 C 端取消该订单。",
+                    code="unpaid",
+                )
             if not ship_company or not tracking_no:
                 raise OrderTransitionError(
                     "发货必须填写「物流公司」与「运单号」。", code="missing_ship_info",
@@ -465,6 +478,11 @@ def transition_order(
             order.return_handled_at = timezone.now()
             if return_reason:
                 order.return_reason = order.return_reason or return_reason
+            # 支付维度同步：只有真正收过钱的订单才标记「已退款」。
+            # 历史订单（payment_status 为空）不动它 —— 那批单没有支付记录，
+            # 标成「已退款」会凭空造出一条不存在的资金流。
+            if order.payment_status == PaymentStatus.PAID:
+                order.payment_status = PaymentStatus.REFUNDED
             msg = f"订单已退货，库存已回滚 {order.quantity} 包，款项已原路退回账户。"
 
         order.status = to_status
@@ -472,7 +490,7 @@ def transition_order(
             "status", "ship_company", "tracking_no", "shipped_at",
             "cancelled_at", "cancel_reason", "completed_at",
             "return_status", "return_reason", "return_requested_at",
-            "return_handled_at", "return_note", "updated_at",
+            "return_handled_at", "return_note", "payment_status", "updated_at",
         ])
 
     return OrderTransitionResult(order=order, inventory=inv, message=msg)
@@ -597,3 +615,117 @@ def withdraw_return_request(order: Orders) -> OrderTransitionResult:
     return OrderTransitionResult(
         order=order, inventory=None, message=f"已撤销退货申请，订单回到「{back_to}」。",
     )
+
+
+# ════════════════════════════════════════════════════════════════
+# 支付（任务书五·1）—— 与订单状态机正交的一个维度
+# ════════════════════════════════════════════════════════════════
+
+def mark_order_paid(order: Orders, *, operator=None) -> OrderTransitionResult:
+    """标记订单「已支付」（本项目的模拟支付）。
+
+    设计要点
+    --------
+    · **不动订单状态机**：支付是"钱"的维度，发货是"货"的维度，二者正交。
+      付完款订单仍然是「未发货」，等商家发货。
+    · **幂等**：重复支付直接返回当前结果，不报错、不刷新支付时间 ——
+      用户连点两次「立即支付」不应该出现两个支付时间。
+    · **只在「未发货」阶段可支付**：已取消/已退货的订单没有钱可付；
+      已发/已完成的订单若还是未支付，说明流程有异常，交由后台人工核对，
+      这里也一并拦住（提示信息写清楚），避免"事后补一笔支付"掩盖问题。
+    """
+    with transaction.atomic():
+        order = Orders.objects.select_for_update().get(pk=order.pk)
+
+        if order.payment_status == PaymentStatus.PAID:
+            return OrderTransitionResult(
+                order=order, inventory=None, message="该订单已支付，无需重复支付。",
+            )
+        if order.payment_status == PaymentStatus.REFUNDED:
+            raise OrderTransitionError(
+                f"订单 {order.order_no} 的款项已退回，无法再次支付。", code="refunded",
+            )
+        if order.status == OrderStatus.PENDING:
+            pass  # 正常路径：待发货订单可以支付
+        elif order.status in (OrderStatus.CANCELLED, OrderStatus.RETURNED):
+            raise OrderTransitionError(
+                f"订单 {order.order_no} 当前为「{order.status}」，无需支付。",
+                code="invalid_transition",
+            )
+        else:
+            raise OrderTransitionError(
+                f"订单 {order.order_no} 已是「{order.status}」但未记录支付，"
+                f"请联系客服核对款项，不要直接补支付。",
+                code="invalid_transition",
+            )
+
+        order.payment_status = PaymentStatus.PAID
+        order.paid_at = timezone.now()
+        order.save(update_fields=["payment_status", "paid_at", "updated_at"])
+
+    logger.info("订单已支付：%s（操作人=%s）", order.order_no,
+                getattr(operator, "username", None) or "C端用户")
+    return OrderTransitionResult(
+        order=order, inventory=None, message="支付成功，商家将尽快为您安排发货。",
+    )
+
+
+def unpaid_expired_orders(timeout_minutes: int) -> List[Orders]:
+    """找出「超过时限仍未支付」的待发货订单（只查，不改）。
+
+    过滤条件三件套缺一不可：
+      · `payment_status = 未支付` —— 历史订单是空值（未跟踪），**绝不牵连**，
+        否则上线第一次跑批就会把老订单批量取消；
+      · `status = 未发货` —— 已发货/已完成的订单不在此列；
+      · `created_at < now - timeout` —— 刚下单的用户还有机会付款。
+    """
+    if timeout_minutes <= 0:
+        return []
+    cutoff = timezone.now() - timedelta(minutes=timeout_minutes)
+    return list(
+        Orders.objects.filter(
+            payment_status=PaymentStatus.UNPAID,
+            status=OrderStatus.PENDING,
+            created_at__lt=cutoff,
+        ).order_by("created_at", "id")
+    )
+
+
+def cancel_unpaid_orders(timeout_minutes: int, *, dry_run: bool = True) -> dict:
+    """取消超时未支付的订单并**释放预占库存**。
+
+    :param timeout_minutes: 下单后多少分钟未支付则视为超时
+    :param dry_run: True（默认）只统计不改动，供人工确认后加 `--apply` 执行
+    :returns: {"scanned": n, "cancelled": [...订单号], "failed": [(订单号, 原因)],
+               "skipped": [...订单号], "dry_run": bool}
+
+    释放预占这一点很关键：`transition_order(CANCELLED)` 会调
+    `release_inventory_on_cancel` 把 `reserved_stock` 还回去。若只改状态不释放，
+    可用库存会被这些"僵尸订单"永久占住 —— 正是历史上踩过的预占泄漏。
+    """
+    candidates = unpaid_expired_orders(timeout_minutes)
+    result = {
+        "scanned": len(candidates),
+        "cancelled": [],
+        "failed": [],
+        "skipped": [],
+        "dry_run": dry_run,
+    }
+    if dry_run:
+        result["cancelled"] = [o.order_no for o in candidates]
+        return result
+
+    reason = f"超时未支付（>{timeout_minutes} 分钟），系统自动取消"
+    for order in candidates:
+        try:
+            transition_order(order, to_status=OrderStatus.CANCELLED, cancel_reason=reason)
+            result["cancelled"].append(order.order_no)
+        except OrderTransitionError as e:
+            # 典型场景：扫描后、取消前用户刚好付了款/自己取消了 → 状态已变。
+            # 这不是错误，记入 skipped 即可，不要当成失败刷一堆红字。
+            result["skipped"].append(order.order_no)
+            logger.info("跳过自动取消 %s：%s", order.order_no, e.message)
+        except Exception as e:  # noqa: BLE001 — 单笔失败不应中断整批
+            result["failed"].append((order.order_no, str(e)))
+            logger.exception("自动取消失败：%s", order.order_no)
+    return result

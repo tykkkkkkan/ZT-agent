@@ -31,7 +31,7 @@ from unfold.admin import ModelAdmin as _UnfoldModelAdmin
 from agent.models import (
     Products, Inventory, Orders, Conversations, ContactMessage, CustomRequest,
     KnowledgeChunk, Wallet, Transaction, TxType, TxCategory, OrderStatus, ReturnStatus,
-    ProductCoordination,
+    PaymentStatus, ProductCoordination,
 )
 from agent.services import (
     transition_order, revert_shipped_to_pending, manual_wallet_adjust,
@@ -616,12 +616,13 @@ class OrdersAdmin(ZYModelAdmin):
     return_status 会绕过状态机，正是"数据不同步"的温床。
     """
 
-    list_display = ('order_no', 'status_badge', 'quick_ops', 'product_name',
+    list_display = ('order_no', 'status_badge', 'pay_badge', 'quick_ops', 'product_name',
                     'customer_name', 'phone', 'quantity', 'total_price',
                     'logistics_display', 'return_display', 'created_at')
     search_fields = ('order_no', 'customer_name', 'phone', 'product_name',
                      'product_sku', 'tracking_no')
-    list_filter = (ShipStateFilter, TodayOrderFilter, 'status', 'return_status', 'created_at')
+    list_filter = (ShipStateFilter, TodayOrderFilter, 'status', 'payment_status',
+                   'return_status', 'created_at')
     # 注意：状态一律经 service 层变更（保证库存联动 + 自动记账），因此不放
     # list_editable；发货统一走「订单操作页」。
     date_hierarchy = 'created_at'
@@ -632,6 +633,18 @@ class OrdersAdmin(ZYModelAdmin):
     fieldsets = (
         ('订单', {
             'fields': ('order_no', 'status_badge', 'created_at', 'updated_at'),
+        }),
+        ('支付（任务书五·1：未支付不可发货）', {
+            'fields': ('payment_status', 'paid_at'),
+            'description': (
+                '支付状态与订单状态**正交** —— 订单状态表达"货走到哪"，支付状态表达"钱到没到"：'
+                '一笔订单可以"已支付但未发货"，也可以"未支付而已取消"。'
+                '未支付的订单**不能发货**（发货入口会拦下并提示）；'
+                '下单超过预定时间仍未支付，可执行 '
+                '<code>python manage.py cancel_unpaid_orders --apply</code> '
+                '批量取消并释放其预占库存。'
+                '空值 = 支付功能上线前的历史订单（视为已结算，不受上述规则约束）。'
+            ),
         }),
         ('客户与归属（C 端「我的订单」的判定依据）', {
             'fields': ('customer_name', 'phone', 'user_link'),
@@ -678,7 +691,7 @@ class OrdersAdmin(ZYModelAdmin):
         'order_no', 'status_badge', 'created_at', 'updated_at',
         'customer_name', 'phone', 'user_link',
         'product', 'product_name', 'product_sku', 'unit_price', 'quantity', 'total_price',
-        'address', 'expected_date',
+        'address', 'expected_date', 'payment_status', 'paid_at',
         'ship_company', 'tracking_no', 'shipped_at',
         'completed_at', 'return_status', 'return_reason', 'return_requested_at',
         'return_handled_at', 'return_note', 'cancelled_at', 'cancel_reason',
@@ -875,6 +888,29 @@ class OrdersAdmin(ZYModelAdmin):
             '已退货': ('#F7D9CF', '#7A2E0E', '● 已退货'),
         }
         bg, fg, label = style_map.get(status, ('#EEE', '#333', status or '—'))
+        return format_html(
+            '<span style="display:inline-block;padding:3px 10px;border-radius:999px;'
+            'background:{};color:{};font-size:12px;font-weight:600;white-space:nowrap;">{}</span>',
+            bg, fg, label,
+        )
+
+    @admin.display(description='支付状态', ordering='payment_status')
+    def pay_badge(self, obj):
+        """支付状态徽标（任务书五·1）。
+
+        「未支付」用暖色高亮 —— 它是**需要运营动作**的状态（拦截发货 + 会被超时取消），
+        而不是一个安静的展示字段。空值单独标注为「历史订单」，避免和"未支付"混淆。
+        """
+        style_map = {
+            PaymentStatus.UNPAID:   ('#FDF0E8', '#7A2E0E', '● 未支付'),
+            PaymentStatus.PAID:     ('#DCEDE6', '#134435', '● 已支付'),
+            PaymentStatus.REFUNDED: ('#E2E5E2', '#3A473F', '● 已退款'),
+        }
+        value = getattr(obj, 'payment_status', '') or ''
+        if value in style_map:
+            bg, fg, label = style_map[value]
+        else:
+            bg, fg, label = '#F2F4F2', '#6B7A72', '— 历史订单'
         return format_html(
             '<span style="display:inline-block;padding:3px 10px;border-radius:999px;'
             'background:{};color:{};font-size:12px;font-weight:600;white-space:nowrap;">{}</span>',

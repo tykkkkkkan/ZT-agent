@@ -20,6 +20,7 @@ agent/me_views.py — 个人中心（C 端「我的」）接口
     POST   /api/me/orders/<order_no>/confirm/      确认收货 → 已完成
     POST   /api/me/orders/<order_no>/return/       申请退货 → 退货申请中
     POST   /api/me/orders/<order_no>/cancel/       取消订单（仅未发货）
+    POST   /api/me/orders/<order_no>/pay/          模拟支付（仅未发货 + 未支付）
     POST   /api/me/orders/<order_no>/withdraw-return/  撤销退货申请
 """
 from django.contrib.auth.password_validation import validate_password
@@ -33,7 +34,7 @@ from rest_framework.response import Response
 from agent.me_helpers import get_profile, my_orders_q, phone_taken_by_other
 from agent.models import OrderStatus, Orders
 from agent.services import (
-    OrderTransitionError, transition_order, withdraw_return_request,
+    OrderTransitionError, mark_order_paid, transition_order, withdraw_return_request,
 )
 from agent.views import _serialize_order
 
@@ -277,6 +278,9 @@ class MeOrderActionView(views.APIView):
                     order, to_status=OrderStatus.RETURNING,
                     return_reason=reason, operator=request.user,
                 )
+            elif action == 'pay':
+                # 模拟支付（任务书五·1）。不改订单状态机，只落支付状态与支付时间。
+                result = mark_order_paid(order, operator=request.user)
             elif action == 'withdraw-return':
                 result = withdraw_return_request(order)
             else:

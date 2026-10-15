@@ -295,6 +295,12 @@
         '已同意': { bg: '#DCEDE6', fg: '#134435' },
         '已拒绝': { bg: '#E2E5E2', fg: '#3A473F' }
     };
+    // 支付状态配色（任务书五·1）：未支付用暖色高亮 —— 它是需要用户动作的状态
+    var PAY_STYLE = {
+        '未支付': { bg: '#FDF0E8', fg: '#7A2E0E' },
+        '已支付': { bg: '#DCEDE6', fg: '#134435' },
+        '已退款': { bg: '#E2E5E2', fg: '#3A473F' }
+    };
 
     function esc(s) {
         return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -419,6 +425,19 @@
             html += '</div>';
         }
 
+        // 支付状态（任务书五·1）。空值 = 支付功能上线前的历史订单，不展示，
+        // 免得给老订单凭空安一个"未支付"。
+        if (o.payment_status) {
+            var payStyle = PAY_STYLE[o.payment_status] || { bg: '#EEE', fg: '#333' };
+            html += '<div class="text-xs mb-2 flex flex-wrap items-center gap-2">'
+                + '<span class="px-2 py-0.5 rounded-full font-semibold" style="background:' + payStyle.bg
+                + ';color:' + payStyle.fg + '">' + esc(o.payment_status) + '</span>';
+            if (o.paid_at) html += '<span class="text-ink-400">支付时间 ' + esc(o.paid_at) + '</span>';
+            if (o.payment_status === '未支付')
+                html += '<span class="text-ink-400">未付款的订单暂不安排发货</span>';
+            html += '</div>';
+        }
+
         // 售后信息
         if (o.return_status) {
             var rs = RETURN_STYLE[o.return_status] || { bg: '#EEE', fg: '#333' };
@@ -437,6 +456,9 @@
         var acts = o.actions || [];
         if (acts.length) {
             html += '<div class="flex flex-wrap gap-2 mt-3">';
+            // 支付排在第一位：未支付的订单，付款才是用户此刻真正要做的事
+            if (acts.indexOf('pay') >= 0)
+                html += actBtn(o.order_no, 'pay', '立即支付 ¥' + (o.total_price || 0), 'bg-gradient-to-r from-brand-600 to-lake-600 text-white hover:opacity-90');
             if (acts.indexOf('confirm') >= 0)
                 html += actBtn(o.order_no, 'confirm', '确认收货', 'bg-brand-600 text-white hover:bg-brand-700');
             if (acts.indexOf('return') >= 0)
@@ -523,6 +545,9 @@
             if (!confirm('确认已收到货品？确认后订单将标记为已完成。')) return;
         } else if (action === 'withdraw-return') {
             if (!confirm('确定撤销这笔退货申请吗？')) return;
+        } else if (action === 'pay') {
+            // 模拟支付（任务书五·1）：本项目不接真实支付渠道，点确认即完成支付
+            if (!confirm('确认支付这笔订单？\n\n（毕业设计作品使用模拟支付，不会产生真实扣款）')) return;
         }
         // 二次确认防误触
         if (action === 'cancel' && reason !== null && !confirm('确定取消该订单？')) return;

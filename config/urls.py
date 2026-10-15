@@ -179,6 +179,8 @@ urlpatterns = [
     path("api/orders/<str:order_no>/ship/", views_agent.ship_order_api, name="api_ship_order"),
     path("api/orders/<str:order_no>/cancel/", views_agent.cancel_order_api, name="api_cancel_order"),
     path("api/orders/<str:order_no>/return/", views_agent.return_order_api, name="api_return_order"),
+    # 模拟支付（任务书五·1）：C 端「立即支付」按钮。归属校验与订单详情同源。
+    path("api/orders/<str:order_no>/pay/", views_agent.pay_order_api, name="api_pay_order"),
     path("api/orders/<str:order_no>/", views_agent.order_detail, name="api_order_detail"),
     path("index.html", serve_frontend_file, {"filename": "index.html"}),
     path("products.html", serve_frontend_file, {"filename": "products.html"}),

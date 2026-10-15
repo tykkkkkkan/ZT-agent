@@ -28,7 +28,7 @@ import contextvars
 import logging
 import os
 
-from agent.models import OrderStatus, Products, Inventory, Orders
+from agent.models import OrderStatus, PaymentStatus, Products, Inventory, Orders
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +177,27 @@ def _delivery_parts(order) -> list:
     return parts
 
 
+def _payment_parts(order) -> list:
+    """支付维度（任务书五·1）。
+
+    为什么 AI 必须知道支付状态：客户问「我的订单怎么还没发货」时，
+    最常见的原因就是**还没付款**。如果工具层只报「未发货」，AI 只能笼统回
+    「商家还没发货」——听起来像在敷衍。带上支付状态，AI 才能给出可执行的答案：
+    「这笔订单还没支付，需要先完成支付商家才会安排发货」。
+
+    空值（支付功能上线前的历史订单）不展示，避免凭空给老订单安一个支付状态。
+    """
+    status = getattr(order, "payment_status", "") or ""
+    if status == PaymentStatus.UNPAID:
+        return ["支付状态 未支付（需完成支付后商家才会发货）"]
+    if status == PaymentStatus.PAID:
+        paid_at = getattr(order, "paid_at", None)
+        return [f"支付状态 已支付（{paid_at:%Y-%m-%d %H:%M}）" if paid_at else "支付状态 已支付"]
+    if status == PaymentStatus.REFUNDED:
+        return ["支付状态 已退款"]
+    return []
+
+
 # ──────────────────────────────────────────────────────────────
 # 产品查询
 # ──────────────────────────────────────────────────────────────
@@ -280,6 +301,8 @@ def get_order_status(order_no: str) -> str:
         f"状态：{order.status or '未知'}",
         f"下单时间：{order.created_at or '未知'}",
     ]
+    # 支付状态（任务书五·1）：未支付是"为什么还没发货"的最常见答案
+    lines.extend(_payment_parts(order))
     # 收货地址与期望交期（客户下单时填写，任务书四·4）
     delivery = _delivery_parts(order)
     if delivery:
@@ -340,6 +363,10 @@ def query_orders_by_phone(phone: str) -> str:
         logistics = _logistics_parts(o)
         if logistics:
             line += "｜" + "，".join(logistics)
+        elif status == OrderStatus.PENDING and \
+                (getattr(o, "payment_status", "") or "") == PaymentStatus.UNPAID:
+            # 待发货且未支付：把"为什么没发"说清楚（任务书五·1）
+            line += "｜未支付（需付款后安排发货）"
         # 售后进展：退货申请中/已同意/已拒绝 是客户最常追问的
         after_sale = _after_sale_line(o)
         if after_sale:
@@ -409,7 +436,11 @@ def query_my_orders(limit: int = 3) -> str:
         if logistics:
             seg.append("，".join(logistics))
         elif o.status == OrderStatus.PENDING:
-            seg.append("尚未发货")
+            # 未发货时补一句原因 —— 最常见的就是"还没付款"（任务书五·1）。
+            # 只说"尚未发货"会让客户以为商家拖着不发，带着原因才答得上话。
+            seg.append("尚未发货（未支付，需付款后安排）"
+                       if (getattr(o, "payment_status", "") or "") == PaymentStatus.UNPAID
+                       else "尚未发货")
         after_sale = _after_sale_line(o)
         if after_sale:
             seg.append(after_sale)

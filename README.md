@@ -56,7 +56,8 @@ flowchart LR
 - [x] **Agent Function Calling**：基于 OpenAI 兼容 `tools` + `tool_calls` 的标准工具调用（ReAct 循环，最多 3 轮），AI 自动判断意图并调用 `query_product` / `check_inventory` / `get_order_status` / `query_orders_by_phone` / `query_my_orders` / `calculate_quote` / `search_knowledge` / `guide_to_contact` 共 8 个工具
 - [x] **产品名片卡片**：对话中查过商品后自动补发 `product_card` 事件，前端渲染名称 / 规格 / 图片 / 价格 / 可用库存卡片，「立即下单」深链到 `order.html?product=<id>` 并预选商品（可购性复用 `purchase_guard`，不可购时按钮置灰并说明原因）
 - [x] **顾问引导式客服（不代客下单）**：AI 先帮顾客明确产品选择（查产品/库存/报价），顾客表达购买或定制意向时调用 `guide_to_contact` 引导，前端自动渲染「定制服务 / 联系我们」按钮卡片收尾，由人工承接交易
-- [x] **在线下单**：消费者通过 `/order.html` 主动下单（产品下拉 + 单价联动 + 总额自动计算），后端自动生成订单号写入数据库；Django Admin 可按状态筛选、列表内编辑状态、`📦 标记为已发货` 一键操作
+- [x] **在线下单**：消费者通过 `/order.html` 主动下单（产品下拉 + 单价联动 + 总额自动计算，填写收货地址与期望交期），后端自动生成订单号并**预占库存**；Django Admin 可按状态筛选、一键发货/取消/退货
+- [x] **模拟支付与订单跟踪**：订单带与状态机**正交**的支付维度（`payment_status` / `paid_at`）。未支付的订单**不可发货**（服务层统一拦截）；下单页与个人中心均可一键「模拟支付」；超过时限未支付用 `manage.py cancel_unpaid_orders --apply` 批量取消并**释放预占库存**。本项目不接真实支付渠道，因此不引入任何需要企业资质的第三方依赖
 - [x] **RAG 检索增强问答**：企业知识库问答走完整 RAG Pipeline（文档切块 → 向量化存储 → 余弦召回 → BM25 重排），替代原硬编码关键词匹配
 - [x] **真·流式输出**：`stream=True` 边生成边输出，非"先全量再逐字回放"，打字机体验更真实
 - [x] **Prompt 版本管理**：System Prompt 独立到 `prompts/` 目录，`load_prompt(name)` 按版本加载，便于实验与调优
@@ -267,7 +268,8 @@ docker compose up -d --build
 | GET | `/api/products/` | 产品列表（下单页下拉框） |
 | POST | `/api/orders/` | 创建订单（下单页提交） |
 | POST | `/api/orders/query/` | 按手机号查询订单（隐私脱敏：仅返回订单号/产品/数量/状态/时间，不返回姓名/电话；带 order_no 时为双重验证查单个） |
-| GET | `/api/orders/<order_no>/` | 查询单个订单（含姓名/电话，**用于后台管理系统，慎用前端暴露**） |
+| POST | `/api/orders/<order_no>/pay/` | 模拟支付（需登录 + 归属校验；落 `paid_at` 与 `payment_status=已支付`，幂等） |
+| GET | `/api/orders/<order_no>/` | 查询单个订单（脱敏 + 归属校验；staff 可跨用户查；返回支付状态与可执行操作） |
 | GET | `/admin/` | Django Admin 后台管理（含产品/库存/订单/留言/对话/定制） |
 | GET | `/order.html` | 在线下单页面 |
 | GET | `/order_query.html` | 订单查询页面 |
@@ -305,9 +307,9 @@ data: {"done": true, "session_id": "abc123"}
 |--------|------|------|----------|
 | `query_product` | 产品名（如"红虫颗粒"） | 规格、适用鱼种、零售/批发价、可购状态 | `products` 表 + `purchase_guard` |
 | `check_inventory` | 产品名（如"螺鲤3号"） | 总库存 / 已预占 / **可用库存**、是否低于预警线 | `inventory` + `products` 表 |
-| `get_order_status` | 订单号（如"DD20240801"） | 订单状态、商品、金额、收货地址与期望交期、物流、售后进展 | `orders` 表 |
+| `get_order_status` | 订单号（如"DD20240801"） | 订单状态、商品、金额、**支付状态**、收货地址与期望交期、物流、售后进展 | `orders` 表 |
 | `query_orders_by_phone` | 下单手机号 | 该号码名下全部订单（真实总笔数 + 物流 + 售后） | `orders` 表 |
-| `query_my_orders` | 无（按登录账号） | 当前登录客户自己的最近订单（含物流与售后） | `orders` 表 + `me_helpers.my_orders_q` |
+| `query_my_orders` | 无（按登录账号） | 当前登录客户自己的最近订单（含支付状态、物流与售后） | `orders` 表 + `me_helpers.my_orders_q` |
 | `calculate_quote` | 商品清单（name + qty） | 单价、小计、合计 + 不可购/超量提醒 | `products` 表 |
 | `search_knowledge` | 自然语言问题 | 相关答案片段 + 来源标题 | RAG（企业知识库） |
 | `guide_to_contact` | 无 | 引导文案（去定制服务 / 联系我们） | 静态 |

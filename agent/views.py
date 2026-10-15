@@ -508,6 +508,10 @@ def create_order_api(request):
                 unit_price=unit_price,                    # 新增：单价快照
                 total_price=total_price,
                 status="未发货",                          # OrderStatus.PENDING.value
+                # 任务书五·1：新订单默认「未支付」。支付状态与订单状态正交 ——
+                # 状态表达"货走到哪"（仍是未发货），这里表达"钱到没到"。
+                # 未支付的订单不能发货，超过时限未支付会被 cancel_unpaid_orders 自动取消。
+                payment_status="未支付",
                 created_at=timezone.now(),
             )
             # 预占库存：会校验可用库存是否足够
@@ -545,7 +549,9 @@ def create_order_api(request):
         "total_price": total_price,
         "address": address,
         "expected_date": expected_date.isoformat() if expected_date else "",
-        "message": "下单成功！我们会尽快与您联系确认发货。",
+        # 支付状态回显：前端据此决定「下单成功」面板显示「去支付」还是「已支付」
+        "payment_status": "未支付",
+        "message": "下单成功！请完成支付，我们会尽快与您联系确认发货。",
     })
 
 
@@ -667,9 +673,15 @@ def _order_actions(order):
     """
     from agent.models import OrderStatus, ReturnStatus
 
+    from agent.models import PaymentStatus
+
     s = order.status
     acts = []
     if s == OrderStatus.PENDING:
+        # 任务书五·1：未发货且未支付 → 可（模拟）支付。
+        # 历史订单 payment_status 为空（未跟踪），不显示支付按钮 —— 那批单本来就没走支付流程。
+        if getattr(order, 'payment_status', '') == PaymentStatus.UNPAID:
+            acts.append('pay')
         acts.append('cancel')                       # 未发货：可取消
     if s == OrderStatus.SHIPPED:
         acts.append('confirm')                      # 已发货：可确认收货
@@ -703,6 +715,10 @@ def _serialize_order(order, with_actions=False):
         "address": getattr(order, "address", "") or "",
         "expected_date": (order.expected_date.strftime("%Y-%m-%d")
                           if getattr(order, "expected_date", None) else ""),
+        # 任务书五·1：支付维度（与 status 正交）。空字符串 = 支付功能上线前的历史订单。
+        "payment_status": getattr(order, "payment_status", "") or "",
+        "paid_at": (order.paid_at.strftime("%Y-%m-%d %H:%M:%S")
+                    if getattr(order, "paid_at", None) else ""),
         "ship_company": order.ship_company or '',
         "tracking_no": order.tracking_no or '',
         "shipped_at": order.shipped_at.strftime("%Y-%m-%d %H:%M:%S") if order.shipped_at else '',
@@ -768,6 +784,55 @@ def order_detail(request, order_no):
 
 
 # ══════════════════════════════════════════════════════════════
+# 模拟支付（任务书五·1）
+# ══════════════════════════════════════════════════════════════
+@csrf_exempt
+@require_POST
+@login_required
+def pay_order_api(request, order_no):
+    """POST /api/orders/<order_no>/pay/ — 模拟支付【需登录 + 归属校验】
+
+    本项目是毕业设计作品，**不接入真实支付渠道**（不依赖云服务器、不需要企业资质），
+    因此用「模拟支付」把订单的支付环节走完整：点「立即支付」→ 落 `paid_at` 与
+    `payment_status='已支付'` → 商家侧解锁发货。
+
+    归属校验与 `order_detail` 完全一致：只能支付自己的订单，且不存在/无权统一 404，
+    不泄露"这个订单号确实存在，只是不属于你"。
+    """
+    from agent.models import Orders
+    from agent.me_helpers import my_orders_q
+    from agent.services import mark_order_paid
+
+    me, ok = _resolve_request_user(request)
+    if not ok or me is None:
+        return JsonResponse(
+            {"success": False, "code": "LOGIN_REQUIRED", "message": "请先登录后再支付"},
+            status=401,
+        )
+
+    try:
+        qs = Orders.objects.all()
+        if not me.is_staff:
+            qs = qs.filter(my_orders_q(me))
+        order = qs.filter(order_no=order_no).select_related("product").first()
+        if order is None:
+            return JsonResponse(
+                {"success": False, "message": "订单不存在，或不属于当前账号"}, status=404,
+            )
+
+        result = mark_order_paid(order, operator=me)
+        return JsonResponse({
+            "success": True,
+            "message": result.message,
+            "order": _serialize_order(result.order, with_actions=True),
+        })
+    except OrderTransitionError as e:
+        return JsonResponse({"success": False, "message": e.message, "code": e.code}, status=400)
+    except Exception as e:
+        return _server_error(e)
+
+
+# ══════════════════════════════════════════════════════════════
 # 订单状态变更（核心 P0：触发库存联动）
 # ══════════════════════════════════════════════════════════════
 # 注：以下三个端点均调用 agent.services.transition_order，
@@ -805,8 +870,11 @@ def ship_order_api(request, order_no):
             "code": e.code, "available": e.available, "requested": e.requested,
         }, status=400)
     except OrderTransitionError as e:
+        # `unpaid` 是业务规则拦截（未支付不许发货），属调用方可修正的问题 → 4xx。
+        # 若归到 500，营销 Agent 侧会把「这单还没付款」记成服务端故障，
+        # 排查时被误导成 ZT 挂了。
         return JsonResponse({"success": False, "message": e.message, "code": e.code},
-                            status=400 if e.code == "invalid_transition" else 500)
+                            status=400 if e.code in ("invalid_transition", "unpaid") else 500)
     return JsonResponse({"success": True, "order": _serialize_order(result.order),
                          "message": result.message})
 
