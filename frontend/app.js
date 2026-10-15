@@ -22,6 +22,46 @@ createApp({
             return sid;
         };
 
+        // ========== 产品图本地映射（与 products.html 保持同一套） ==========
+        // Products 表没有图片字段，产品图按名称映射到本地资源
+        const PRODUCT_IMAGES = {
+            '红虫颗粒': 'assets/images/product-hongchong.png',
+            '九一八': 'assets/images/product-jiuyiba.png',
+            '螺鲤3号': 'assets/images/product-luoli.png',
+            '蓝鲫X5': 'assets/images/product-lanji.png',
+            '速攻2号': 'assets/images/product-sugong.png',
+        };
+        const FALLBACK_IMG = 'assets/images/fallback.svg';
+
+        // 产品名 → 本地产品图（未知产品回退通用饵料袋）
+        const productImage = (name) => {
+            if (!name) return FALLBACK_IMG;
+            if (PRODUCT_IMAGES[name]) return PRODUCT_IMAGES[name];
+            for (const key of Object.keys(PRODUCT_IMAGES)) {
+                if (name.includes(key)) return PRODUCT_IMAGES[key];
+            }
+            return FALLBACK_IMG;
+        };
+        const onImgError = (e) => { e.target.src = FALLBACK_IMG; };
+
+        // 不可购原因码 → 中文标签（与 products.html / order.html 同一套映射）
+        const BLOCK_TAGS = {
+            purchase_paused: '暂停接单',
+            sold_out: '已售罄',
+            no_inventory: '暂无库存',
+            inactive: '已下架',
+        };
+
+        // 产品名片「立即下单」：把商品 id 带进下单页（order.html 会预选该商品）
+        // —— 对应任务书四·3「点击卡片按钮直接进入下单界面」
+        const goOrder = (product) => {
+            if (!product || !product.id) {
+                window.location.href = 'order.html';
+                return;
+            }
+            window.location.href = 'order.html?product=' + encodeURIComponent(product.id);
+        };
+
         // ========== 快捷提问 ==========
         const quickQuestions = ref([
             '钓鲤鱼用什么饵效果最好？',
@@ -53,6 +93,8 @@ createApp({
         const messageBox = ref(null);
         const pendingCard = ref(null);
         const pendingGuide = ref(false);
+        // 本轮 Agent 介绍过的商品（产品名片，可一键下单）
+        const pendingProducts = ref([]);
 
         // 滚动到底部
         const scrollToBottom = () => {
@@ -108,6 +150,7 @@ createApp({
             localStorage.setItem(SESSION_KEY, sid);
             messages.value = [loginRequired() ? loginPromptMessage : welcomeMessage];
             pendingCard.value = null;
+            pendingProducts.value = [];
             scrollToBottom();
         };
 
@@ -161,6 +204,7 @@ createApp({
             let streamEnded = false;
             pendingCard.value = null;
             pendingGuide.value = false;
+            pendingProducts.value = [];
 
             try {
                 const sessionId = getSessionId();
@@ -227,6 +271,18 @@ createApp({
                                 continue;
                             }
 
+                            // 产品名片（名称/规格/图片/价格/库存 + 一键下单）
+                            if (data.type === 'product_card' && data.product) {
+                                const p = data.product;
+                                pendingProducts.value.push({
+                                    ...p,
+                                    stock_label: p.can_buy
+                                        ? ('现货 ' + (p.available_stock || 0) + ' 包')
+                                        : (BLOCK_TAGS[p.buy_block_reason] || '暂不可购'),
+                                });
+                                continue;
+                            }
+
                             // 流结束信号
                             if (data.done) {
                                 if (messages.value[aiMsgIdx]) {
@@ -250,40 +306,37 @@ createApp({
                     }
                 }
 
-                // 流结束后，如果有待渲染的卡片，插入到 AI 消息后面
+                // 流结束后统一插卡，固定顺序：订单成功 → 产品名片 → 引导卡
+                // （拆成多次 splice 会因 index 相同而倒序，所以先收集再一次性插入）
+                const trailingCards = [];
                 if (pendingCard.value) {
-                    const card = pendingCard.value;
-                    nextTick(() => {
-                        messages.value.splice(aiMsgIdx + 1, 0, {
-                            role: 'card',
-                            cardType: 'order_success',
-                            orderNo: card.orderNo,
-                        });
-                        scrollToBottom();
+                    trailingCards.push({
+                        role: 'card',
+                        cardType: 'order_success',
+                        orderNo: pendingCard.value.orderNo,
                     });
                 }
+                pendingProducts.value.forEach((p) => {
+                    trailingCards.push({ role: 'card', cardType: 'product', product: p });
+                });
                 // 引导转化卡片（去定制服务 / 联系我们）
                 // 优先级1：后端发了 guide_card 事件
                 // 优先级2：AI 回复文本含引导词（后端未走工具时的兜底）
-                if (pendingGuide.value) {
+                let needGuide = pendingGuide.value;
+                if (!needGuide) {
+                    const aiText = messages.value[aiMsgIdx] ? (messages.value[aiMsgIdx].content || '') : '';
+                    needGuide = /(定制服务|联系我们|提交需求|联系客服)/.test(aiText);
+                }
+                if (needGuide) {
+                    trailingCards.push({ role: 'card', cardType: 'guide' });
+                }
+                if (trailingCards.length) {
                     nextTick(() => {
-                        messages.value.splice(aiMsgIdx + 1, 0, {
-                            role: 'card',
-                            cardType: 'guide',
+                        trailingCards.forEach((c, i) => {
+                            messages.value.splice(aiMsgIdx + 1 + i, 0, c);
                         });
                         scrollToBottom();
                     });
-                } else {
-                    const aiText = messages.value[aiMsgIdx] ? (messages.value[aiMsgIdx].content || '') : '';
-                    if (/(定制服务|联系我们|提交需求|联系客服)/.test(aiText)) {
-                        nextTick(() => {
-                            messages.value.splice(aiMsgIdx + 1, 0, {
-                                role: 'card',
-                                cardType: 'guide',
-                            });
-                            scrollToBottom();
-                        });
-                    }
                 }
             } catch (err) {
                 console.error('SSE 接收失败：', err);
@@ -324,6 +377,9 @@ createApp({
             sendQuickQuestion,
             goToPage,
             newChat,
+            productImage,
+            onImgError,
+            goOrder,
         };
     },
 }).mount('#app');

@@ -197,8 +197,9 @@ def chat(request):
         parts = []
         try:
             for ev in agent_stream(session_id, user_message):
-                if ev.get("type") in ("order_success", "guide_card"):
-                    yield _sse(ev)          # 订单成功卡片 / 引导转化卡片
+                if ev.get("type") in ("order_success", "guide_card", "product_card"):
+                    # 结构事件：不进 parts（不是回答正文，落库会污染历史）
+                    yield _sse(ev)          # 订单成功 / 产品名片 / 引导转化卡片
                     continue
                 if "content" in ev:
                     parts.append(ev["content"])

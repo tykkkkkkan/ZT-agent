@@ -24,9 +24,64 @@ AI 客服是**直接对客户说话**的入口，它说"有货"客户就真去�
      不能只报 `status`，否则客户问"我退了货"时 AI 答不上来。
   3. **条数一律报真实总数**，不能拿截断后的列表长度当"共 N 笔"。
 """
+import contextvars
+import logging
 import os
 
 from agent.models import Products, Inventory, Orders
+
+logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────
+# 本轮对话「被工具介绍过」的商品 → 前端产品名片卡
+# ──────────────────────────────────────────────────────────────
+# 用 ContextVar 而不是模块级 list：Django 开发服务器是多线程的，
+# 模块级容器会把 A 用户的商品泄漏进 B 用户的这一轮对话。
+_referenced_products = contextvars.ContextVar("referenced_products", default=None)
+
+
+def reset_referenced_products() -> None:
+    """每轮对话开始前清空（由 agent_stream 调用）。"""
+    _referenced_products.set([])
+
+
+def get_referenced_products() -> list:
+    """取本轮工具介绍过的商品（按出现顺序，已按 id 去重）。"""
+    return list(_referenced_products.get() or [])
+
+
+def _remember_product(product) -> None:
+    """登记一个被工具介绍过的商品，供前端渲染「产品名片」。
+
+    字段口径必须与 /api/products/ 一致（can_buy 一律取 purchase_guard 判定），
+    否则又会出现「卡片说能买、下单页说不能买」的自相矛盾。
+    """
+    try:
+        bucket = _referenced_products.get()
+        if bucket is None:
+            bucket = []
+            _referenced_products.set(bucket)
+        if any(item["id"] == product.id for item in bucket):
+            return
+        v = _buyability(product)
+        bucket.append({
+            "id": product.id,
+            "name": product.name,
+            "sku": product.sku or "",
+            "spec": product.spec or "",
+            "target_fish": product.target_fish or "",
+            "retail_price": float(product.retail_price or 0),
+            "wholesale_price": float(product.wholesale_price or 0),
+            "available_stock": v["available_stock"],
+            "can_buy": v["can_buy"],
+            "buy_block_reason": v["reason"],
+            "buy_block_message": v["message"],
+            "customer_notice": v.get("customer_notice") or "",
+        })
+    except Exception:
+        # 名片登记失败不影响问答主流程
+        logger.exception("登记产品名片失败（product=%s）", getattr(product, "id", None))
 
 
 # ──────────────────────────────────────────────────────────────
@@ -104,6 +159,9 @@ def query_product(name: str) -> str:
     if not product:
         return f"没找到叫「{name}」的产品，麻烦确认下名字？"
 
+    # 登记到本轮引用列表 —— 回答完由 agent_stream 补发「产品名片」事件（任务书四·2）
+    _remember_product(product)
+
     inv = Inventory.objects.filter(product=product).first()
     lines = [
         f"产品：{product.name}",
@@ -135,6 +193,8 @@ def check_inventory(name: str) -> str:
         product = Products.objects.filter(name__icontains=name).first()
         if not product:
             return f"没找到叫「{name}」的产品，无法查库存。"
+        # 登记到本轮引用列表（库存为 0 也要出名片，让客户看到"售罄"而不是什么都没有）
+        _remember_product(product)
         inv = Inventory.objects.filter(product=product).first()
     except Exception as e:
         return f"查询库存出错：{e}"
@@ -285,6 +345,9 @@ def calculate_quote(items: list) -> str:
             if not product:
                 lines.append(f"  {name} × {qty} — ❌ 未找到该产品")
                 continue
+
+            # 报价里的商品同样出名片（客户看完报价即可一键下单）
+            _remember_product(product)
 
             unit_price = float(product.wholesale_price or product.retail_price or 0)
             subtotal = round(unit_price * qty, 2)

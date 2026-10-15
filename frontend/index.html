@@ -398,6 +398,63 @@
                                                     </div>
                                                 </div>
                                             </template>
+                                            <!-- 产品名片（Agent 介绍过的商品 → 一键进入下单界面） -->
+                                            <!-- 对应任务书四·2（名片含名称/规格/图片/价格）、四·3（按钮直达下单/联系页） -->
+                                            <template v-else-if="msg.cardType === 'product'">
+                                                <div class="flex items-stretch">
+                                                    <img
+                                                        :src="productImage(msg.product.name)"
+                                                        @error="onImgError"
+                                                        :alt="msg.product.name"
+                                                        loading="lazy" decoding="async"
+                                                        class="w-28 h-28 object-cover flex-shrink-0 bg-brand-50"
+                                                    >
+                                                    <div class="flex-1 min-w-0 px-4 py-3 space-y-1">
+                                                        <div class="flex items-start justify-between gap-2">
+                                                            <span class="font-semibold text-sm text-ink-900 truncate">{{ msg.product.name }}</span>
+                                                            <span
+                                                                class="flex-shrink-0 px-2 py-0.5 rounded-full text-[11px] font-medium"
+                                                                :class="msg.product.can_buy ? 'bg-brand-100 text-brand-700' : 'bg-stone-200 text-stone-600'"
+                                                            >{{ msg.product.stock_label }}</span>
+                                                        </div>
+                                                        <p class="text-xs text-ink-500 truncate">规格：{{ msg.product.spec || '—' }}</p>
+                                                        <p v-if="msg.product.target_fish" class="text-xs text-ink-500 truncate">适用鱼种：{{ msg.product.target_fish }}</p>
+                                                        <div class="flex items-baseline gap-2 pt-0.5">
+                                                            <span class="text-lg font-bold text-sunset-700">¥{{ msg.product.retail_price }}</span>
+                                                            <span class="text-xs text-ink-400">零售价/包</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="px-4 pb-4">
+                                                    <p v-if="!msg.product.can_buy" class="text-xs text-sunset-700 bg-sunset-50 rounded-lg px-3 py-2 leading-relaxed">
+                                                        {{ msg.product.buy_block_message || '该商品暂时无法下单' }}
+                                                    </p>
+                                                    <p v-else-if="msg.product.customer_notice" class="text-xs text-brand-700 bg-brand-50 rounded-lg px-3 py-2 leading-relaxed">
+                                                        {{ msg.product.customer_notice }}
+                                                    </p>
+                                                    <div class="grid grid-cols-3 gap-2 pt-3">
+                                                        <button
+                                                            @click="goOrder(msg.product)"
+                                                            :disabled="!msg.product.can_buy"
+                                                            class="px-2 py-2.5 bg-sunset-700 text-white text-xs font-semibold rounded-lg hover:bg-sunset-800 transition shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                                                        >
+                                                            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span> 立即下单
+                                                        </button>
+                                                        <button
+                                                            @click="goToPage('custom.html')"
+                                                            class="px-2 py-2.5 bg-brand-600 text-white text-xs font-semibold rounded-lg hover:bg-brand-700 transition shadow-sm flex items-center justify-center gap-1"
+                                                        >
+                                                            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></span> 批量定制
+                                                        </button>
+                                                        <button
+                                                            @click="goToPage('contact.html')"
+                                                            class="px-2 py-2.5 bg-white text-ink-700 text-xs font-semibold rounded-lg border border-brand-100 hover:border-brand-400 hover:text-brand-600 transition flex items-center justify-center gap-1"
+                                                        >
+                                                            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> 联系我们
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </template>
                                             <!-- 订单成功卡片（兼容保留） -->
                                             <template v-else>
                                                 <div class="px-5 py-3 bg-gradient-to-r from-brand-600 to-lake-600 text-white flex items-center gap-2">
