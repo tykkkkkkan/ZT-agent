@@ -3,20 +3,26 @@
 为什么值得单独验：这条命令是**去外地演示前唯一要跑的东西**，它自己坏了
 （报错、输出乱码、给了错的地址）比不跑还糟 —— 现场没人能debug它。
 
-四节：
-  【1】命令能被 Django 正常加载，且 `--help` 不炸
+六节：
+  【1】命令能被 Django 正常加载，且取不到地址时给提示而非崩溃
   【2】输出里必须给出**可粘贴的完整地址**（/index.html、/healthz、/pay/confirm/）
   【3】输出必须全部是 **GBK 可编码**的字符
         —— 直接跑在控制台时 Python 走 UTF-16，什么字符都能打；
            一旦重定向到文件 / 管道（`> log.txt`），stdout 退化成 cp936，
            一个 U+2713(✓) 就足够让命令 UnicodeEncodeError 崩掉。
-           所以刻意只用 √ × ─ · 这些 GBK 也有的符号。
-  【4】ALLOWED_HOSTS 通了要说通、没通要说清怎么改；端口没监听要给出正确的启动命令
+           所以刻意只用 √ × ─ · ※ 这些 GBK 也有的符号。
+  【4】ALLOWED_HOSTS 通了要说通、没通要说清怎么改；端口状态要如实说
+  【5】`--serve`：把「自检 + 启动」并成一步，但**端口已有服务时必须拦下来**
+        —— Windows 允许 `0.0.0.0:8000` 与 `127.0.0.1:8000` 同时监听，
+           再起一个不报错，却会导致 localhost 命中旧进程（最难查的一类）。
+        —— 同时守住「默认只读」的承诺：不带 --serve 时绝不启动服务。
+  【6】`--serve` 模式的输出同样 GBK 可编码（各分支都要，不只是默认分支）
 
 用法：./.venv/Scripts/python.exe scripts/verify_lancheck.py
 """
 import io
 import os
+import socket
 import sys
 
 import django
@@ -41,11 +47,21 @@ def check(label, ok, detail=""):
     print(line)
 
 
-def run(port="8000", out=None):
+def run(port="8000", out=None, **kw):
     """跑一次 lancheck，返回 (stdout 文本, stderr 文本)。"""
     o, e = out or io.StringIO(), io.StringIO()
-    call_command("lancheck", port=port, stdout=o, stderr=e)
+    call_command("lancheck", port=port, **kw, stdout=o, stderr=e)
     return o.getvalue(), e.getvalue()
+
+
+def gbk_ok(text):
+    try:
+        text.encode("gbk")
+        return True, ""
+    except UnicodeEncodeError as exc:
+        bad = text[exc.start:exc.end]
+        return False, (f"第 {exc.start} 字符 {bad!r}（U+{ord(bad[0]):04X}）不在 GBK 里，"
+                       "请换成 √ × ─ · ※ 之类的符号")
 
 
 print("=" * 64)
@@ -69,6 +85,12 @@ check("取到了本机联网地址（取不到时应给出排查提示而非崩�
       bool(ip) or "取不到本机联网地址" in text,
       f"lan_ip() 返回 {ip!r}，输出里既没地址也没提示")
 
+if sys.prefix != getattr(sys, "base_prefix", sys.prefix):
+    check("在虚拟环境里跑时会提醒「改用系统 Python」（防火墙规则按 exe 路径匹配）",
+          "虚拟环境" in text)
+else:
+    check("非虚拟环境 → 无需提醒（本项在此环境下不适用）", True)
+
 # ════════════════════════════════════════════════════════════════
 print("\n【2】必须给出可粘贴的完整地址")
 # ════════════════════════════════════════════════════════════════
@@ -79,23 +101,18 @@ if ip:
     check("说明了二维码会写成什么（/pay/confirm/）", "/pay/confirm/" in text)
     check("提醒了「别用 localhost 打开」", "别用 localhost" in text)
     check("提醒了必须绑 0.0.0.0（不是 127.0.0.1）", "0.0.0.0" in text)
+    check("告诉用户可以用 --serve 省掉第二条命令", "--serve" in text)
 else:
     check("取不到地址时，输出里给出了原因", "取不到本机联网地址" in text)
 
 # ════════════════════════════════════════════════════════════════
 print("\n【3】输出必须 GBK 可编码（重定向到文件时不会崩）")
 # ════════════════════════════════════════════════════════════════
-try:
-    text.encode("gbk")
-    check("全部输出都能用 GBK 编码（`> out.txt` 不会 UnicodeEncodeError）", True)
-except UnicodeEncodeError as exc:
-    bad = text[exc.start:exc.end]
-    check("全部输出都能用 GBK 编码（`> out.txt` 不会 UnicodeEncodeError）", False,
-          f"第 {exc.start} 字符 {bad!r}（U+{ord(bad[0]):04X}）不在 GBK 里，"
-          "请换成 √ × ─ · 之类的符号")
+ok, why = gbk_ok(text)
+check("全部输出都能用 GBK 编码（`> out.txt` 不会 UnicodeEncodeError）", ok, why)
 
 # ════════════════════════════════════════════════════════════════
-print("\n【4】三种状态各说各的话")
+print("\n【4】四种状态各说各的话")
 # ════════════════════════════════════════════════════════════════
 with override_settings(ALLOWED_HOSTS=["*"]):
     t, _ = run()
@@ -117,8 +134,6 @@ check("没监听时给出正确的启动命令（带 0.0.0.0）",
 check("没监听时点明「只绑 127.0.0.1 手机连不上」", "127.0.0.1" in t_empty)
 
 # 与真实监听状态交叉验证（8000 上有没有服务，以本机实际探测为准）
-import socket  # noqa: E402
-
 if ip:
     try:
         with socket.create_connection((ip, 8000), timeout=0.4):
@@ -130,6 +145,116 @@ if ip:
     check(f"对 8000 的监听判断与实际一致（实际 {'在跑' if alive else '没跑'}）",
           said_alive == alive,
           f"命令说 {said_alive}，实际 {alive}")
+
+# ════════════════════════════════════════════════════════════════
+print("\n【5】--serve：两步并成一步，但该拦的要拦")
+# ════════════════════════════════════════════════════════════════
+from agent.management.commands import lancheck as lc  # noqa: E402
+
+parser = lc.Command().create_parser("manage.py", "lancheck")
+opts = parser.parse_args([])
+check("默认不启动服务 —— 「只读」的承诺没破", opts.serve is False)
+check("--serve 开关存在", parser.parse_args(["--serve"]).serve is True)
+check("--force 开关存在", parser.parse_args(["--force"]).force is True)
+check("--host 默认 0.0.0.0（不是只绑回环）", opts.host == "0.0.0.0")
+check("--port 仍是老参数（不破坏既有用法）",
+      parser.parse_args(["--port", "8123"]).port == "8123")
+
+# 找一个空闲端口，真起一个监听来模拟「端口上已经有服务在跑」
+#
+# ⚠️ 必须配一个 accept 线程：`listen(1)` 的 backlog 只有 1，而本脚本在一次运行里
+#    会对同一端口探测至少两次（先看状态、再看拦路检查）—— 没有 accept 时第一个
+#    连接占满队列，第二个直接被拒，于是拦路检查会误判成"端口是空的"。
+#    （这个坑当场抓到过：`_busy_on_loopback` 第一次 True、第二次 False。）
+srv, probe, stopper, acceptor = None, None, None, None
+for cand in range(18123, 18163):
+    s = socket.socket()
+    try:
+        s.bind(("127.0.0.1", cand))
+        s.listen(64)
+    except OSError:
+        s.close()
+        continue
+    srv, probe = s, str(cand)
+    break
+check("找到一个空闲端口用来模拟「已有服务在跑」", probe is not None,
+      "18123-18162 全被占用")
+
+if probe:
+    import threading  # noqa: E402
+
+    stopper = threading.Event()
+
+    def _accept_forever():
+        srv.settimeout(0.2)
+        while not stopper.is_set():
+            try:
+                conn, _ = srv.accept()
+            except (OSError, socket.timeout):
+                continue
+            conn.close()
+
+    acceptor = threading.Thread(target=_accept_forever, daemon=True)
+    acceptor.start()
+    check("假服务真的在接连接（否则探测会被 backlog 骗到）",
+          lc.Command._busy_on_loopback(probe) and lc.Command._busy_on_loopback(probe))
+
+if probe:
+    calls, orig = [], lc.call_command
+    # 只桩掉真正启动服务那一步：本脚本不该真的把服务器跑起来。
+    lc.call_command = lambda *a, **k: calls.append((a, k))
+    try:
+        # ① 端口被占 + 没 --force → 必须拒绝
+        t, e = run(port=probe, serve=True)
+        blob = t + e
+        check("端口已被占用时 --serve 拒绝再起一个（防住两个 runserver 并存）",
+              not calls and "这次不起" in blob, f"calls={calls}")
+        check("拒绝时说明了原因（Windows 允许 0.0.0.0 与 127.0.0.1 同端口并存）",
+              "同时" in blob)
+        check("拒绝时给出三条出路（用现有的 / 先停掉 / --force）", "--force" in blob)
+        check("拒绝分支的输出也 GBK 可编码", gbk_ok(blob)[0], gbk_ok(blob)[1])
+
+        # ② 端口被占 + --force → 真的去起
+        t, e = run(port=probe, serve=True, force=True)
+        check("--force 时确实去调用了 runserver", bool(calls), f"calls={calls}")
+        if calls:
+            args, kw = calls[0]
+            check("绑定地址是 0.0.0.0（不是回环）",
+                  args[:2] == ("runserver", f"0.0.0.0:{probe}"), f"{args} {kw}")
+            check("用 --noreload 启动（演示时不会被手滑改文件打断）",
+                  kw.get("use_reloader") is False, f"{kw}")
+        check("--force 分支的输出也 GBK 可编码", gbk_ok(t + e)[0], gbk_ok(t + e)[1])
+    finally:
+        lc.call_command = orig
+
+    srv.close()  # 端口空出来，测「正常启动」那条路
+    if stopper:
+        stopper.set()
+
+    calls.clear()
+    lc.call_command = lambda *a, **k: calls.append((a, k))
+    try:
+        # ③ 端口空闲 + --serve → 正常启动（被桩住，不会真起服务）
+        t, e = run(port=probe, serve=True)
+        check("端口空闲时 --serve 会启动服务", bool(calls), f"calls={calls}")
+        check("启动前打印了「绑定 0.0.0.0:<port>」（绑错就是手机连不上）",
+              f"绑定 0.0.0.0:{probe}" in t, t[-400:])
+
+        # ④ 不带 --serve → 绝不启动服务
+        calls.clear()
+        t_ro, _ = run(port=probe)
+        check("默认（不带 --serve）绝不启动服务", not calls, f"calls={calls}")
+        check("默认模式下会提示可以用 --serve 省一步", "--serve" in t_ro)
+    finally:
+        lc.call_command = orig
+
+# ════════════════════════════════════════════════════════════════
+print("\n【6】--help 能正常打印（现场手忙脚乱时唯一的说明书）")
+# ════════════════════════════════════════════════════════════════
+helped = lc.Command().create_parser("manage.py", "lancheck").format_help()
+check("--help 里列出了 --serve", "--serve" in helped)
+check("--help 里列出了 --host 与 --port", "--host" in helped and "--port" in helped)
+check("--help 输出 GBK 可编码", gbk_ok(helped)[0], gbk_ok(helped)[1])
 
 print()
 print("=" * 64)
