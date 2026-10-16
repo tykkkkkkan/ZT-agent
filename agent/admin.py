@@ -399,24 +399,24 @@ class InventoryAdmin(ZYModelAdmin):
     def reserved_display(self, obj):
         n = obj.reserved_stock or 0
         if n == 0:
-            return format_html('<span style="color:#738079;">0</span>')
-        return format_html('<span style="color:#B5481C;font-weight:600;">{}</span>', n)
+            return format_html('<span style="color:var(--zy-text-mute);">0</span>')
+        return format_html('<span style="color:var(--zy-warn);font-weight:600;">{}</span>', n)
 
     @admin.display(description='可用(=库存-预占)')
     def available_display(self, obj):
         avail = obj.available_stock
-        color = '#B5481C' if avail <= 0 else '#1F6B54'
+        color = 'var(--zy-warn)' if avail <= 0 else 'var(--zy-accent)'
         return format_html('<b style="color:{};">{}</b>', color, avail)
 
     @admin.display(description='库存状态', ordering='stock')
     def stock_status(self, obj):
         if obj.stock is None or obj.alert_line is None:
-            return format_html('<span style="color:#738079;">—</span>')
+            return format_html('<span style="color:var(--zy-text-mute);">—</span>')
         if obj.stock <= 0:
-            return format_html('<span style="color:#B5481C;font-weight:600;">● 缺货</span>')
+            return format_html('<span style="color:var(--zy-warn);font-weight:600;">● 缺货</span>')
         if obj.stock <= obj.alert_line:
-            return format_html('<span style="color:#E2703A;font-weight:600;">● 预警</span>')
-        return format_html('<span style="color:#1F6B54;font-weight:600;">● 正常</span>')
+            return format_html('<span style="color:var(--zy-warn);font-weight:600;">● 预警</span>')
+        return format_html('<span style="color:var(--zy-accent);font-weight:600;">● 正常</span>')
 
     # ── 接单状态（跨 Agent 覆盖）──────────────────────────────
     def _coord_map(self):
@@ -439,24 +439,24 @@ class InventoryAdmin(ZYModelAdmin):
         name = obj.product.name if obj.product else ''
 
         if not paused and avail > 0:
-            return format_html('<span style="color:#1F6B54;font-weight:600;">● 可下单</span>')
+            return format_html('<span style="color:var(--zy-accent);font-weight:600;">● 可下单</span>')
 
         if paused:
             why = '人工暂停' if (coord.pause_reason == ProductCoordination.PAUSE_MANUAL) \
                 else '断货暂停'
             auto = '' if coord.pause_reason == ProductCoordination.PAUSE_MANUAL \
                 else '（补货后自动恢复）'
-            tone = '#B5481C' if avail > 0 else '#E2703A'
+            tone = 'var(--zy-warn)' if avail > 0 else 'var(--zy-warn)'
             return format_html(
                 '<span style="color:{};font-weight:600;">⛔ 暂停接单</span>'
-                '<br><span style="color:#738079;font-size:11.5px;">{} {}</span>',
+                '<br><span style="color:var(--zy-text-mute);font-size:11.5px;">{} {}</span>',
                 tone, why, auto,
             )
 
         # 未暂停但可用库存为 0
         return format_html(
-            '<span style="color:#B5481C;font-weight:600;">⛔ 无可售库存</span>'
-            '<br><span style="color:#738079;font-size:11.5px;">'
+            '<span style="color:var(--zy-warn);font-weight:600;">⛔ 无可售库存</span>'
+            '<br><span style="color:var(--zy-text-mute);font-size:11.5px;">'
             '总库存 {} / 预占 {}，补货后即可下单</span>',
             obj.stock or 0, obj.reserved_stock or 0,
         )
@@ -709,13 +709,13 @@ class OrdersAdmin(ZYModelAdmin):
         """订单归属账号：点击可跳到该用户，便于核对「为什么这笔没出现在我的订单里」。"""
         if not obj.user_id:
             return format_html(
-                '<span style="color:#B5481C;font-weight:600;">未归属账号</span>'
-                '<span style="color:#9AA89F;"> · 历史订单，由 C 端绑定手机号后认领</span>'
+                '<span style="color:var(--zy-warn);font-weight:600;">未归属账号</span>'
+                '<span style="color:var(--zy-text-mute);"> · 历史订单，由 C 端绑定手机号后认领</span>'
             )
         url = reverse('admin:auth_user_change', args=[obj.user_id])
         return format_html(
-            '<a href="{}" style="font-weight:600;color:#1F6B54;">{}</a>'
-            '<span style="color:#9AA89F;"> · id={}</span>',
+            '<a href="{}" style="font-weight:600;color:var(--zy-accent);">{}</a>'
+            '<span style="color:var(--zy-text-mute);"> · id={}</span>',
             url, obj.user.username, obj.user_id,
         )
 
@@ -724,29 +724,29 @@ class OrdersAdmin(ZYModelAdmin):
         """该订单产生的每一笔钱包流水（收入 / 退款 / 冲账），体现"钱从哪来、到哪去"。"""
         txs = list(Transaction.objects.filter(order=obj).order_by('created_at', 'id'))
         head = format_html(
-            '<div style="font-size:12.5px;color:#5A6B62;margin-bottom:6px;">'
+            '<div style="font-size:12.5px;color:var(--zy-text-soft);margin-bottom:6px;">'
             '共 <b>{}</b> 笔流水，净额 <b style="color:{};">{}</b>'
             '（发货自动记「订单收入」，退货/撤回自动记「订单退款」）</div>',
             len(txs),
-            '#1F6B54' if obj.status in (OrderStatus.SHIPPED, OrderStatus.COMPLETED) else '#B5481C',
+            'var(--zy-accent)' if obj.status in (OrderStatus.SHIPPED, OrderStatus.COMPLETED) else 'var(--zy-warn)',
             f"{'¥' + str(sum((t.amount if t.tx_type == TxType.INCOME else -t.amount) for t in txs or []))}",
         )
         if not txs:
             return format_html(
-                '{}<p style="color:#9AA89F;padding:6px 0;">'
+                '{}<p style="color:var(--zy-text-mute);padding:6px 0;">'
                 '暂无流水 —— 订单发货时才会入账（待发货 / 已取消不产生收入）。</p>',
                 head)
 
         rows = []
         for t in txs:
             sign = '+' if t.tx_type == TxType.INCOME else '−'
-            color = '#1F6B54' if t.tx_type == TxType.INCOME else '#B5481C'
+            color = 'var(--zy-accent)' if t.tx_type == TxType.INCOME else 'var(--zy-warn)'
             rows.append(format_html(
                 '<tr>'
-                '<td style="padding:6px 10px;color:#5A6B62;white-space:nowrap;">{}</td>'
+                '<td style="padding:6px 10px;color:var(--zy-text-soft);white-space:nowrap;">{}</td>'
                 '<td style="padding:6px 10px;">{}</td>'
                 '<td style="padding:6px 10px;text-align:right;font-weight:600;color:{};">{}¥{}</td>'
-                '<td style="padding:6px 10px;color:#5A6B62;">{}</td>'
+                '<td style="padding:6px 10px;color:var(--zy-text-soft);">{}</td>'
                 '</tr>',
                 t.created_at.strftime('%Y-%m-%d %H:%M') if t.created_at else '—',
                 t.category,
@@ -755,8 +755,8 @@ class OrdersAdmin(ZYModelAdmin):
             ))
         return format_html(
             '{}<table style="width:100%;border-collapse:collapse;font-size:12.5px;'
-            'background:#fff;border:1px solid #e8e4d8;border-radius:8px;overflow:hidden;">'
-            '<thead><tr style="background:#F3EFE4;">'
+            'background:var(--zy-surface);border:1px solid var(--zy-line);border-radius:8px;overflow:hidden;">'
+            '<thead><tr style="background:var(--zy-surface-2);">'
             '<th style="text-align:left;padding:6px 10px;">时间</th>'
             '<th style="text-align:left;padding:6px 10px;">分类</th>'
             '<th style="text-align:right;padding:6px 10px;">金额</th>'
@@ -769,31 +769,31 @@ class OrdersAdmin(ZYModelAdmin):
     def inventory_panel(self, obj):
         """该商品当前库存与本单占用，解释"为什么下不了单/发了货库存变多少"。"""
         if not obj.product_id:
-            return format_html('<p style="color:#9AA89F;">该订单未关联商品（历史数据），无库存影响。</p>')
+            return format_html('<p style="color:var(--zy-text-mute);">该订单未关联商品（历史数据），无库存影响。</p>')
         inv = Inventory.objects.filter(product_id=obj.product_id).first()
         if inv is None:
             return format_html(
-                '<p style="color:#B5481C;">商品 #{0} 没有库存记录 —— '
+                '<p style="color:var(--zy-warn);">商品 #{0} 没有库存记录 —— '
                 '下单/发货都会被状态机拒绝，请先到「库存管理」补一行。</p>', obj.product_id)
 
         qty = obj.quantity or 0
         s = obj.status
         if s == OrderStatus.PENDING:
-            effect, color = f'已预占 {qty} 包（发货时真正扣减）', '#7A2E0E'
+            effect, color = f'已预占 {qty} 包（发货时真正扣减）', 'var(--zy-warn)'
         elif s in (OrderStatus.SHIPPED, OrderStatus.COMPLETED):
-            effect, color = f'已扣减 {qty} 包', '#134435'
+            effect, color = f'已扣减 {qty} 包', 'var(--zy-accent-strong)'
         elif s in (OrderStatus.CANCELLED, OrderStatus.RETURNED):
-            effect, color = f'库存已回滚（未占用）', '#3A473F'
+            effect, color = f'库存已回滚（未占用）', 'var(--zy-text-soft)'
         else:   # 退货申请中
-            effect, color = '退货申请中，尚未回滚库存（等商家同意才入库）', '#7A2E0E'
+            effect, color = '退货申请中，尚未回滚库存（等商家同意才入库）', 'var(--zy-warn)'
 
         return format_html(
-            '<div style="font-size:12.5px;color:#5A6B62;margin-bottom:6px;">'
+            '<div style="font-size:12.5px;color:var(--zy-text-soft);margin-bottom:6px;">'
             '商品 <b>{}</b> · 本单数量 <b>{}</b> 包 · 本单影响：'
             '<b style="color:{};">{}</b></div>'
             '<table style="width:100%;border-collapse:collapse;font-size:12.5px;'
-            'background:#fff;border:1px solid #e8e4d8;border-radius:8px;overflow:hidden;">'
-            '<thead><tr style="background:#F3EFE4;">'
+            'background:var(--zy-surface);border:1px solid var(--zy-line);border-radius:8px;overflow:hidden;">'
+            '<thead><tr style="background:var(--zy-surface-2);">'
             '<th style="text-align:left;padding:6px 10px;">现有库存</th>'
             '<th style="text-align:left;padding:6px 10px;">预占</th>'
             '<th style="text-align:left;padding:6px 10px;">可用</th>'
@@ -804,13 +804,13 @@ class OrdersAdmin(ZYModelAdmin):
             '<td style="padding:6px 10px;">{}</td>'
             '<td style="padding:6px 10px;font-weight:600;color:{};">{}</td>'
             '<td style="padding:6px 10px;">{}</td>'
-            '<td style="padding:6px 10px;"><a href="{}" style="color:#1F6B54;">去库存管理 →</a></td>'
+            '<td style="padding:6px 10px;"><a href="{}" style="color:var(--zy-accent);">去库存管理 →</a></td>'
             '</tr></tbody></table>',
             inv.product.name if inv.product else f'#{obj.product_id}',
             qty, color, effect,
             inv.stock or 0,
             inv.reserved_stock or 0,
-            '#B5481C' if (inv.available_stock or 0) <= 0 else '#1F6B54',
+            'var(--zy-warn)' if (inv.available_stock or 0) <= 0 else 'var(--zy-accent)',
             inv.available_stock,
             inv.alert_line or 0,
             reverse('admin:agent_inventory_changelist') + f'?q={inv.product_id}',
@@ -821,23 +821,23 @@ class OrdersAdmin(ZYModelAdmin):
         """与 frontend 用的 `_order_actions` 同源 —— 后台直接看到用户此刻能做什么。"""
         from agent.views import _order_actions
         LABELS = {
-            'confirm': ('确认收货', '#1F6B54'),
-            'return': ('申请退货', '#B5481C'),
-            'cancel': ('取消订单', '#3A473F'),
-            'withdraw_return': ('撤销退货申请', '#3A473F'),
+            'confirm': ('确认收货', 'var(--zy-accent)'),
+            'return': ('申请退货', 'var(--zy-warn)'),
+            'cancel': ('取消订单', 'var(--zy-text-soft)'),
+            'withdraw_return': ('撤销退货申请', 'var(--zy-text-soft)'),
         }
         acts = _order_actions(obj)
         if not acts:
             return format_html(
-                '<p style="color:#9AA89F;">当前状态下 C 端无可用操作（订单已终结或待商家处理）。</p>')
+                '<p style="color:var(--zy-text-mute);">当前状态下 C 端无可用操作（订单已终结或待商家处理）。</p>')
         chips = ''.join(
-            f'<span style="display:inline-block;padding:3px 10px;border-radius:999px;'
-            f'background:#EEF4F1;color:{LABELS[a][1]};font-size:12px;font-weight:600;'
+            f'<span style="display:inline-block;padding:3px 10px;border-radius:6px;'
+            f'background:var(--zy-ok-bg);color:{LABELS[a][1]};font-size:12px;font-weight:600;'
             f'margin:0 6px 6px 0;">{LABELS[a][0]}</span>'
             for a in acts if a in LABELS
         )
         return format_html(
-            '<div style="font-size:12.5px;color:#5A6B62;margin-bottom:6px;">'
+            '<div style="font-size:12.5px;color:var(--zy-text-soft);margin-bottom:6px;">'
             '该订单在 C 端「个人中心 → 我的订单」中会显示以下按钮（规则与服务层同源，'
             '后台与前台不会出现"一边能操作一边不能"）：</div>{}',
             mark_safe(chips),
@@ -856,7 +856,7 @@ class OrdersAdmin(ZYModelAdmin):
         }.get(obj.status, [])
         if not candidates:
             return format_html(
-                '<p style="color:#9AA89F;">该订单已终结（{}），无可执行操作。</p>', obj.status)
+                '<p style="color:var(--zy-text-mute);">该订单已终结（{}），无可执行操作。</p>', obj.status)
         links = ''.join(
             f'<a class="zy-op-link zy-op-{tone}" data-zy-back="1" '
             f'href="{base}?ids={obj.pk}&op={op}" '
@@ -865,14 +865,14 @@ class OrdersAdmin(ZYModelAdmin):
             f'background:{bg};color:{fg};">{label}</a>'
             for op, label, tone in candidates
             for bg, fg in [{
-                'go': ('#1F6B54', '#fff'),
-                'danger': ('#FBE9E2', '#8A2B0F'),
-                'warn': ('#FDF0E8', '#7A2E0E'),
-                'mute': ('#EEF0EE', '#3A473F'),
+                'go': ('var(--zy-accent)', 'var(--zy-accent-on)'),
+                'danger': ('var(--zy-danger-bg)', 'var(--zy-danger)'),
+                'warn': ('var(--zy-warn-bg)', 'var(--zy-warn)'),
+                'mute': ('var(--zy-surface-2)', 'var(--zy-text-soft)'),
             }[tone]]
         )
         return format_html(
-            '<div style="font-size:12.5px;color:#5A6B62;margin-bottom:8px;">'
+            '<div style="font-size:12.5px;color:var(--zy-text-soft);margin-bottom:8px;">'
             '所有操作都会经 <code>services.transition_order</code> 执行，'
             '在同一事务内完成「改状态 + 动库存 + 记账」。</div>{}',
             mark_safe(links),
@@ -880,18 +880,21 @@ class OrdersAdmin(ZYModelAdmin):
 
     @staticmethod
     def _status_badge_html(status):
+        # 颜色语义（极简体系下，颜色只承担三件事）：
+        #   暖褐 = 等我处理　湖青 = 进行中　中性 = 终态　红 = 售后逆向
         style_map = {
-            '未发货': ('#F4B495', '#7A2E0E', '● 待发货'),
-            '已发货': ('#DCEDE6', '#134435', '● 已发货'),
-            '已完成': ('#DCE9FF', '#13407A', '● 已完成'),
-            '退货申请中': ('#FDF0E8', '#7A2E0E', '● 退货申请中'),
-            '已取消': ('#E2E5E2', '#3A473F', '● 已取消'),
-            '已退货': ('#F7D9CF', '#7A2E0E', '● 已退货'),
+            '未发货': ('var(--zy-warn-bg)', 'var(--zy-warn)', '● 待发货'),
+            '已发货': ('var(--zy-accent-soft)', 'var(--zy-accent)', '● 已发货'),
+            '已完成': ('var(--zy-surface-2)', 'var(--zy-text-soft)', '● 已完成'),
+            '退货申请中': ('var(--zy-danger-bg)', 'var(--zy-danger)', '● 退货申请中'),
+            '已取消': ('var(--zy-surface-2)', 'var(--zy-text-mute)', '● 已取消'),
+            '已退货': ('var(--zy-surface-2)', 'var(--zy-danger)', '● 已退货'),
         }
-        bg, fg, label = style_map.get(status, ('#EEE', '#333', status or '—'))
+        bg, fg, label = style_map.get(status, ('var(--zy-surface-2)', 'var(--zy-text-mute)', status or '—'))
         return format_html(
-            '<span style="display:inline-block;padding:3px 10px;border-radius:999px;'
-            'background:{};color:{};font-size:12px;font-weight:600;white-space:nowrap;">{}</span>',
+            '<span style="display:inline-block;padding:2px 9px;border-radius:6px;'
+            'border:1px solid color-mix(in srgb,currentColor 22%,transparent);'
+            'background:{};color:{};font-size:12px;font-weight:500;white-space:nowrap;">{}</span>',
             bg, fg, label,
         )
 
@@ -903,18 +906,19 @@ class OrdersAdmin(ZYModelAdmin):
         而不是一个安静的展示字段。空值单独标注为「历史订单」，避免和"未支付"混淆。
         """
         style_map = {
-            PaymentStatus.UNPAID:   ('#FDF0E8', '#7A2E0E', '● 未支付'),
-            PaymentStatus.PAID:     ('#DCEDE6', '#134435', '● 已支付'),
-            PaymentStatus.REFUNDED: ('#E2E5E2', '#3A473F', '● 已退款'),
+            PaymentStatus.UNPAID:   ('var(--zy-warn-bg)', 'var(--zy-warn)', '● 未支付'),
+            PaymentStatus.PAID:     ('var(--zy-accent-soft)', 'var(--zy-accent)', '● 已支付'),
+            PaymentStatus.REFUNDED: ('var(--zy-surface-2)', 'var(--zy-text-soft)', '● 已退款'),
         }
         value = getattr(obj, 'payment_status', '') or ''
         if value in style_map:
             bg, fg, label = style_map[value]
         else:
-            bg, fg, label = '#F2F4F2', '#6B7A72', '— 历史订单'
+            bg, fg, label = 'var(--zy-surface-2)', 'var(--zy-text-mute)', '— 历史订单'
         return format_html(
-            '<span style="display:inline-block;padding:3px 10px;border-radius:999px;'
-            'background:{};color:{};font-size:12px;font-weight:600;white-space:nowrap;">{}</span>',
+            '<span style="display:inline-block;padding:2px 9px;border-radius:6px;'
+            'border:1px solid color-mix(in srgb,currentColor 22%,transparent);'
+            'background:{};color:{};font-size:12px;font-weight:500;white-space:nowrap;">{}</span>',
             bg, fg, label,
         )
 
@@ -946,14 +950,14 @@ class OrdersAdmin(ZYModelAdmin):
         company = obj.ship_company or ''
         tracking = obj.tracking_no or ''
         if not company and not tracking:
-            return format_html('<span style="color:#9AA89F;">—</span>')
+            return format_html('<span style="color:var(--zy-text-mute);">—</span>')
         suffix = format_html(
-            '<span style="color:#9AA89F;font-size:11.5px;"> · {}</span>',
+            '<span style="color:var(--zy-text-mute);font-size:11.5px;"> · {}</span>',
             obj.shipped_at.strftime('%m-%d %H:%M'),
         ) if obj.shipped_at else ''
         return format_html(
             '{}<br><span style="font-family:ui-monospace,Menlo,monospace;font-size:12px;'
-            'color:#185647;">{}</span>{}',
+            'color:var(--zy-accent);">{}</span>{}',
             company or '—', tracking or '—', suffix,
         )
 
@@ -961,26 +965,27 @@ class OrdersAdmin(ZYModelAdmin):
     def return_display(self, obj):
         """把用户的退货申请（状态 + 理由 + 申请时间）合成一列，让商家一眼看到待处理请求。"""
         if not obj.return_status:
-            return format_html('<span style="color:#9AA89F;">—</span>')
+            return format_html('<span style="color:var(--zy-text-mute);">—</span>')
         reason = (obj.return_reason or '').strip()
         requested = obj.return_requested_at.strftime('%m-%d %H:%M') if obj.return_requested_at else ''
         color = {
-            ReturnStatus.PENDING: ('#FDF0E8', '#7A2E0E'),
-            ReturnStatus.APPROVED: ('#DCEDE6', '#134435'),
-            ReturnStatus.REJECTED: ('#E2E5E2', '#3A473F'),
-        }.get(obj.return_status, ('#EEE', '#333'))
+            ReturnStatus.PENDING: ('var(--zy-danger-bg)', 'var(--zy-danger)'),
+            ReturnStatus.APPROVED: ('var(--zy-accent-soft)', 'var(--zy-accent)'),
+            ReturnStatus.REJECTED: ('var(--zy-surface-2)', 'var(--zy-text-soft)'),
+        }.get(obj.return_status, ('var(--zy-surface-2)', 'var(--zy-text-mute)'))
         bg, fg = color
         badge = format_html(
-            '<span style="display:inline-block;padding:2px 8px;border-radius:999px;'
-            'background:{};color:{};font-size:11.5px;font-weight:600;">{}</span>',
+            '<span style="display:inline-block;padding:2px 9px;border-radius:6px;'
+            'border:1px solid color-mix(in srgb,currentColor 22%,transparent);'
+            'background:{};color:{};font-size:11.5px;font-weight:500;">{}</span>',
             bg, fg, obj.return_status,
         )
         if reason:
-            badge = format_html('{}<br><span style="font-size:12px;color:#5A6B62;">{}</span>', badge, reason)
+            badge = format_html('{}<br><span style="font-size:12px;color:var(--zy-text-soft);">{}</span>', badge, reason)
         if requested:
-            badge = format_html('{}<br><span style="font-size:11px;color:#9AA89F;">{} 申请</span>', badge, requested)
+            badge = format_html('{}<br><span style="font-size:11px;color:var(--zy-text-mute);">{} 申请</span>', badge, requested)
         if obj.return_note:
-            badge = format_html('{}<br><span style="font-size:11px;color:#B5481C;">处理：{}</span>', badge, obj.return_note)
+            badge = format_html('{}<br><span style="font-size:11px;color:var(--zy-warn);">处理：{}</span>', badge, obj.return_note)
         return badge
 
     # ── 订单操作页（发货 / 取消 / 退货 / 撤回 四合一） ──────────
@@ -1270,7 +1275,7 @@ class WalletAdmin(ZYModelAdmin):
                            '要增减金额请点右下角「＋ 充值 / － 扣款」，'
                            '系统会自动写一条流水并同步余额。',
         }),
-        ('📊 财务统计（今日/本月/分类汇总）', {'fields': ('stats_panel',)}),
+        ('财务统计（今日 / 本月 / 分类汇总）', {'fields': ('stats_panel',)}),
         ('📈 近 30 日收入趋势', {'fields': ('income_trend_panel',)}),
         ('🕐 最近 10 笔流水', {'fields': ('recent_txs_panel',)}),
         ('信息', {'fields': ('updated_at',)}),
@@ -1343,14 +1348,14 @@ class WalletAdmin(ZYModelAdmin):
 
     @admin.display(description='当前余额')
     def balance_display(self, obj):
-        color = '#1F6B54' if obj.balance >= 0 else '#B5481C'
+        color = 'var(--zy-accent)' if obj.balance >= 0 else 'var(--zy-warn)'
         val = f"{obj.balance or 0:,.2f}"
         return format_html('<b style="color:{};font-size:15px;">¥{}</b>', color, val)
 
     @admin.display(description='累计收入')
     def income_total_display(self, obj):
         s = Transaction.objects.filter(wallet=obj, tx_type=TxType.INCOME).aggregate(t=Sum('amount'))['t'] or 0
-        return format_html('<span style="color:#1F6B54;">¥{}</span>', f"{s:,.2f}")
+        return format_html('<span style="color:var(--zy-accent);">¥{}</span>', f"{s:,.2f}")
 
     @admin.display(description='今日收入')
     def income_today_display(self, obj):
@@ -1358,7 +1363,7 @@ class WalletAdmin(ZYModelAdmin):
         s = Transaction.objects.filter(
             wallet=obj, tx_type=TxType.INCOME, created_at__date=date.today()
         ).aggregate(t=Sum('amount'))['t'] or 0
-        return format_html('<span style="color:#1F6B54;font-weight:600;">+¥{}</span>', f"{s:,.2f}")
+        return format_html('<span style="color:var(--zy-accent);font-weight:600;">+¥{}</span>', f"{s:,.2f}")
 
     @admin.display(description='本月收入')
     def income_month_display(self, obj):
@@ -1367,12 +1372,12 @@ class WalletAdmin(ZYModelAdmin):
             wallet=obj, tx_type=TxType.INCOME,
             created_at__date__gte=date.today().replace(day=1),
         ).aggregate(t=Sum('amount'))['t'] or 0
-        return format_html('<span style="color:#2C7C8C;font-weight:600;">+¥{}</span>', f"{s:,.2f}")
+        return format_html('<span style="color:var(--zy-accent);font-weight:600;">+¥{}</span>', f"{s:,.2f}")
 
     @admin.display(description='累计支出')
     def expense_total_display(self, obj):
         s = Transaction.objects.filter(wallet=obj, tx_type=TxType.EXPENSE).aggregate(t=Sum('amount'))['t'] or 0
-        return format_html('<span style="color:#B5481C;">¥{}</span>', f"{s:,.2f}")
+        return format_html('<span style="color:var(--zy-warn);">¥{}</span>', f"{s:,.2f}")
 
     @admin.display(description='财务统计')
     def stats_panel(self, obj):
@@ -1395,7 +1400,7 @@ class WalletAdmin(ZYModelAdmin):
                     wallet=obj, tx_type=tx_type, category=cat_value
                 ).aggregate(t=Sum('amount'))['t'] or 0
                 if s > 0:
-                    color = '#1F6B54' if tx_type == TxType.INCOME else '#B5481C'
+                    color = 'var(--zy-accent)' if tx_type == TxType.INCOME else 'var(--zy-warn)'
                     sign = '+' if tx_type == TxType.INCOME else '-'
                     type_label = '收入' if tx_type == TxType.INCOME else '支出'
                     cat_rows_html += (
@@ -1404,44 +1409,44 @@ class WalletAdmin(ZYModelAdmin):
                         f'<td style="padding:6px 10px;text-align:right;color:{color};font-weight:600;">{sign}¥{s:,.2f}</td></tr>'
                     )
         if not cat_rows_html:
-            cat_rows_html = '<tr><td colspan="3" style="padding:8px;color:#999;text-align:center;">暂无流水</td></tr>'
+            cat_rows_html = '<tr><td colspan="3" style="padding:8px;color:var(--zy-text-mute);text-align:center;">暂无流水</td></tr>'
         net = (month_in or 0) - (month_out or 0)
-        net_color = '#1F6B54' if net >= 0 else '#B5481C'
+        net_color = 'var(--zy-accent)' if net >= 0 else 'var(--zy-warn)'
         bal = float(obj.balance or 0)
-        bal_color = '#1F6B54' if bal >= 0 else '#B5481C'
+        bal_color = 'var(--zy-accent)' if bal >= 0 else 'var(--zy-warn)'
         return format_html(
             '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:6px 0 18px;">'
-            # 余额
-            '<div style="background:#F6F1E7;padding:12px 14px;border-radius:10px;border-left:4px solid {bc};">'
-            '<div style="color:#738079;font-size:12px;">当前余额</div>'
-            '<div style="color:{bc};font-size:22px;font-weight:700;line-height:1.4;">¥{bal}</div></div>'
-            # 今日收入
-            '<div style="background:#EAF6F1;padding:12px 14px;border-radius:10px;border-left:4px solid #1F6B54;">'
-            '<div style="color:#134435;font-size:12px;">今日收入</div>'
-            '<div style="color:#1F6B54;font-size:22px;font-weight:700;line-height:1.4;">+¥{ti}</div></div>'
-            # 昨日收入
-            '<div style="background:#E2F3F7;padding:12px 14px;border-radius:10px;border-left:4px solid #2C7C8C;">'
-            '<div style="color:#134435;font-size:12px;">昨日收入</div>'
-            '<div style="color:#2C7C8C;font-size:22px;font-weight:700;line-height:1.4;">+¥{yi}</div></div>'
-            # 本月收入
-            '<div style="background:#FFF3E5;padding:12px 14px;border-radius:10px;border-left:4px solid #E2703A;">'
-            '<div style="color:#7A2E0E;font-size:12px;">本月收入</div>'
-            '<div style="color:#E2703A;font-size:22px;font-weight:700;line-height:1.4;">+¥{mi}</div></div>'
-            # 本月支出
-            '<div style="background:#F7D9CF;padding:12px 14px;border-radius:10px;border-left:4px solid #B5481C;">'
-            '<div style="color:#7A2E0E;font-size:12px;">本月支出</div>'
-            '<div style="color:#B5481C;font-size:22px;font-weight:700;line-height:1.4;">-¥{mo}</div></div>'
-            # 本月净流
-            '<div style="background:#E2F3F7;padding:12px 14px;border-radius:10px;border-left:4px solid {nc};">'
-            '<div style="color:#134435;font-size:12px;">本月净流</div>'
-            '<div style="color:{nc};font-size:22px;font-weight:700;line-height:1.4;">¥{net}</div></div>'
+            '<div style="background:var(--zy-surface);border:1px solid var(--zy-line);'
+            'padding:12px 14px;border-radius:var(--zy-radius);">'
+            '<div style="color:var(--zy-text-mute);font-size:12px;">当前余额</div>'
+            '<div style="color:{bc};font-size:21px;font-weight:600;line-height:1.45;">¥{bal}</div></div>'
+            '<div style="background:var(--zy-surface);border:1px solid var(--zy-line);'
+            'padding:12px 14px;border-radius:var(--zy-radius);">'
+            '<div style="color:var(--zy-text-mute);font-size:12px;">今日收入</div>'
+            '<div style="color:var(--zy-accent);font-size:21px;font-weight:600;line-height:1.45;">+¥{ti}</div></div>'
+            '<div style="background:var(--zy-surface);border:1px solid var(--zy-line);'
+            'padding:12px 14px;border-radius:var(--zy-radius);">'
+            '<div style="color:var(--zy-text-mute);font-size:12px;">昨日收入</div>'
+            '<div style="color:var(--zy-accent);font-size:21px;font-weight:600;line-height:1.45;">+¥{yi}</div></div>'
+            '<div style="background:var(--zy-surface);border:1px solid var(--zy-line);'
+            'padding:12px 14px;border-radius:var(--zy-radius);">'
+            '<div style="color:var(--zy-text-mute);font-size:12px;">本月收入</div>'
+            '<div style="color:var(--zy-accent);font-size:21px;font-weight:600;line-height:1.45;">+¥{mi}</div></div>'
+            '<div style="background:var(--zy-surface);border:1px solid var(--zy-line);'
+            'padding:12px 14px;border-radius:var(--zy-radius);">'
+            '<div style="color:var(--zy-text-mute);font-size:12px;">本月支出</div>'
+            '<div style="color:var(--zy-warn);font-size:21px;font-weight:600;line-height:1.45;">-¥{mo}</div></div>'
+            '<div style="background:var(--zy-surface);border:1px solid var(--zy-line);'
+            'padding:12px 14px;border-radius:var(--zy-radius);">'
+            '<div style="color:var(--zy-text-mute);font-size:12px;">本月净流</div>'
+            '<div style="color:{nc};font-size:21px;font-weight:600;line-height:1.45;">¥{net}</div></div>'
             '</div>'
-            '<div style="font-size:13px;font-weight:600;color:#15211D;margin:6px 0 4px;">📂 分类汇总</div>'
-            '<table style="width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #e8e4d8;border-radius:8px;overflow:hidden;">'
-            '<thead><tr style="background:#F3EFE4;color:#15211D;">'
-            '<th style="text-align:left;padding:8px 10px;">分类</th>'
-            '<th style="text-align:left;padding:8px 10px;">类型</th>'
-            '<th style="text-align:right;padding:8px 10px;">累计金额</th>'
+            '<div style="font-size:13px;font-weight:500;color:var(--zy-text);margin:8px 0 5px;">分类汇总</div>'
+            '<table style="width:100%;border-collapse:collapse;font-size:13px;background:var(--zy-surface);border:1px solid var(--zy-line);border-radius:var(--zy-radius);overflow:hidden;">'
+            '<thead><tr style="background:var(--zy-surface-2);color:var(--zy-text-soft);font-weight:500;">'
+            '<th style="text-align:left;padding:8px 10px;font-weight:500;">分类</th>'
+            '<th style="text-align:left;padding:8px 10px;font-weight:500;">类型</th>'
+            '<th style="text-align:right;padding:8px 10px;font-weight:500;">累计金额</th>'
             '</tr></thead>'
             '<tbody>{cat_rows}</tbody>'
             '</table>',
@@ -1471,7 +1476,7 @@ class WalletAdmin(ZYModelAdmin):
             f'<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;" '
             f'title="{d.strftime("%m-%d")} 收入 +¥{v:,.2f}">'
             f'<div style="height:{max(v / max_v * 100, 1.5):.1f}%;border-radius:3px 3px 0 0;'
-            f'background:{"linear-gradient(180deg,#2C8466,#1F6B54)" if v > 0 else "#ECE4D4"};"></div></div>'
+            f'background:{"linear-gradient(180deg,var(--zy-accent),var(--zy-accent))" if v > 0 else "var(--zy-line)"};"></div></div>'
             for d, v in series
         )
         total_30 = sum(v for _, v in series)
@@ -1479,14 +1484,14 @@ class WalletAdmin(ZYModelAdmin):
         return format_html(
             '<div style="margin:6px 0 18px;">'
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
-            '<div style="font-size:12.5px;color:#738079;">'
-            '近 30 日收入合计 <b style="color:#1F6B54;font-size:15px;">+¥{total}</b>'
-            ' · 单日峰值 <b style="color:#2C7C8C;">¥{peak}</b></div>'
-            '<a href="{link}" style="font-size:12.5px;color:#2C7C8C;text-decoration:none;font-weight:600;">'
+            '<div style="font-size:12.5px;color:var(--zy-text-mute);">'
+            '近 30 日收入合计 <b style="color:var(--zy-accent);font-size:15px;">+¥{total}</b>'
+            ' · 单日峰值 <b style="color:var(--zy-accent);">¥{peak}</b></div>'
+            '<a href="{link}" style="font-size:12.5px;color:var(--zy-accent);text-decoration:none;font-weight:600;">'
             '查看全部收支流水 →</a></div>'
             '<div style="display:flex;align-items:flex-end;gap:2px;height:110px;'
-            'background:#FBF8F1;border:1px solid #e8e4d8;border-radius:10px;padding:10px;">{bars}</div>'
-            '<div style="display:flex;justify-content:space-between;font-size:10.5px;color:#9AA89F;margin-top:4px;">'
+            'background:var(--zy-surface);border:1px solid var(--zy-line);border-radius:10px;padding:10px;">{bars}</div>'
+            '<div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--zy-text-mute);margin-top:4px;">'
             '<span>{d0}</span><span>{dm}</span><span>{d1}</span></div></div>',
             total=f"{total_30:,.2f}", peak=f"{max_v:,.2f}", link=link,
             bars=mark_safe(bars), d0=start.strftime('%m-%d'),
@@ -1499,26 +1504,26 @@ class WalletAdmin(ZYModelAdmin):
         ledger_url = reverse('admin:agent_transaction_changelist')
         head = format_html(
             '<div style="display:flex;justify-content:space-between;align-items:center;margin:6px 0 8px;">'
-            '<div style="font-size:12.5px;color:#738079;">'
-            '钱包共记录 <b style="color:#1F6B54;">{}</b> 笔钱款往来（下方为最近 10 笔）</div>'
-            '<a href="{}" style="font-size:12.5px;color:#2C7C8C;text-decoration:none;font-weight:600;">'
+            '<div style="font-size:12.5px;color:var(--zy-text-mute);">'
+            '钱包共记录 <b style="color:var(--zy-accent);">{}</b> 笔钱款往来（下方为最近 10 笔）</div>'
+            '<a href="{}" style="font-size:12.5px;color:var(--zy-accent);text-decoration:none;font-weight:600;">'
             '查看完整账本 →</a></div>',
             total_cnt, ledger_url,
         )
         txs = list(Transaction.objects.filter(wallet=obj).order_by('-created_at')[:10])
         if not txs:
             return format_html(
-                '{}<p style="color:#999;padding:8px;">暂无流水（订单已发货/退货会自动写入）</p>', head
+                '{}<p style="color:var(--zy-text-mute);padding:8px;">暂无流水（订单已发货/退货会自动写入）</p>', head
             )
         rows = []
         for t in txs:
             is_in = t.tx_type == TxType.INCOME
             sign = '+' if is_in else '-'
-            color = '#1F6B54' if is_in else '#B5481C'
+            color = 'var(--zy-accent)' if is_in else 'var(--zy-warn)'
             order_cell = '—'
             if t.order:
                 order_cell = format_html(
-                    '<a href="{}" style="color:#2C7C8C;">{}</a>',
+                    '<a href="{}" style="color:var(--zy-accent);">{}</a>',
                     reverse('admin:agent_orders_change', args=[t.order.pk]),
                     t.order.order_no,
                 )
@@ -1526,12 +1531,12 @@ class WalletAdmin(ZYModelAdmin):
             op_name = t.operator.username if t.operator else '—'
             rows.append(format_html(
                 '<tr>'
-                '<td style="padding:7px 10px;color:#738079;white-space:nowrap;">{}</td>'
+                '<td style="padding:7px 10px;color:var(--zy-text-mute);white-space:nowrap;">{}</td>'
                 '<td style="padding:7px 10px;white-space:nowrap;"><span style="color:{};font-weight:700;">{}¥{:,.2f}</span></td>'
                 '<td style="padding:7px 10px;">{}</td>'
-                '<td style="padding:7px 10px;color:#15211D;">{}</td>'
+                '<td style="padding:7px 10px;color:var(--zy-text);">{}</td>'
                 '<td style="padding:7px 10px;">{}</td>'
-                '<td style="padding:7px 10px;color:#738079;">{}</td>'
+                '<td style="padding:7px 10px;color:var(--zy-text-mute);">{}</td>'
                 '</tr>',
                 t.created_at.strftime('%Y-%m-%d %H:%M'),
                 color, sign, float(t.amount),
@@ -1542,8 +1547,8 @@ class WalletAdmin(ZYModelAdmin):
             ))
         return format_html(
             '{}'
-            '<table style="width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #e8e4d8;border-radius:8px;overflow:hidden;">'
-            '<thead><tr style="background:#F3EFE4;color:#15211D;">'
+            '<table style="width:100%;border-collapse:collapse;font-size:13px;background:var(--zy-surface);border:1px solid var(--zy-line);border-radius:8px;overflow:hidden;">'
+            '<thead><tr style="background:var(--zy-surface-2);color:var(--zy-text);">'
             '<th style="text-align:left;padding:8px 10px;">时间</th>'
             '<th style="text-align:left;padding:8px 10px;">金额</th>'
             '<th style="text-align:left;padding:8px 10px;">分类</th>'
@@ -1602,9 +1607,9 @@ class UserProfileAdmin(ZYModelAdmin):
     @admin.display(description='客户类型', ordering='customer_type')
     def customer_type_badge(self, obj):
         wholesale = obj.customer_type == UserProfile.CustomerType.WHOLESALE
-        bg, fg = ('#DCEDE6', '#134435') if wholesale else ('#E2E5E2', '#3A473F')
+        bg, fg = ('var(--zy-ok-bg)', 'var(--zy-accent-strong)') if wholesale else ('var(--zy-surface-2)', 'var(--zy-text-soft)')
         return format_html(
-            '<span style="background:{};color:{};padding:2px 9px;border-radius:999px;'
+            '<span style="background:{};color:{};padding:2px 9px;border-radius:6px;'
             'font-size:12px;font-weight:600">{}</span>',
             bg, fg, obj.get_customer_type_display(),
         )
@@ -1615,7 +1620,7 @@ class UserProfileAdmin(ZYModelAdmin):
         if not source:
             return mark_safe('<span style="color:#bbb">— 默认</span>')
         label = UserProfile.TypeSource(source).label if source in UserProfile.TypeSource.values else source
-        color = '#E6A23C' if source == UserProfile.TypeSource.SELF else '#909399'
+        color = 'var(--zy-warn)' if source == UserProfile.TypeSource.SELF else 'var(--zy-text-mute)'
         return format_html('<span style="color:{}">{}</span>', color, label)
 
 
@@ -1652,17 +1657,17 @@ class ReviewAdmin(ZYModelAdmin):
         p = Products.objects.filter(id=obj.product_id).first()
         if p is None:
             # 商品被硬删或历史脏数据：仍显示 id，别让这一行看起来"没关联"
-            return format_html('<span style="color:#999">#{}</span>', obj.product_id)
+            return format_html('<span style="color:var(--zy-text-mute)">#{}</span>', obj.product_id)
         url = reverse('admin:agent_products_change', args=[p.pk])
         return format_html('<a href="{}">{} {}</a>', url, p.sku or '', p.name)
 
     @admin.display(description='评分', ordering='rating')
     def stars_display(self, obj):
         # 4–5 星暖色、3 星灰、1–2 星红色：一眼看出差评
-        color = '#E6A23C' if obj.rating >= 4 else ('#909399' if obj.rating == 3 else '#F56C6C')
+        color = 'var(--zy-warn)' if obj.rating >= 4 else ('var(--zy-text-mute)' if obj.rating == 3 else 'var(--zy-danger)')
         return format_html(
             '<span style="color:{};letter-spacing:1px">{}</span>'
-            '<span style="color:#999;margin-left:6px">{}</span>',
+            '<span style="color:var(--zy-text-mute);margin-left:6px">{}</span>',
             color, obj.stars, obj.rating,
         )
 
@@ -1770,7 +1775,7 @@ class TransactionAdmin(ZYModelAdmin):
         bal = self._balance_map().get(obj.pk)
         if bal is None:
             return '—'
-        color = '#1F6B54' if bal >= 0 else '#B5481C'
+        color = 'var(--zy-accent)' if bal >= 0 else 'var(--zy-warn)'
         return format_html('<span style="color:{};font-weight:600;">¥{}</span>',
                            color, f"{bal:,.2f}")
 
@@ -1804,39 +1809,39 @@ class TransactionAdmin(ZYModelAdmin):
                                 created_at__date__gte=today - timedelta(days=6))
                    .aggregate(s=Sum('amount'))['s'] or Decimal('0'))
 
-        bal_color = '#1F6B54' if balance >= 0 else '#B5481C'
+        bal_color = 'var(--zy-accent)' if balance >= 0 else 'var(--zy-warn)'
 
         def card(label, value, color, bg, note=''):
-            note_html = (f'<div style="color:#9AA89F;font-size:11px;margin-top:2px;">{note}</div>'
+            note_html = (f'<div style="color:var(--zy-text-mute);font-size:11px;margin-top:2px;">{note}</div>'
                          if note else '')
             return (
                 f'<div style="background:{bg};padding:11px 14px;border-radius:10px;'
                 f'border-left:4px solid {color};">'
-                f'<div style="color:#5C6A63;font-size:12px;">{label}</div>'
+                f'<div style="color:var(--zy-text-soft);font-size:12px;">{label}</div>'
                 f'<div style="color:{color};font-size:20px;font-weight:700;line-height:1.45;">{value}</div>'
                 f'{note_html}</div>'
             )
 
         cards = ''.join([
-            card('当前余额', f'¥{balance:,.2f}', bal_color, '#F6F1E7',
+            card('当前余额', f'¥{balance:,.2f}', bal_color, 'var(--zy-canvas)',
                  f'{total_cnt} 笔往来'),
-            card('今日收入', f'+¥{day_in:,.2f}', '#1F6B54', '#EAF6F1'),
-            card('近 7 日收入', f'+¥{week_in:,.2f}', '#2C7C8C', '#E2F3F7'),
-            card('本月收入', f'+¥{month_in:,.2f}', '#1F6B54', '#EAF6F1'),
-            card('本月支出', f'-¥{month_out:,.2f}', '#B5481C', '#F7D9CF'),
-            card('累计收入 / 支出', f'{in_sum:,.2f} / {out_sum:,.2f}', '#2C7C8C', '#E2F3F7',
+            card('今日收入', f'+¥{day_in:,.2f}', 'var(--zy-accent)', 'var(--zy-accent-soft)'),
+            card('近 7 日收入', f'+¥{week_in:,.2f}', 'var(--zy-accent)', 'var(--zy-accent-soft)'),
+            card('本月收入', f'+¥{month_in:,.2f}', 'var(--zy-accent)', 'var(--zy-accent-soft)'),
+            card('本月支出', f'-¥{month_out:,.2f}', 'var(--zy-warn)', 'var(--zy-danger-bg)'),
+            card('累计收入 / 支出', f'{in_sum:,.2f} / {out_sum:,.2f}', 'var(--zy-accent)', 'var(--zy-accent-soft)',
                  f'{in_cnt} 收 / {out_cnt} 支'),
         ])
 
         # 对账状态：流水累计 vs 钱包余额
         if abs(diff) < Decimal('0.005'):
-            recon = ('<div style="background:#EAF6F1;border-left:4px solid #1F6B54;'
-                     'padding:9px 12px;border-radius:8px;font-size:12.5px;color:#134435;">'
+            recon = ('<div style="background:var(--zy-accent-soft);border-left:4px solid var(--zy-accent);'
+                     'padding:9px 12px;border-radius:8px;font-size:12.5px;color:var(--zy-accent-strong);">'
                      '✓ 账实相符：流水累计与钱包余额一致（'
                      f'¥{led_sum:,.2f}）。每一笔变动都有记录可查。</div>')
         else:
-            recon = ('<div style="background:#FFF3E5;border-left:4px solid #E2703A;'
-                     'padding:9px 12px;border-radius:8px;font-size:12.5px;color:#7A2E0E;">'
+            recon = ('<div style="background:var(--zy-warn-bg);border-left:4px solid var(--zy-warn);'
+                     'padding:9px 12px;border-radius:8px;font-size:12.5px;color:var(--zy-warn);">'
                      f'⚠ 账实不符：流水累计 ¥{led_sum:,.2f}，钱包余额 ¥{balance:,.2f}，'
                      f'差额 <b>¥{diff:,.2f}</b>。多为历史数据在"自动记账"上线前已发生变动所致，'
                      '可执行 <code>python manage.py backfill_wallet --apply --reconcile</code> 补平。</div>')
@@ -1848,12 +1853,12 @@ class TransactionAdmin(ZYModelAdmin):
             '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;">{cards}</div>'
             '<div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">'
             '<div style="flex:1;min-width:280px;">{recon}</div>'
-            '<a href="{overview}" style="font-size:12.5px;color:#2C7C8C;text-decoration:none;font-weight:600;">'
+            '<a href="{overview}" style="font-size:12.5px;color:var(--zy-accent);text-decoration:none;font-weight:600;">'
             '钱包总览与调账 →</a>'
-            '<a href="{export}" style="font-size:12.5px;color:#2C7C8C;text-decoration:none;font-weight:600;">'
+            '<a href="{export}" style="font-size:12.5px;color:var(--zy-accent);text-decoration:none;font-weight:600;">'
             '⬇ 导出当前筛选为 CSV</a>'
             '</div>'
-            '<div style="margin-top:8px;font-size:11.5px;color:#9AA89F;">'
+            '<div style="margin-top:8px;font-size:11.5px;color:var(--zy-text-mute);">'
             '「余额」列为该笔钱款入账/出账之后的钱包余额，便于逐笔对账。'
             '账目为只读：不可改、不可删——要更正只能再记一笔反向流水。'
             '</div></div>',
@@ -1907,15 +1912,15 @@ class TransactionAdmin(ZYModelAdmin):
     @admin.display(description='类型')
     def tx_type_badge(self, obj):
         if obj.tx_type == TxType.INCOME:
-            return format_html('<span style="display:inline-block;padding:2px 10px;border-radius:999px;'
-                               'background:#DCEDE6;color:#134435;font-weight:600;">收入</span>')
-        return format_html('<span style="display:inline-block;padding:2px 10px;border-radius:999px;'
-                           'background:#F4D9CF;color:#7A2E0E;font-weight:600;">支出</span>')
+            return format_html('<span style="display:inline-block;padding:2px 10px;border-radius:6px;'
+                               'background:var(--zy-ok-bg);color:var(--zy-accent-strong);font-weight:600;">收入</span>')
+        return format_html('<span style="display:inline-block;padding:2px 10px;border-radius:6px;'
+                           'background:var(--zy-danger-bg);color:var(--zy-warn);font-weight:600;">支出</span>')
 
     @admin.display(description='金额', ordering='amount')
     def amount_display(self, obj):
         sign = '+' if obj.tx_type == TxType.INCOME else '-'
-        color = '#1F6B54' if obj.tx_type == TxType.INCOME else '#B5481C'
+        color = 'var(--zy-accent)' if obj.tx_type == TxType.INCOME else 'var(--zy-warn)'
         return format_html('<b style="color:{};">{}¥{}</b>', color, sign, f"{obj.amount:,.2f}")
 
     @admin.display(description='关联订单')

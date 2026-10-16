@@ -1,0 +1,81 @@
+/* ══════════════════════════════════════════════════════════════
+   中渔天下 · 后台设计令牌（极简奢版）
+   ──────────────────────────────────────────────────────────────
+   唯一语义出口：后台所有自定义样式 / 内联 style 只允许引用这里的变量，
+   禁止再出现裸 hex。改一处，全站一致。
+
+   取色基准：WorkBuddy 当前皮肤（#f6f8f5 底 / #ffffff 卡 / #dce7dd 线 /
+   #12261a 字）—— 绿调中性系统，与品牌「湖青 #1F6B54」同族。
+
+   设计纪律：
+   1）只保留 1 个色相（绿）+ 1 套中性灰阶；不再引入橙 / 蓝 / 米黄纸色。
+   2）状态色一律低饱和，只用于文字与细线，不做实底胶囊。
+   3）无阴影 / 无渐变 / 无装饰水印，层次靠 1px 描边与留白。
+   ══════════════════════════════════════════════════════════════ */
+:root {
+  /* ── 表面 ── */
+  --zy-canvas: #f6f8f5;        /* 页面底（= WorkBuddy 主背景） */
+  --zy-surface: #ffffff;       /* 卡片 / 表格 */
+  --zy-surface-2: #e8f0e9;     /* 次级面：侧栏、表头、代码块 */
+  --zy-hover: #dde8df;         /* 悬停底 */
+
+  /* ── 描边 ── */
+  --zy-line: #dce7dd;          /* 分隔线（默认） */
+  --zy-line-soft: #e8efe9;     /* 更浅的行分隔 */
+
+  /* ── 文字 ── */
+  --zy-text: #12261a;          /* 主文字 */
+  --zy-text-soft: #5c6760;     /* 次要 */
+  --zy-text-mute: #8a948d;     /* 三级 / 占位 */
+
+  /* ── 唯一强调色：湖青 ── */
+  --zy-accent: #1f6b54;
+  --zy-accent-strong: #154c3c;
+  --zy-accent-soft: #edf3f0;
+  --zy-accent-line: rgba(31, 107, 84, .22);
+  --zy-accent-on: #ffffff;      /* 实底湖青之上的文字（深色模式需反转） */
+
+  /* ── 语义色（低饱和，仅文字 / 细边）── */
+  --zy-ok: #2c6a51;
+  --zy-ok-bg: #edf3f0;
+  --zy-warn: #8d6236;          /* 预警：暖褐，不用亮橙 */
+  --zy-warn-bg: #faf4ec;
+  --zy-warn-line: rgba(141, 98, 54, .25);
+  --zy-danger: #9c4034;
+  --zy-danger-bg: #faf0ee;
+  --zy-danger-line: rgba(156, 64, 52, .25);
+
+  /* ── 几何 ── */
+  --zy-radius: 10px;
+  --zy-radius-sm: 7px;
+  --zy-serif: "Noto Serif SC", "Songti SC", serif;
+}
+
+.dark {
+  --zy-canvas: #141815;
+  --zy-surface: #1b201d;
+  --zy-surface-2: #212723;
+  --zy-hover: #262d29;
+
+  --zy-line: #2b322d;
+  --zy-line-soft: #242a26;
+
+  --zy-text: #e9eeea;
+  --zy-text-soft: #a8b2ac;
+  --zy-text-mute: #78827c;
+
+  --zy-accent: #7fc4aa;
+  --zy-accent-strong: #a3d7c2;
+  --zy-accent-soft: #1c2a24;
+  --zy-accent-line: rgba(127, 196, 170, .22);
+  --zy-accent-on: #10201a;
+
+  --zy-ok: #8bcdb2;
+  --zy-ok-bg: #1c2a24;
+  --zy-warn: #d9ac82;
+  --zy-warn-bg: #292219;
+  --zy-warn-line: rgba(217, 172, 130, .22);
+  --zy-danger: #e0a49a;
+  --zy-danger-bg: #2a1f1d;
+  --zy-danger-line: rgba(224, 164, 154, .22);
+}

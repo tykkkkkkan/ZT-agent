@@ -1,86 +1,87 @@
-{# 项目级 admin/login.html — 覆盖 Unfold 登录页，「江畔渔火」品牌化管理员登录 #}
+{# 项目级 admin/login.html — 覆盖 Unfold 登录页，极简奢版管理员登录 #}
 {# 完全独立样式（不依赖 admin/unfold CSS），POST 目标保持原 admin login 视图 #}
-{% load i18n %}<!DOCTYPE html>
+{# 视觉：无渐变 / 无纹理 / 无投影，只用 1px 细线与留白分层；色值取自 zy-tokens.css #}
+{% load i18n static %}<!DOCTYPE html>
 <html lang="zh-hans">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>{% blocktranslate %}后台登录 · {{ site_header }}{% endblocktranslate %}</title>
+  <link rel="stylesheet" href="{% static 'admin/zy-tokens.css' %}">
   <style>
-    :root{
-      --jade:#1F6B54; --jade-700:#134435; --jade-500:#2C8466; --jade-100:#DCEDE6;
-      --lake:#2C7C8C; --fire:#E2703A; --fire-700:#B5481C;
-      --paper:#F6F1E7; --paper-deep:#ECE4D4; --card:#FBF8F1;
-      --ink:#15211D; --ink-soft:#3A473F; --ink-mute:#738079;
-    }
-    *{margin:0;padding:0;box-sizing:border-box;}
-    html,body{height:100%;}
+    *{ margin:0; padding:0; box-sizing:border-box; }
+    html,body{ height:100%; }
     body{
       font-family:'Noto Sans SC',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
-      background:
-        radial-gradient(1100px 520px at 82% -10%, rgba(44,124,140,.14), transparent 60%),
-        radial-gradient(900px 480px at -10% 108%, rgba(226,112,58,.12), transparent 55%),
-        var(--paper);
-      display:flex;align-items:center;justify-content:center;padding:24px;
-      color:var(--ink);
+      background:var(--zy-canvas); color:var(--zy-text);
+      display:flex; align-items:center; justify-content:center; padding:24px;
     }
-    .wrap{width:100%;max-width:920px;display:grid;grid-template-columns:1.05fr .95fr;
-      background:var(--card);border-radius:22px;overflow:hidden;
-      box-shadow:0 18px 50px rgba(31,107,84,.16);border:1px solid rgba(31,107,84,.10);}
-    /* 左侧品牌区 */
-    .brand{position:relative;background:linear-gradient(155deg,var(--jade-700) 0%,var(--jade) 58%,var(--lake) 130%);
-      color:#fff;padding:46px 42px;display:flex;flex-direction:column;justify-content:space-between;min-height:560px;}
-    .brand::before{content:"";position:absolute;inset:0;opacity:.10;
-      background-image:radial-gradient(circle at 1px 1px, #fff 1px, transparent 0);background-size:22px 22px;}
-    .logo{display:flex;align-items:center;gap:12px;position:relative;}
-    .logo .mark{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.14);
-      border:1px solid rgba(255,255,255,.28);display:flex;align-items:center;justify-content:center;}
-    .logo .name{font-family:'Noto Serif SC',serif;font-size:21px;letter-spacing:2px;}
-    .logo .tag{font-size:11px;opacity:.75;margin-top:2px;letter-spacing:3px;}
-    .slogan{position:relative;margin-top:34px;}
-    .slogan h1{font-family:'Noto Serif SC',serif;font-size:30px;line-height:1.5;font-weight:700;}
-    .slogan h1 em{font-style:normal;color:#F4B495;}
-    .slogan p{margin-top:12px;font-size:13px;line-height:1.9;opacity:.85;max-width:34ch;}
-    .waves{position:absolute;left:0;right:0;bottom:0;opacity:.16;}
-    .foot{position:relative;font-size:12px;opacity:.72;letter-spacing:1px;}
-    /* 右侧表单区 */
-    .pane{padding:52px 46px;display:flex;flex-direction:column;justify-content:center;}
-    .pane .kicker{font-size:12px;color:var(--fire);letter-spacing:4px;font-weight:600;}
-    .pane h2{font-family:'Noto Serif SC',serif;font-size:24px;color:var(--jade-700);margin:8px 0 6px;}
-    .pane .sub{font-size:13px;color:var(--ink-mute);margin-bottom:26px;}
-    .field{margin-bottom:16px;}
-    .field label{display:block;font-size:12px;color:var(--ink-soft);font-weight:600;margin-bottom:7px;letter-spacing:1px;}
-    .field .box{position:relative;}
-    .field .box .mi{position:absolute;left:13px;top:50%;transform:translateY(-50%);width:18px;height:18px;
-      color:var(--ink-mute);pointer-events:none;}
-    .field input{width:100%;padding:12px 14px 12px 40px;font-size:14px;color:var(--ink);
-      background:#fff;border:1.5px solid var(--paper-deep);border-radius:11px;outline:none;
-      transition:border-color .18s, box-shadow .18s;}
-    .field input:focus{border-color:var(--jade-500);box-shadow:0 0 0 3px rgba(44,132,102,.14);}
-    .field input.input-error{border-color:#DC5240;box-shadow:0 0 0 3px rgba(199,51,32,.12);}
-    .field.has-toggle input{padding-right:44px;}
-    .pw-toggle{position:absolute;right:6px;top:50%;transform:translateY(-50%);
-      width:34px;height:34px;border:none;background:transparent;border-radius:9px;cursor:pointer;
-      color:var(--ink-mute);display:flex;align-items:center;justify-content:center;}
-    .pw-toggle:hover{color:var(--jade);background:rgba(31,107,84,.08);}
-    .errors{background:#FDECEA;border:1px solid #F4A89C;color:#A8281A;font-size:12.5px;
-      padding:10px 14px;border-radius:10px;margin-bottom:16px;line-height:1.7;}
-    .btn{width:100%;margin-top:6px;padding:13px;border:none;border-radius:11px;cursor:pointer;
-      font-size:15px;font-weight:700;letter-spacing:6px;color:#fff;
-      background:linear-gradient(135deg,var(--jade-500),var(--jade-700));
-      box-shadow:0 6px 16px rgba(31,107,84,.32);transition:transform .15s, box-shadow .15s, opacity .15s;}
-    .btn:hover{transform:translateY(-1px);box-shadow:0 9px 20px rgba(31,107,84,.38);}
-    .btn:disabled{opacity:.72;cursor:wait;transform:none;}
-    .tips{margin-top:22px;padding-top:16px;border-top:1px dashed var(--paper-deep);
-      font-size:12px;color:var(--ink-mute);line-height:1.8;}
-    .tips a{color:var(--lake);text-decoration:none;font-weight:600;}
-    .back{margin-top:14px;text-align:center;font-size:12px;}
-    .back a{color:var(--ink-mute);text-decoration:none;}
-    .back a:hover{color:var(--jade);}
+    .wrap{ width:100%; max-width:880px; display:grid; grid-template-columns:1fr 1fr;
+      background:var(--zy-surface); border:1px solid var(--zy-line);
+      border-radius:var(--zy-radius); overflow:hidden; }
+
+    /* ── 左侧品牌区：纯底色 + 一条细线分隔，不做渐变与纹理 ── */
+    .brand{ background:var(--zy-surface-2); border-right:1px solid var(--zy-line);
+      padding:46px 42px; display:flex; flex-direction:column; justify-content:space-between;
+      min-height:520px; }
+    .logo{ display:flex; align-items:center; gap:11px; }
+    .logo .mark{ width:38px; height:38px; border-radius:var(--zy-radius-sm);
+      border:1px solid var(--zy-accent-line); display:flex; align-items:center; justify-content:center; }
+    .logo .name{ font-family:var(--zy-serif); font-size:19px; letter-spacing:2px; color:var(--zy-text); }
+    .logo .tag{ font-size:10.5px; color:var(--zy-text-mute); margin-top:3px; letter-spacing:3px; }
+    .slogan{ margin-top:34px; }
+    .slogan h1{ font-family:var(--zy-serif); font-size:27px; line-height:1.55; font-weight:500;
+      color:var(--zy-text); letter-spacing:.01em; }
+    .slogan h1 em{ font-style:normal; color:var(--zy-accent); }
+    .slogan p{ margin-top:14px; font-size:12.5px; line-height:1.9; color:var(--zy-text-soft);
+      max-width:32ch; padding-left:12px; border-left:1px solid var(--zy-line); }
+    .foot{ font-size:11.5px; color:var(--zy-text-mute); letter-spacing:.02em; }
+
+    /* ── 右侧表单区 ── */
+    .pane{ padding:52px 46px; display:flex; flex-direction:column; justify-content:center; }
+    .pane .kicker{ font-size:11px; color:var(--zy-text-mute); letter-spacing:4px; }
+    .pane h2{ font-family:var(--zy-serif); font-size:22px; font-weight:500; color:var(--zy-text);
+      margin:9px 0 6px; }
+    .pane .sub{ font-size:12.5px; color:var(--zy-text-mute); margin-bottom:26px; }
+    .field{ margin-bottom:16px; }
+    .field label{ display:block; font-size:12px; color:var(--zy-text-soft); font-weight:500;
+      margin-bottom:7px; letter-spacing:.02em; }
+    .field .box{ position:relative; }
+    .field .box .mi{ position:absolute; left:13px; top:50%; transform:translateY(-50%);
+      width:17px; height:17px; color:var(--zy-text-mute); pointer-events:none; }
+    .field input{ width:100%; padding:11px 14px 11px 39px; font-size:14px; color:var(--zy-text);
+      background:var(--zy-surface); border:1px solid var(--zy-line); border-radius:var(--zy-radius-sm);
+      outline:none; transition:border-color .15s, box-shadow .15s; }
+    .field input::placeholder{ color:var(--zy-text-mute); }
+    .field input:focus{ border-color:var(--zy-accent); box-shadow:0 0 0 3px var(--zy-accent-line); }
+    .field input.input-error{ border-color:var(--zy-danger);
+      box-shadow:0 0 0 3px var(--zy-danger-line); }
+    .field.has-toggle input{ padding-right:44px; }
+    .pw-toggle{ position:absolute; right:5px; top:50%; transform:translateY(-50%);
+      width:32px; height:32px; border:none; background:transparent; border-radius:var(--zy-radius-sm);
+      cursor:pointer; color:var(--zy-text-mute); display:flex; align-items:center; justify-content:center; }
+    .pw-toggle:hover{ color:var(--zy-accent); background:var(--zy-accent-soft); }
+    .errors{ background:var(--zy-danger-bg); border:1px solid var(--zy-danger-line);
+      color:var(--zy-danger); font-size:12.5px; padding:10px 14px; border-radius:var(--zy-radius-sm);
+      margin-bottom:16px; line-height:1.7; }
+    .btn{ width:100%; margin-top:8px; padding:12px; border:none; border-radius:var(--zy-radius-sm);
+      cursor:pointer; font-size:14px; font-weight:500; letter-spacing:5px; text-indent:5px;
+      color:var(--zy-accent-on); background:var(--zy-accent);
+      transition:background .15s, opacity .15s; }
+    .btn:hover{ background:var(--zy-accent-strong); }
+    .btn:disabled{ opacity:.65; cursor:wait; }
+    .tips{ margin-top:24px; padding-top:16px; border-top:1px solid var(--zy-line);
+      font-size:11.5px; color:var(--zy-text-mute); line-height:1.9; }
+    .tips a{ color:var(--zy-accent); text-decoration:none; }
+    .tips a:hover{ text-decoration:underline; text-underline-offset:2px; }
+    .back{ margin-top:12px; text-align:center; font-size:11.5px; }
+    .back a{ color:var(--zy-text-mute); text-decoration:none; }
+    .back a:hover{ color:var(--zy-accent); }
     @media (max-width:760px){
-      .wrap{grid-template-columns:1fr;} .brand{min-height:auto;padding:30px;}
-      .slogan{margin-top:18px;} .slogan h1{font-size:22px;} .pane{padding:34px 28px;}
+      .wrap{ grid-template-columns:1fr; } .brand{ min-height:auto; padding:30px;
+        border-right:none; border-bottom:1px solid var(--zy-line); }
+      .slogan{ margin-top:18px; } .slogan h1{ font-size:21px; } .pane{ padding:34px 28px; }
     }
   </style>
 </head>
@@ -90,10 +91,10 @@
       <div>
         <div class="logo">
           <div class="mark">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6"
-                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--zy-accent)"
+                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M2 12c3-4.5 7-6.5 11-6.5 3.2 0 6.2 1.4 8.5 3.6l-2 2.9 2 2.9c-2.3 2.2-5.3 3.6-8.5 3.6-4 0-8-2-11-6.5z"/>
-              <circle cx="16.2" cy="10.4" r="1" fill="#fff" stroke="none"/>
+              <circle cx="16.2" cy="10.4" r="1" fill="var(--zy-accent)" stroke="none"/>
               <path d="M6.5 9.5c1.8 1.6 1.8 3.4 0 5"/>
             </svg>
           </div>
@@ -107,10 +108,6 @@
           <p>AI 智能客服 · 库存联动 · 财务流水可追溯。此后台仅供管理员使用，数据操作将记入日志。</p>
         </div>
       </div>
-      <svg class="waves" viewBox="0 0 480 90" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <path d="M0 60 C90 20 150 80 240 55 C330 30 390 75 480 45 L480 90 L0 90 Z" fill="#fff"/>
-        <path d="M0 74 C100 44 170 92 260 68 C350 46 410 86 480 62 L480 90 L0 90 Z" fill="#0C2A24"/>
-      </svg>
       <div class="foot">© 2026 中渔天下 · 后台管理系统</div>
     </aside>
 
