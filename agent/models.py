@@ -563,6 +563,73 @@ class UserProfile(models.Model):
 
 
 # ════════════════════════════════════════════════════════════════
+# 收货地址簿（C 端「我的地址」）
+# ════════════════════════════════════════════════════════════════
+# 为什么不把地址挂在 UserProfile 上（一张表就够了吗？不够）：
+#   1. UserProfile 是 OneToOne —— 一个账号只能存一个地址。真实场景里钓友
+#      常有「家里 / 渔具店 / 给朋友代收」几个收货点，每次下单重填一遍是纯
+#      重复劳动（用户原话："不必要每一次都重新填"）。
+#   2. 「默认地址」这个语义没地方放。OneToOne 上只能靠"有没有值"糊过去，
+#      一旦要换默认就没有可回退的对象。
+#
+# 与订单的关系（重要，别改成外键）：
+#   下单时把地址**快照**写进 `Orders.address` / `customer_name` / `phone`，
+#   `Address` 对订单不做任何关联。因为订单是历史凭证、地址簿是可变的：
+#   若订单外键指向地址簿，用户改一次收货地址，历史订单的收货信息会被
+#   一起改掉 —— 等于事后篡改凭证。快照与「商品名/SKU/单价快照」同一套思路。
+#
+# 「同时只有一个默认地址」为什么要靠应用层保证：
+#   MySQL 不支持部分唯一索引（`WHERE is_default`），Django 的
+#   `UniqueConstraint(condition=...)` 在 MySQL 上无法落库；
+#   而 `unique_together = (user, is_default)` 会把"多张非默认地址"也拦掉。
+#   所以唯一性由 `set_default()` 在事务内加锁保证（见 agent/addresses.py）。
+class Address(models.Model):
+    """用户收货地址簿（一账号多地址，至多一个默认）。"""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, models.CASCADE,
+        db_column='user_id', related_name='addresses',
+        verbose_name='所属账号', db_comment='所属用户',
+    )
+    receiver = models.CharField(
+        max_length=50, verbose_name='收货人', db_comment='收货人姓名',
+    )
+    phone = models.CharField(
+        max_length=20, verbose_name='联系电话', db_comment='收货人电话',
+    )
+    address = models.CharField(
+        max_length=255, verbose_name='详细地址',
+        help_text='省市区 + 街道门牌，越完整越好',
+        db_comment='详细收货地址',
+    )
+    is_default = models.BooleanField(
+        default=False, db_index=True, verbose_name='设为默认',
+        db_comment='是否默认地址(每账号至多一个，由应用层保证)',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    class Meta:
+        db_table = 'user_address'
+        verbose_name = '收货地址'
+        verbose_name_plural = '收货地址'
+        # 默认地址排最前 —— 前端下拉框直接取第一条即可，不必再写排序规则
+        ordering = ['-is_default', '-updated_at', '-id']
+        indexes = [
+            models.Index(fields=['user', '-is_default'], name='idx_addr_user_default'),
+        ]
+
+    def __str__(self):
+        mark = '★' if self.is_default else '　'
+        return f'{mark} {self.receiver} {self.phone} {self.address}'
+
+    @property
+    def summary(self):
+        """一行摘要（前端下拉框 / 校验脚本用）。"""
+        return f'{self.receiver} {self.phone} {self.address}'
+
+
+# ════════════════════════════════════════════════════════════════
 # 商品评价（任务书六·4）
 # ════════════════════════════════════════════════════════════════
 class Review(models.Model):
