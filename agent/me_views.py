@@ -28,6 +28,8 @@ agent/me_views.py — 个人中心（C 端「我的」）接口
     PATCH  /api/me/addresses/<id>/                 编辑收货地址
     DELETE /api/me/addresses/<id>/                 删除收货地址
     POST   /api/me/addresses/<id>/default/         设为默认地址
+    GET    /api/me/wallet/                         我的余额 + 最近流水
+    POST   /api/me/wallet/recharge/                模拟充值入账（真实系统须由支付回调触发）
 """
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -54,6 +56,14 @@ from agent.addresses import (
 from agent.reviews import ReviewError, create_review, serialize_review
 from agent.services import (
     OrderTransitionError, mark_order_paid, transition_order, withdraw_return_request,
+)
+from agent.user_wallet import (
+    MAX_TOPUP,
+    UserWalletError,
+    list_transactions,
+    recharge,
+    serialize_transaction,
+    summarize,
 )
 from agent.views import _serialize_order
 
@@ -474,4 +484,77 @@ class MeAddressDefaultView(views.APIView):
             "message": "已设为默认地址，下单时会自动带入",
             "address": serialize_address(addr),
             **_address_list_payload(request.user),
+        })
+
+
+# ════════════════════════════════════════════════════════════════
+# 我的余额（C 端钱包）
+# ════════════════════════════════════════════════════════════════
+def _wallet_payload(user, limit: int = 50) -> dict:
+    """钱包页的统一返回体（概览 + 流水）。
+
+    与地址簿同样的口径：**每次都回全量概览**，前端不做本地加减。
+    余额这种东西，"前端算出来 = 后端记着"的错觉最容易在退款/补单后露馅。
+    """
+    info = summarize(user)
+    return {
+        "balance": str(info["balance"]),
+        "recharged": str(info["recharged"]),
+        "paid": str(info["paid"]),
+        "refunded": str(info["refunded"]),
+        "tx_count": info["tx_count"],
+        "topup_max": str(MAX_TOPUP),
+        "transactions": [serialize_transaction(t) for t in list_transactions(user, limit)],
+    }
+
+
+class MeWalletView(views.APIView):
+    """GET /api/me/wallet/ —— 我的余额 + 最近流水。
+
+    汇总口径全部来自 `agent/user_wallet.summarize`（业务层唯一出口），
+    本层只做参数收敛与搬运 —— 避免"视图里又算一遍余额"这种双口径。
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            limit = int(request.query_params.get("limit") or 50)
+        except (TypeError, ValueError):
+            limit = 50
+        limit = max(1, min(limit, 200))
+        return Response({"success": True, **_wallet_payload(request.user, limit)})
+
+
+class MeWalletRechargeView(views.APIView):
+    """POST /api/me/wallet/recharge/ —— **模拟**充值入账。
+
+    ⚠️ 真实系统里余额只可能由「支付平台的异步回调」增加 —— 绝不可能存在一个
+    前端可以直接调、说加钱就加钱的接口。本项目没有商户号 / 备案域名 / HTTPS 回调
+    （见方案书的支付边界说明），所以收银台是**自建模拟**的：
+    用户在收银台点「确认付款」= 收款成功 = 这里入账。
+
+    把这层写在注释里而不是悄悄省掉，是为了让答辩时"钱从哪来"这条线有明确交代：
+    我们模拟的是**收款动作**，不是**支付渠道**；一旦换成真实渠道，
+    要动的只有"谁来调 `recharge()`"这一处。
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        data = request.data or {}
+        try:
+            tx = recharge(
+                request.user,
+                data.get("amount"),
+                note=str(data.get("note") or "").strip(),
+            )
+        except UserWalletError as e:
+            return _err(e.message, code=401 if e.code == "unauthenticated" else 400)
+
+        return Response({
+            "success": True,
+            "message": f"充值成功，当前余额 ¥{tx.balance_after:,.2f}",
+            "transaction": serialize_transaction(tx),
+            **_wallet_payload(request.user),
         })

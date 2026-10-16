@@ -630,6 +630,101 @@ class Address(models.Model):
 
 
 # ════════════════════════════════════════════════════════════════
+# 用户侧钱包（C 端余额，任务书五·1 的钱袋子）
+#   - UserWallet：一人一本「预存账」
+#   - UserTransaction：流水，带 balance_after（每条都能独立验算）
+#   - 业务规则（校验 / 加锁 / 记账）全部收在 agent/user_wallet.py，
+#     模型只描述结构 —— 避免同一套"余额不为负"的逻辑在多个入口各写一遍
+# ════════════════════════════════════════════════════════════════
+class UserTxKind(models.TextChoices):
+    """用户钱包流水方向。
+
+    金额一律存**正数**，方向由 kind 决定（与公司钱包 Transaction 同一口径）：
+    负金额会诱导出「求和 = 净流量」的错误写法，而正确聚合必须按 kind 分组。
+    """
+    RECHARGE = "充值", "充值"     # 余额增加：充进钱来
+    PAY      = "支付", "支付"     # 余额减少：用余额买单
+    REFUND   = "退款", "退款"     # 余额增加：退货 / 取消的钱回流
+
+
+class UserWallet(models.Model):
+    """用户钱包（一个账号一条，与 company_wallet 的公司单账户账本严格分离）。"""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, models.CASCADE,
+        db_column='user_id', related_name='wallet',
+        verbose_name='所属账号', db_comment='所属用户(一对一)',
+    )
+    balance = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='当前余额',
+        help_text='充值（+）与退款（+）减支付（−）的累计结果',
+        db_comment='账户余额',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    class Meta:
+        db_table = 'user_wallet'
+        verbose_name = '用户钱包'
+        verbose_name_plural = '用户钱包'
+
+    def __str__(self):
+        return f"{getattr(self.user, 'username', '?')} 余额 ¥{self.balance:,.2f}"
+
+
+class UserTransaction(models.Model):
+    """用户钱包流水（每一笔余额变动都必须有据可查）。"""
+
+    wallet = models.ForeignKey(
+        UserWallet, models.CASCADE, related_name='transactions',
+        verbose_name='钱包', db_comment='所属用户钱包',
+    )
+    kind = models.CharField(
+        max_length=10, choices=UserTxKind.choices,
+        verbose_name='类型', db_comment='充值/支付/退款',
+    )
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        verbose_name='金额',
+        help_text='正数；方向由 kind 决定（充值/退款为加，支付为减）',
+        db_comment='发生额(正数)',
+    )
+    # 记完这一笔之后的余额。为什么不靠实时累加？
+    #   ① 个人中心的流水列表要显示"当时还剩多少"，实时累加算不出历史；
+    #   ② 对账时可以把流水串起来逐条验算（上一条余额 ± 本条金额 = 本条余额），
+    #      在不信任任何缓存/冗余字段的前提下验明账本是否被绕过写过。
+    balance_after = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        verbose_name='记账后余额', db_comment='该笔记账后的余额',
+    )
+    order_no = models.CharField(
+        max_length=50, blank=True, default='', db_index=True,
+        verbose_name='关联订单号', db_comment='关联订单号(余额支付/退款来源)',
+    )
+    note = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='备注', db_comment='备注',
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True, db_index=True, verbose_name='时间', db_comment='记账时间',
+    )
+
+    class Meta:
+        db_table = 'user_wallet_transactions'
+        verbose_name = '用户余额流水'
+        verbose_name_plural = '用户余额流水'
+        ordering = ('-created_at', '-id')
+        indexes = [
+            models.Index(fields=['wallet', '-created_at'], name='idx_utx_wallet_time'),
+            models.Index(fields=['kind', '-created_at'], name='idx_utx_kind_time'),
+        ]
+
+    def __str__(self):
+        sign = '+' if self.kind in (UserTxKind.RECHARGE, UserTxKind.REFUND) else '-'
+        return f"{sign}¥{self.amount} · {self.kind} · {self.created_at:%Y-%m-%d %H:%M}"
+
+
+# ════════════════════════════════════════════════════════════════
 # 商品评价（任务书六·4）
 # ════════════════════════════════════════════════════════════════
 class Review(models.Model):

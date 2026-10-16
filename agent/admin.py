@@ -32,6 +32,7 @@ from agent.models import (
     Products, Inventory, Orders, Conversations, ContactMessage, CustomRequest,
     KnowledgeChunk, Wallet, Transaction, TxType, TxCategory, OrderStatus, ReturnStatus,
     PaymentStatus, ProductCoordination, Review, UserProfile,
+    UserTransaction, UserTxKind, UserWallet,
 )
 from agent.services import (
     transition_order, revert_shipped_to_pending, manual_wallet_adjust,
@@ -1929,6 +1930,109 @@ class TransactionAdmin(ZYModelAdmin):
             return '—'
         url = reverse('admin:agent_orders_change', args=[obj.order.pk])
         return format_html('<a href="{}">{}</a>', url, obj.order.order_no)
+
+
+# ══════════════════════════════════════════════════════════════
+# 用户侧钱包（C 端余额）—— **只读账本**
+#
+# 故意不给「新增 / 修改 / 删除」：余额唯一合法的改动途径是
+# `agent/user_wallet.py` 的 充值 / 支付 / 退款，它们会在同一个事务里
+# 既改 balance、又写一条流水。若放行后台直接改 balance，
+# 流水与余额会立刻对不上，而且不留任何痕迹说明差额从哪来 ——
+# 「账实不符」就是这么来的。想看余额是怎么变成今天这样的，看流水页即可。
+#
+# 配色沿用后台的状态语义（见 zy-tokens.css）：
+#   充值 → 湖青（钱进来，正向）／支付 → 中性（只是把预存花掉，非异常）
+#   退款 → 暖褐（逆向操作，值得留意）
+# ══════════════════════════════════════════════════════════════
+@admin.register(UserWallet)
+class UserWalletAdmin(ZYModelAdmin):
+    list_display = ('id', 'user_link', 'balance_display', 'tx_link', 'updated_at')
+    search_fields = ('user__username', 'user__email', 'user__userprofile__phone')
+    ordering = ('-balance', 'id')
+    readonly_fields = ('user', 'balance', 'created_at', 'updated_at')
+    list_select_related = ('user',)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description='账号')
+    def user_link(self, obj):
+        if not obj.user_id:
+            return '—'
+        url = reverse('admin:auth_user_change', args=[obj.user_id])
+        profile = getattr(obj.user, 'userprofile', None)
+        phone = getattr(profile, 'phone', '') or ''
+        label = obj.user.username
+        if phone:
+            label += f'（{phone}）'
+        return format_html('<a href="{}">{}</a>', url, label)
+
+    @admin.display(description='余额', ordering='balance')
+    def balance_display(self, obj):
+        bal = obj.balance or Decimal('0')
+        color = 'var(--zy-accent)' if bal > 0 else 'var(--zy-text-mute)'
+        return format_html('<b style="color:{};">¥{:,.2f}</b>', color, bal)
+
+    @admin.display(description='流水')
+    def tx_link(self, obj):
+        n = obj.transactions.count()
+        if not n:
+            return format_html('<span style="color:var(--zy-text-mute);">0 笔</span>')
+        url = reverse('admin:agent_usertransaction_changelist') + f'?wallet__id__exact={obj.pk}'
+        return format_html('<a href="{}">{} 笔 →</a>', url, n)
+
+
+@admin.register(UserTransaction)
+class UserTransactionAdmin(ZYModelAdmin):
+    list_display = ('id', 'created_at', 'user_link', 'kind_badge',
+                    'amount_display', 'balance_after', 'order_no', 'note')
+    list_filter = ('kind',)
+    search_fields = ('order_no', 'note', 'wallet__user__username',
+                     'wallet__user__userprofile__phone')
+    date_hierarchy = 'created_at'
+    ordering = ('-created_at', '-id')
+    list_select_related = ('wallet', 'wallet__user')
+    readonly_fields = ('wallet', 'kind', 'amount', 'balance_after',
+                       'order_no', 'note', 'created_at')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description='账号')
+    def user_link(self, obj):
+        wallet = obj.wallet
+        if not wallet or not wallet.user_id:
+            return '—'
+        url = reverse('admin:auth_user_change', args=[wallet.user_id])
+        return format_html('<a href="{}">{}</a>', url, wallet.user.username)
+
+    @admin.display(description='类型', ordering='kind')
+    def kind_badge(self, obj):
+        if obj.kind == UserTxKind.RECHARGE:
+            bg, fg = 'var(--zy-ok-bg)', 'var(--zy-accent-strong)'
+        elif obj.kind == UserTxKind.REFUND:
+            bg, fg = 'var(--zy-warn-bg)', 'var(--zy-warn)'
+        else:
+            bg, fg = 'var(--zy-surface-2)', 'var(--zy-text-soft)'
+        return format_html(
+            '<span style="display:inline-block;padding:2px 10px;border-radius:6px;'
+            'background:{};color:{};font-weight:600;">{}</span>', bg, fg, obj.kind,
+        )
+
+    @admin.display(description='金额', ordering='amount')
+    def amount_display(self, obj):
+        incoming = obj.kind in (UserTxKind.RECHARGE, UserTxKind.REFUND)
+        sign = '+' if incoming else '-'
+        color = 'var(--zy-warn)' if obj.kind == UserTxKind.REFUND else (
+            'var(--zy-accent)' if incoming else 'var(--zy-text-soft)')
+        return format_html('<b style="color:{};">{}¥{:,.2f}</b>', color, sign, obj.amount)
 
 
 # ══════════════════════════════════════════════════════════════

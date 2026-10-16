@@ -158,6 +158,10 @@ urlpatterns = [
     # 收货地址簿（C 端「我的地址」）：列表/新增 → 设为默认 → 单条编辑/删除
     # 注意：<id>/default/ 要放在 <id>/ 之前（虽然 Django 靠结尾锚点也能区分，
     # 但顺序写清楚后，将来加子路径不会踩"被通用规则抢匹配"的坑）
+    # 我的余额（C 端钱包）：只读概览 + 流水；充值走模拟收银台
+    path("api/me/wallet/", me_views.MeWalletView.as_view(), name="me_wallet"),
+    path("api/me/wallet/recharge/", me_views.MeWalletRechargeView.as_view(),
+         name="me_wallet_recharge"),
     path("api/me/addresses/", me_views.MeAddressListView.as_view(), name="me_addresses"),
     path("api/me/addresses/<int:address_id>/default/",
          me_views.MeAddressDefaultView.as_view(), name="me_address_default"),
