@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>扫码支付 - 中渔天下</title>
+    <meta name="description" content="扫码完成订单付款。">
+    <meta name="robots" content="noindex">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/theme.css">
+    <link rel="stylesheet" href="assets/tailwind.build.css">
+    <script src="auth.js"></script>
+</head>
+<body class="bg-stone-50 font-sans text-ink-800 antialiased">
+    <a class="skip-link" href="#main">跳到主内容</a>
+
+    <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-stone-100">
+        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <a href="index.html" class="flex items-center gap-2 text-xl font-bold text-ink-900">
+                <span class="text-brand-600" style="display:inline-flex"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.5em;height:1.5em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></span>
+                <span>中渔天下</span>
+            </a>
+            <a href="profile.html" class="text-sm text-ink-600 hover:text-brand-600 transition">我的订单</a>
+        </div>
+    </nav>
+
+    <main id="main" tabindex="-1" class="container-x py-10">
+        <div class="max-w-4xl mx-auto">
+            <h1 class="text-2xl font-bold text-ink-900">扫码支付</h1>
+            <p class="text-sm text-ink-500 mt-1">
+                用手机扫描右侧二维码完成付款，支付成功后本页会自动更新，无需手动刷新。
+            </p>
+
+            <div class="grid md:grid-cols-2 gap-6 mt-6">
+                <!-- 左：订单摘要 -->
+                <div class="bg-white rounded-2xl border border-brand-100 shadow-xl shadow-brand-500/5 p-6">
+                    <h2 class="text-base font-bold text-ink-900 mb-4">订单信息</h2>
+                    <div id="orderBox" class="text-sm text-ink-500">加载中…</div>
+
+                    <div class="mt-6 pt-5 border-t border-stone-100">
+                        <div class="flex items-baseline justify-between">
+                            <span class="text-sm text-ink-500">应付金额</span>
+                            <span id="amountText" class="text-2xl font-bold text-brand-700">—</span>
+                        </div>
+                    </div>
+
+                    <p class="text-xs text-ink-400 mt-4 leading-relaxed">
+                        提示：本页是本项目的<b>模拟收银台</b>。手机需要和这台电脑在同一个局域网内
+                        （同一 Wi-Fi），二维码里的地址会自动换成电脑的局域网 IP，所以手机才扫得开。
+                    </p>
+                </div>
+
+                <!-- 右：二维码 / 状态 -->
+                <div class="bg-white rounded-2xl border border-brand-100 shadow-xl shadow-brand-500/5 p-6">
+                    <h2 class="text-base font-bold text-ink-900 mb-4">支付二维码</h2>
+                    <div id="payBox" class="text-center text-sm text-ink-500 py-6">正在生成二维码…</div>
+                </div>
+            </div>
+
+            <p class="text-xs text-ink-400 mt-6">
+                付款遇到问题？
+                <a href="contact.html" class="text-brand-700 hover:underline">联系客服</a>
+                ，或到
+                <a href="profile.html" class="text-brand-700 hover:underline">我的订单</a>
+                里查看这笔订单。
+            </p>
+        </div>
+    </main>
+
+<script>
+/* ════════════════════════════════════════════════════════════
+   收银台（PC 端）—— /pay/<order_no>/
+
+   流程：进页面 → 要一张一次性凭据（含二维码） → 每 3 秒问一次订单付了没
+        → 手机那边确认后本页自动切成「支付成功」。
+
+   三个刻意的取舍：
+   1. **订单号从路径里解析**，不读查询串 —— 收银台是要刷新、要回退、
+      要贴给别人看的页面，路径更稳。
+   2. **轮询而不是 WebSocket**：本项目已有 SSE 流式输出的经验，但收银台
+      只关心一个布尔值，3 秒一问的实现与调试成本都低得多，也不占用长连接。
+      页面切到后台时暂停轮询（visibilitychange），别让没人看的页面一直打接口。
+   3. **不做乐观更新**：只有后端明确说「已支付」才切成功态 ——
+      支付这种事的容错方向必须是"慢一点"，而不是"看起来成功了"。
+   ════════════════════════════════════════════════════════════ */
+(function () {
+    'use strict';
+
+    var POLL_MS = 3000;
+
+    var state = {
+        orderNo: '',
+        ticket: null,
+        qrSvg: '',
+        payUrl: '',
+        timer: null,      // 倒计时
+        poll: null,       // 轮询
+        paid: false,
+        alive: true
+    };
+
+    var els = {};
+
+    function $(id) { return document.getElementById(id); }
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    // 路径形如 /pay/ZT-20260101-0001/ → 取中间那段
+    function orderNoFromPath() {
+        var m = /^\/pay\/([^\/]+)\/?$/.exec(location.pathname);
+        if (m) return decodeURIComponent(m[1]);
+        // 兜底：?order=xxx（方便本地直接开文件调试）
+        return new URLSearchParams(location.search).get('order') || '';
+    }
+
+    function mmss(sec) {
+        sec = Math.max(0, sec | 0);
+        var m = Math.floor(sec / 60), s = sec % 60;
+        return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    function stopTimers() {
+        if (state.timer) { clearInterval(state.timer); state.timer = null; }
+        if (state.poll) { clearInterval(state.poll); state.poll = null; }
+    }
+
+    // ── 订单摘要 ─────────────────────────────────────────────
+    function renderOrder(o) {
+        if (!o || !o.order_no) { els.orderBox.innerHTML = '<span class="text-ink-400">订单信息不可用</span>'; return; }
+        var rows = [
+            ['订单号', o.order_no],
+            ['产品', (o.product_name || '—') + (o.quantity ? (' × ' + o.quantity) : '')],
+            ['收货人', (o.customer_name || '—') + (o.phone ? ('　' + o.phone) : '')],
+            ['收货地址', o.address || '—'],
+            ['下单时间', o.created_at || '—']
+        ];
+        els.orderBox.innerHTML = rows.map(function (r) {
+            return '<div class="flex gap-3 py-2 border-b border-stone-100 last:border-0">'
+                + '<span class="w-16 flex-shrink-0 text-ink-400">' + esc(r[0]) + '</span>'
+                + '<span class="flex-1 text-ink-800 break-words">' + esc(r[1]) + '</span>'
+                + '</div>';
+        }).join('');
+        els.amountText.textContent = '¥' + (o.total_price || '0.00');
+    }
+
+    // ── 二维码与状态 ─────────────────────────────────────────
+    function renderReady() {
+        var t = state.ticket || {};
+        var qr = state.qrSvg
+            ? '<div class="mx-auto bg-white p-2 rounded-xl border border-stone-200" style="width:240px;height:240px">'
+              + state.qrSvg.replace('<svg ', '<svg style="width:100%;height:100%;display:block" ')
+              + '</div>'
+            : '<div class="mx-auto rounded-xl border border-dashed border-stone-300 text-xs text-ink-400 flex items-center justify-center" style="width:240px;height:240px">'
+              + '二维码组件不可用，请用下面的链接付款</div>';
+
+        els.payBox.innerHTML = ''
+            + qr
+            + '<p class="text-sm text-ink-600 mt-4">用手机相机 / 微信扫一扫，打开后点「确认付款」</p>'
+            + '<p id="cd" class="text-sm font-semibold text-brand-700 mt-2">二维码剩余有效期 ' + mmss(t.remain_seconds) + '</p>'
+            + '<div class="mt-3 flex items-center justify-center gap-2">'
+            +   '<button type="button" id="copyBtn" class="px-3 py-1.5 text-xs border border-stone-200 text-ink-600 rounded-full hover:bg-stone-50 transition">复制支付链接</button>'
+            +   '<button type="button" id="regenBtn" class="px-3 py-1.5 text-xs border border-stone-200 text-ink-600 rounded-full hover:bg-stone-50 transition">重新生成</button>'
+            + '</div>'
+            + '<p class="text-xs text-ink-400 mt-3 break-all" id="urlText">' + esc(state.payUrl) + '</p>';
+
+        $('regenBtn').onclick = function () { loadTicket(true); };
+        $('copyBtn').onclick = function () { copyUrl(); };
+
+        startCountdown();
+    }
+
+    function renderPaid() {
+        stopTimers();
+        els.payBox.innerHTML = ''
+            + '<div class="mx-auto w-14 h-14 bg-gradient-to-br from-brand-500 to-lake-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-brand-500/30">'
+            +   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:1.8em;height:1.8em" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>'
+            + '</div>'
+            + '<p class="text-lg font-bold text-ink-900 mt-4">支付成功</p>'
+            + '<p class="text-sm text-ink-500 mt-1">商家将尽快为您安排发货。</p>'
+            + '<a href="profile.html" class="inline-block mt-5 px-5 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition">查看我的订单</a>';
+    }
+
+    function renderNotice(title, desc, actionLabel) {
+        stopTimers();
+        els.payBox.innerHTML = ''
+            + '<div class="py-6">'
+            +   '<p class="text-base font-bold text-ink-900">' + esc(title) + '</p>'
+            +   '<p class="text-sm text-ink-500 mt-2">' + esc(desc) + '</p>'
+            + '</div>'
+            + (actionLabel
+                ? '<button type="button" id="retryBtn" class="px-5 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition">' + esc(actionLabel) + '</button>'
+                : '<a href="profile.html" class="inline-block px-5 py-2.5 border border-stone-200 text-ink-600 text-sm rounded-full hover:bg-stone-50 transition">返回我的订单</a>');
+        if (actionLabel) $('retryBtn').onclick = function () { loadTicket(true); };
+    }
+
+    function startCountdown() {
+        if (state.timer) clearInterval(state.timer);
+        var left = (state.ticket && state.ticket.remain_seconds) || 0;
+        state.timer = setInterval(function () {
+            left -= 1;
+            var node = $('cd');
+            if (left > 0) {
+                if (node) node.textContent = '二维码剩余有效期 ' + mmss(left);
+                return;
+            }
+            clearInterval(state.timer);
+            state.timer = null;
+            renderNotice('二维码已过期', '为安全起见，二维码有效期只有几分钟。点下面重新生成一张即可。', '重新生成二维码');
+        }, 1000);
+    }
+
+    function copyUrl() {
+        var text = state.payUrl;
+        if (!text) return;
+        var done = function () {
+            var b = $('copyBtn');
+            if (b) { b.textContent = '已复制'; setTimeout(function () { b.textContent = '复制支付链接'; }, 1600); }
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(done, function () { fallbackCopy(text, done); });
+        } else {
+            fallbackCopy(text, done);
+        }
+    }
+
+    function fallbackCopy(text, done) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', 'readonly');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); done(); } catch (e) { /* 复制失败就手动选 */ }
+        document.body.removeChild(ta);
+    }
+
+    // ── 请求 ────────────────────────────────────────────────
+    async function callApi(url, options) {
+        var resp = await AUTH.authFetch(url, options || {}, { silentAuthFail: false });
+        var data = {};
+        try { data = await resp.json(); } catch (e) { data = {}; }
+        return { ok: resp.ok, status: resp.status, data: data };
+    }
+
+    async function loadTicket(force) {
+        stopTimers();
+        els.payBox.innerHTML = '<div class="py-6 text-sm text-ink-500">正在生成二维码…</div>';
+        try {
+            var r = await callApi('/api/pay/' + encodeURIComponent(state.orderNo) + '/ticket/', { method: 'POST' });
+            if (!r.ok) {
+                renderNotice('无法发起付款', r.data.message || ('请求失败（' + r.status + '）'), '重新试一次');
+                return;
+            }
+            state.ticket = r.data.ticket || {};
+            state.qrSvg = r.data.qr_svg || '';
+            state.payUrl = r.data.pay_url || '';
+            renderOrder(r.data.order);
+            if (state.ticket.status === '已支付') { state.paid = true; renderPaid(); return; }
+            renderReady();
+            startPolling();
+        } catch (e) {
+            renderNotice('网络异常', e.message || '请检查网络后重试', '重新试一次');
+        }
+    }
+
+    function startPolling() {
+        if (state.poll) clearInterval(state.poll);
+        state.poll = setInterval(checkStatus, POLL_MS);
+    }
+
+    async function checkStatus() {
+        if (!state.alive || state.paid) return;
+        try {
+            var r = await callApi('/api/pay/' + encodeURIComponent(state.orderNo) + '/status/');
+            if (!r.ok) return;                      // 轮询失败静默重试，不打断用户
+            if (r.data.order) renderOrder(r.data.order);
+            if (r.data.paid) { state.paid = true; renderPaid(); return; }
+            // 凭据被别处作废（同一订单在别处付掉了）/ 过期 → 停止倒计时并提示
+            var tk = r.data.ticket;
+            if (tk && tk.status === '已取消') {
+                renderNotice('这笔订单已在别处完成支付', '请到「我的订单」确认订单状态。', '');
+            }
+        } catch (e) { /* 静默 */ }
+    }
+
+    // ── 初始化 ──────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', async function () {
+        els.orderBox = $('orderBox');
+        els.payBox = $('payBox');
+        els.amountText = $('amountText');
+
+        var ok = await AUTH.init({ requireAuth: true, reason: '登录后即可查看并支付这笔订单' });
+        if (!ok) return;
+
+        state.orderNo = orderNoFromPath();
+        if (!state.orderNo) {
+            renderNotice('订单号缺失', '这个支付链接不完整，请从「我的订单」里重新进入。', '');
+            return;
+        }
+
+        // 页面切到后台就停轮询，回来再继续 —— 没人看的页面不该一直打接口
+        document.addEventListener('visibilitychange', function () {
+            state.alive = (document.visibilityState === 'visible');
+            if (!state.alive) return;
+            if (!state.paid && !state.poll) startPolling();
+            checkStatus();
+        });
+
+        await loadTicket();
+    });
+})();
+</script>
+</body>
+</html>

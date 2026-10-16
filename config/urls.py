@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from agent import views as views_agent
+from agent import views_cashier
 from agent import auth_views
 from agent import me_views
 from agent.middleware import metrics_view
@@ -44,6 +45,21 @@ def serve_frontend_file(request, filename):
             return HttpResponse(filepath.read_bytes(), content_type="application/javascript")
         return HttpResponse(filepath.read_bytes(), content_type="application/octet-stream")
     return HttpResponse("文件不存在", status=404)
+
+
+def serve_cashier_page(request, order_no=""):
+    """收银台页面（PC 端）。
+
+    订单号留在 URL **路径**里而不是查询串：收银台是要刷新、要往回退、
+    要贴给别人看的页面，路径更稳（也不会有 `?order=` 被截断的意外）。
+    `order_no` 参数只是吃掉路径里的那段，页面自己去 `location.pathname` 解析。
+    """
+    return serve_frontend_file(request, "pay.html")
+
+
+def serve_pay_confirm_page(request, token=""):
+    """手机确认页 —— 二维码扫出来的就是这个地址，token 就在路径里。"""
+    return serve_frontend_file(request, "pay_confirm.html")
 
 
 def serve_frontend_asset(request, filepath):
@@ -198,6 +214,16 @@ urlpatterns = [
     # 商品评价（任务书六·4）：对已完成订单发表评价【需登录 + 归属校验】
     path("api/orders/<str:order_no>/review/", views_agent.create_review_api, name="api_create_review"),
     path("api/orders/<str:order_no>/", views_agent.order_detail, name="api_order_detail"),
+    # ── 模拟收银台（任务书五·1）：PC 出码、手机扫码、回调入账 ──
+    # 手机端两个接口**不要求登录** —— token 即授权（256 位随机、一次性、5 分钟失效），
+    # 这样扫码的人不必在手机上再登录一次；PC 端两个接口要登录且做归属校验。
+    path("api/pay/<str:order_no>/ticket/", views_cashier.create_ticket_api, name="api_pay_ticket"),
+    path("api/pay/<str:order_no>/status/", views_cashier.ticket_status_api, name="api_pay_ticket_status"),
+    path("api/pay/ticket/<str:token>/", views_cashier.ticket_info_api, name="api_pay_ticket_info"),
+    path("api/pay/confirm/<str:token>/", views_cashier.confirm_ticket_api, name="api_pay_confirm"),
+    # 收银台页面：`/pay/confirm/<token>/` 必须排在 `/pay/<order_no>/` 之前（更具体优先）
+    path("pay/confirm/<str:token>/", serve_pay_confirm_page, name="pay_confirm_page"),
+    path("pay/<str:order_no>/", serve_cashier_page, name="pay_cashier_page"),
     path("index.html", serve_frontend_file, {"filename": "index.html"}),
     path("products.html", serve_frontend_file, {"filename": "products.html"}),
     path("factory.html", serve_frontend_file, {"filename": "factory.html"}),

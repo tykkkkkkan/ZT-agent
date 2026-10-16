@@ -36,5 +36,9 @@ chromadb>=0.5.0
 # Swagger/OpenAPI 文档
 drf-spectacular==0.30.0
 
+# 收银台二维码（纯 Python，SVG 输出，不需要 PIL）
+# 仅模拟收银台出码时使用；缺失时 cashier.qr_svg() 优雅降级为空串，页面照常给明文链接
+qrcode==8.2
+
 # 注意：LlamaIndex 对照 demo 的依赖已移至 requirements-demo.txt
 #      （llama-index 会拉入数十个传递依赖，为使 Docker 构建更快，主清单不再包含）

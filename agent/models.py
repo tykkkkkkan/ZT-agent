@@ -725,6 +725,112 @@ class UserTransaction(models.Model):
 
 
 # ════════════════════════════════════════════════════════════════
+# 模拟收银台（任务书五·1）
+#   PayTicket：一次「扫码支付」的凭据 —— 一次性、有有效期、可审计
+# ════════════════════════════════════════════════════════════════
+class PayTicketStatus(models.TextChoices):
+    """收银台凭据的状态。
+
+    为什么不用"删掉旧票"来表示已用？
+    因为支付这件事必须**可追溯**：过期了、被别处用了、用户取消了，
+    以后对账时都需要一条记录来说明"这张码为什么没付成功"。
+    删掉的话，事后只剩"查不到"，等于没有解释。
+    """
+    PENDING   = "待支付", "待支付"
+    PAID      = "已支付", "已支付"
+    EXPIRED   = "已过期", "已过期"
+    CANCELLED = "已取消", "已取消"     # 同一订单的另一张票先付成功了
+
+
+class PayChannel(models.TextChoices):
+    """付款方式（#72 起可切换；此处先把枚举定下来，避免以后改字段）。"""
+    QR      = "扫码支付", "扫码支付"     # 手机扫 PC 上的码
+    BALANCE = "余额支付", "余额支付"     # 直接扣用户钱包
+
+
+class PayTicket(models.Model):
+    """一次收银会话的凭据。
+
+    设计要点
+    --------
+    1. **token 就是凭证**：`secrets.token_urlsafe(32)`（256 位随机）。
+       手机扫码时**不需要登录** —— 真实扫码支付也是这样（二维码本身就是授权）。
+       能扫到这个码，说明用户正对着自己的屏幕；而 token 只可能出现在
+       该账号自己发起的收银台上。
+    2. **一次性**：`status` 从「待支付」只能单向走到 已支付/已过期/已取消，
+       `redeem` 在事务里对行加锁 —— 两个标签页同时提交只会成功一次。
+    3. **有有效期**：默认 5 分钟（`expires_at`）。扫码支付的二维码挂在屏幕上
+       无人看管，长期有效等于把付款权限一直摊开着。
+    4. **金额快照**：`amount` 记下开票时的应付金额。订单金额后来若被后台改动，
+       这张票上写的是多少，就该按多少算 —— 否则"我明明看到 199 才扫的"没法解释。
+    5. `order_no` 用字符串而不是外键：`orders` 是 `managed=False` 的老表，
+       而且订单号是跨 Agent 的稳定业务键（marketing-agent 也按它对话）。
+    """
+
+    order_no = models.CharField(
+        max_length=50, verbose_name='订单号', db_comment='关联订单号',
+        help_text='不做单列索引：查询一律是「某订单 + 某状态」，由 idx_pay_order_status 覆盖',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, models.SET_NULL,
+        db_column='user_id', null=True, blank=True, related_name='pay_tickets',
+        verbose_name='发起账号', db_comment='发起收银台的账号',
+    )
+    token = models.CharField(
+        max_length=64, unique=True, db_index=True,
+        verbose_name='凭据', db_comment='一次性支付凭据(256位随机)',
+    )
+    status = models.CharField(
+        max_length=10, choices=PayTicketStatus.choices,
+        default=PayTicketStatus.PENDING, db_index=True,
+        verbose_name='状态', db_comment='待支付/已支付/已过期/已取消',
+    )
+    channel = models.CharField(
+        max_length=10, choices=PayChannel.choices,
+        default=PayChannel.QR, verbose_name='付款方式', db_comment='扫码支付/余额支付',
+    )
+    amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='应付金额', db_comment='开票时的应付金额快照',
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True, db_index=True, verbose_name='创建时间', db_comment='开票时间',
+    )
+    expires_at = models.DateTimeField(
+        db_index=True, verbose_name='失效时间', db_comment='凭据失效时间',
+    )
+    redeemed_at = models.DateTimeField(
+        null=True, blank=True, verbose_name='核销时间', db_comment='核销(确认付款)时间',
+    )
+    redeemed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, models.SET_NULL,
+        db_column='redeemed_by_id', null=True, blank=True, related_name='+',
+        verbose_name='核销账号', db_comment='手机上确认时若已登录则记录',
+    )
+
+    class Meta:
+        db_table = 'pay_tickets'
+        verbose_name = '收银台凭据'
+        verbose_name_plural = '收银台凭据'
+        ordering = ('-created_at', '-id')
+        indexes = [
+            models.Index(fields=['order_no', 'status'], name='idx_pay_order_status'),
+        ]
+
+    def __str__(self):
+        return f"{self.order_no} · {self.status} · ¥{self.amount}"
+
+    @property
+    def is_expired(self) -> bool:
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def is_open(self) -> bool:
+        """还能被核销吗（未用、未过期、未取消）。"""
+        return self.status == PayTicketStatus.PENDING and not self.is_expired
+
+
+# ════════════════════════════════════════════════════════════════
 # 商品评价（任务书六·4）
 # ════════════════════════════════════════════════════════════════
 class Review(models.Model):

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>确认付款 - 中渔天下</title>
+    <meta name="description" content="确认并完成订单付款。">
+    <meta name="robots" content="noindex">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="assets/theme.css">
+    <link rel="stylesheet" href="assets/tailwind.build.css">
+</head>
+<body class="bg-stone-50 font-sans text-ink-800 antialiased">
+    <!-- 手机确认页：故意不引 auth.js、也不要求登录。
+         二维码本身就是授权（256 位随机、一次性、5 分钟失效），
+         扫码的人不必在手机上再登录一次 —— 真实扫码支付也是这个体验。 -->
+    <main id="main" class="min-h-[calc(100vh-4rem)] flex items-start justify-center px-5 py-10">
+        <div class="w-full max-w-md">
+            <div class="text-center mb-6">
+                <div class="w-14 h-14 mx-auto bg-gradient-to-br from-brand-500 to-lake-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-brand-500/30">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.8em;height:1.8em" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg>
+                </div>
+                <p class="text-lg font-bold text-ink-900 mt-3">中渔天下 · 收银台</p>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-brand-100 shadow-xl shadow-brand-500/5 p-6">
+                <div id="bodyBox" class="text-center text-sm text-ink-500 py-8">正在读取付款信息…</div>
+            </div>
+
+            <p class="text-xs text-ink-400 mt-5 text-center leading-relaxed">
+                本页是毕业设计作品的<b>模拟收银台</b>，不会发生真实扣款。
+                点「确认付款」即可把订单标记为已支付，商家侧随即解锁发货。
+            </p>
+        </div>
+    </main>
+
+<script>
+/* ════════════════════════════════════════════════════════════
+   收银台（手机端）—— /pay/confirm/<token>/
+
+   二维码扫出来的就是这个地址。三步：
+     1. GET  /api/pay/ticket/<token>/    拿订单摘要（已脱敏）
+     2. 用户核对金额 → 点「确认付款」
+     3. POST /api/pay/confirm/<token>/   核销凭据 → 订单落「已支付」
+
+   两个刻意的设计：
+   · **金额是主角**：手机屏上最重要的是"付多少"，所以金额用最大字号，
+     订单信息退居其次。付款页面让人看错金额是最不可原谅的错。
+   · **确认后不允许再点**：按钮立刻禁用并进入"处理中"，避免手抖连点。
+     真正的防重放在后端（凭据一次性 + 行锁），前端只是不让操作变得含糊。
+   ════════════════════════════════════════════════════════════ */
+(function () {
+    'use strict';
+
+    var token = '';
+    var busy = false;
+
+    function $(id) { return document.getElementById(id); }
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    // 路径形如 /pay/confirm/<token>/ → 取中间那段
+    function tokenFromPath() {
+        var m = /^\/pay\/confirm\/([^\/]+)\/?$/.exec(location.pathname);
+        if (m) return decodeURIComponent(m[1]);
+        return new URLSearchParams(location.search).get('token') || '';
+    }
+
+    function checkIcon() {
+        return '<div class="mx-auto w-14 h-14 bg-gradient-to-br from-brand-500 to-lake-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-brand-500/30">'
+            + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:1.8em;height:1.8em" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>'
+            + '</div>';
+    }
+
+    function orderRows(o) {
+        if (!o || !o.order_no) return '';
+        var rows = [
+            ['订单号', o.order_no],
+            ['产品', (o.product_name || '—') + (o.quantity ? (' × ' + o.quantity) : '')],
+            ['收货人', o.customer_name || '—'],
+            ['电话', o.phone || '—'],
+            ['地址', o.address || '—']
+        ];
+        return '<div class="text-left mt-5">'
+            + rows.map(function (r) {
+                return '<div class="flex gap-3 py-2 border-b border-stone-100 last:border-0 text-sm">'
+                    + '<span class="w-16 flex-shrink-0 text-ink-400">' + esc(r[0]) + '</span>'
+                    + '<span class="flex-1 text-ink-800 break-words">' + esc(r[1]) + '</span>'
+                    + '</div>';
+            }).join('')
+            + '</div>';
+    }
+
+    function renderPayable(data) {
+        var o = data.order || {};
+        var t = data.ticket || {};
+        $('bodyBox').innerHTML = ''
+            + '<p class="text-sm text-ink-500">请确认付款金额</p>'
+            + '<p class="text-4xl font-bold text-brand-700 mt-2">¥' + esc(o.total_price || t.amount || '0.00') + '</p>'
+            + '<p class="text-xs text-ink-400 mt-2">二维码剩余有效期 <span id="cd">' + (t.remain_seconds || 0) + '</span> 秒</p>'
+            + orderRows(o)
+            + '<button type="button" id="payBtn" class="w-full mt-6 px-5 py-3.5 bg-brand-600 text-white text-base font-semibold rounded-full hover:bg-brand-700 transition shadow-lg shadow-brand-500/30">确认付款</button>'
+            + '<p class="text-xs text-ink-400 mt-3">点确认即视为完成这笔订单的付款</p>';
+        $('payBtn').onclick = confirmPay;
+        startCountdown(t.remain_seconds || 0);
+    }
+
+    function renderDone(title, desc, o) {
+        $('bodyBox').innerHTML = checkIcon()
+            + '<p class="text-xl font-bold text-ink-900 mt-4">' + esc(title) + '</p>'
+            + '<p class="text-sm text-ink-500 mt-2">' + esc(desc) + '</p>'
+            + orderRows(o)
+            + '<p class="text-xs text-ink-400 mt-5">可以关掉这一页了，电脑上的收银台会自动显示支付成功。</p>';
+    }
+
+    function renderFail(title, desc) {
+        $('bodyBox').innerHTML = ''
+            + '<div class="py-4">'
+            +   '<p class="text-lg font-bold text-ink-900">' + esc(title) + '</p>'
+            +   '<p class="text-sm text-ink-500 mt-2 leading-relaxed">' + esc(desc) + '</p>'
+            + '</div>';
+    }
+
+    var cdTimer = null;
+    function startCountdown(sec) {
+        if (cdTimer) clearInterval(cdTimer);
+        var left = sec;
+        cdTimer = setInterval(function () {
+            left -= 1;
+            var node = $('cd');
+            if (left > 0) { if (node) node.textContent = left; return; }
+            clearInterval(cdTimer);
+            cdTimer = null;
+            renderFail('二维码已过期', '为了安全，付款二维码的有效期只有几分钟。请回到电脑上的收银台，刷新后重新扫码。');
+        }, 1000);
+    }
+
+    // ── 请求 ────────────────────────────────────────────────
+    async function req(url, options) {
+        var resp = await fetch(url, options || {});
+        var data = {};
+        try { data = await resp.json(); } catch (e) { data = {}; }
+        return { ok: resp.ok, status: resp.status, data: data };
+    }
+
+    async function loadInfo() {
+        try {
+            var r = await req('/api/pay/ticket/' + encodeURIComponent(token) + '/');
+            if (!r.ok) {
+                renderFail('付款链接无效', r.data.message || '这张二维码可能已被使用或已过期，请回到电脑上的收银台重新获取。');
+                return;
+            }
+            var t = r.data.ticket || {};
+            if (t.status === '已支付') {
+                renderDone('这笔订单已支付', '无需重复付款。', r.data.order);
+                return;
+            }
+            if (t.status === '已过期' || t.open === false) {
+                renderFail('二维码已过期', '请回到电脑上的收银台，刷新后重新扫码。');
+                return;
+            }
+            renderPayable(r.data);
+        } catch (e) {
+            renderFail('网络异常', e.message || '请检查手机网络后重试。');
+        }
+    }
+
+    async function confirmPay() {
+        if (busy) return;
+        busy = true;
+        var btn = $('payBtn');
+        if (btn) { btn.disabled = true; btn.textContent = '处理中…'; }
+        if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
+        try {
+            var r = await req('/api/pay/confirm/' + encodeURIComponent(token) + '/', { method: 'POST' });
+            var d = r.data || {};
+            if (d.success) {
+                renderDone(d.already ? '这笔订单已支付' : '支付成功',
+                           d.message || '商家将尽快为您安排发货。', d.order);
+                return;
+            }
+            if (d.code === 'expired') {
+                renderFail('二维码已过期', d.message || '请回到电脑上的收银台刷新后重新扫码。');
+                return;
+            }
+            if (d.code === 'cancelled') {
+                renderFail('二维码已作废', d.message || '这张码对应的订单已在别处完成支付。');
+                return;
+            }
+            renderFail('付款未完成', d.message || ('请求失败（' + r.status + '）'));
+        } catch (e) {
+            renderFail('网络异常', e.message || '请检查手机网络后重试。');
+            busy = false;
+            if (btn) { btn.disabled = false; btn.textContent = '确认付款'; }
+            return;
+        }
+        busy = false;
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        token = tokenFromPath();
+        if (!token) {
+            renderFail('付款链接不完整', '请回到电脑上的收银台，用手机重新扫一次二维码。');
+            return;
+        }
+        loadInfo();
+    });
+})();
+</script>
+</body>
+</html>
