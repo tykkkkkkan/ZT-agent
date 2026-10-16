@@ -339,7 +339,7 @@
                                 <!-- 普通消息 -->
                                 <template v-for="(msg, idx) in messages">
                                     <div
-                                        v-if="msg.role !== 'card'"
+                                        v-if="msg.role !== 'card' && msg.role !== 'suggest'"
                                         :key="'msg-' + idx"
                                         class="flex items-end gap-2"
                                         :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
@@ -455,7 +455,74 @@
                                                     </div>
                                                 </div>
                                             </template>
+                                            <!-- 订单名片（Agent 查到订单 → 结构化进度卡：直接支付 / 看物流 / 进订单页） -->
+                                            <!-- 对应任务书五·3「用户向 Agent 问订单进度，Agent 给出实时进度」 -->
+                                            <template v-else-if="msg.cardType === 'order'">
+                                                <div class="px-5 py-3 bg-gradient-to-r from-sunset-700 to-sunset-600 text-white flex items-center gap-2">
+                                                    <span class="text-lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1z"/><path d="M8 7h8M8 11h8M8 15h5"/></svg></span>
+                                                    <span class="font-semibold text-sm">订单进度</span>
+                                                    <span class="ml-auto font-mono text-[11px] text-white/85 truncate">{{ msg.order.order_no }}</span>
+                                                </div>
+                                                <div class="px-5 py-4 space-y-2.5">
+                                                    <div class="flex items-start justify-between gap-3">
+                                                        <span class="font-semibold text-sm text-ink-900 truncate">{{ msg.order.product_name || '订单商品' }}</span>
+                                                        <span class="flex-shrink-0 text-xs text-ink-500">× {{ msg.order.quantity }} 包</span>
+                                                    </div>
+                                                    <div class="flex flex-wrap items-center gap-1.5">
+                                                        <span class="px-2 py-0.5 rounded-full text-[11px] font-medium" :class="orderStatusClass(msg.order)">{{ msg.order.status || '状态未知' }}</span>
+                                                        <span
+                                                            v-if="msg.order.payment_status"
+                                                            class="px-2 py-0.5 rounded-full text-[11px] font-medium"
+                                                            :class="msg.order.payment_status === '已支付' ? 'bg-brand-100 text-brand-700' : 'bg-sunset-50 text-sunset-700'"
+                                                        >{{ msg.order.payment_status }}</span>
+                                                        <span v-if="msg.order.return_status" class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-sunset-50 text-sunset-700">{{ msg.order.return_status }}</span>
+                                                    </div>
+                                                    <p v-if="msg.order.tracking_no" class="text-xs text-ink-500">
+                                                        {{ msg.order.ship_company || '物流' }} · 运单号 <span class="font-mono">{{ msg.order.tracking_no }}</span><span v-if="msg.order.shipped_at"> · {{ msg.order.shipped_at }} 发出</span>
+                                                    </p>
+                                                    <p v-else-if="hasAction(msg.order, 'pay')" class="text-xs text-sunset-700 bg-sunset-50 rounded-lg px-3 py-2 leading-relaxed">
+                                                        这笔订单还没支付，完成支付后商家才会安排发货。
+                                                    </p>
+                                                    <p v-else-if="msg.order.cancel_reason" class="text-xs text-ink-500 bg-stone-50 rounded-lg px-3 py-2 leading-relaxed">
+                                                        取消原因：{{ msg.order.cancel_reason }}
+                                                    </p>
+                                                    <div class="flex items-baseline justify-between gap-2 pt-2 border-t border-brand-100">
+                                                        <span class="text-[11px] text-ink-400">下单 {{ msg.order.created_at || '—' }}</span>
+                                                        <span class="text-lg font-bold text-sunset-700">¥{{ money(msg.order.total_price) }}</span>
+                                                    </div>
+                                                    <div class="grid grid-cols-2 gap-2 pt-1">
+                                                        <button
+                                                            v-if="hasAction(msg.order, 'pay')"
+                                                            @click="payOrder(msg)"
+                                                            :disabled="payingOrders[msg.order.order_no]"
+                                                            class="px-2 py-2.5 bg-gradient-to-r from-sunset-700 to-sunset-600 text-white text-xs font-semibold rounded-lg hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >{{ payingOrders[msg.order.order_no] ? '支付中…' : ('立即支付 ¥' + money(msg.order.total_price)) }}</button>
+                                                        <button
+                                                            @click="goToPage('profile.html')"
+                                                            class="px-2 py-2.5 bg-white text-ink-700 text-xs font-semibold rounded-lg border border-brand-100 hover:border-brand-400 hover:text-brand-600 transition"
+                                                        >我的订单</button>
+                                                    </div>
+                                                    <p v-if="payErrors[msg.order.order_no]" class="text-xs text-sunset-600">{{ payErrors[msg.order.order_no] }}</p>
+                                                </div>
+                                            </template>
                                         </div>
+                                    </div>
+
+                                    <!-- 追问建议（本轮弹了名片 → 把下一步问题摆到客户手边，点一下即发送） -->
+                                    <div
+                                        v-if="msg.role === 'suggest'"
+                                        :key="'suggest-' + idx"
+                                        class="flex flex-wrap gap-2 pl-10"
+                                    >
+                                        <button
+                                            v-for="(s, si) in msg.items"
+                                            :key="'sg-' + si"
+                                            @click="sendQuickQuestion(s)"
+                                            :disabled="loading"
+                                            class="px-3 py-1.5 bg-white border border-brand-200 text-brand-700 text-xs font-medium rounded-full hover:border-brand-400 hover:bg-brand-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {{ s }}
+                                        </button>
                                     </div>
                                 </template>
                             </div>

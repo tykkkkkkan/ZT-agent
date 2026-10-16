@@ -368,17 +368,23 @@
                         <div v-else class="mb-6 rounded-xl bg-brand-50 border border-brand-100 px-4 py-3 text-xs text-brand-700">
                             支付已完成，商家将尽快安排发货。
                         </div>
-                        <div class="flex gap-3">
-                            <button @click="resetForm"
-                                    class="flex-1 px-4 py-3 bg-white border border-brand-200 text-ink-700 text-sm font-semibold rounded-xl hover:border-brand-400 hover:text-brand-600 transition">
-                                继续下单
-                            </button>
+                        <!-- 闭环最后一跳：回到 AI 对话，Agent 会把这笔订单以名片形式接住
+                             （可继续支付 / 查物流 / 申请售后），客户不必记订单号 -->
+                        <div class="grid grid-cols-2 gap-3">
+                            <a :href="'index.html?order=' + encodeURIComponent(result.order_no)"
+                               class="px-4 py-3 bg-gradient-to-r from-brand-600 to-lake-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-brand-500/30 transition flex items-center justify-center gap-1.5">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22z"/><circle cx="11" cy="11" r="1" fill="currentColor" stroke="none"/></svg> 回到咨询·查进度
+                            </a>
                             <a href="profile.html"
-                               class="flex-1 px-4 py-3 bg-white border border-lake-200 text-lake-700 text-sm font-semibold rounded-xl hover:border-lake-400 hover:bg-lake-50 transition flex items-center justify-center gap-1.5">
+                               class="px-4 py-3 bg-white border border-lake-200 text-lake-700 text-sm font-semibold rounded-xl hover:border-lake-400 hover:bg-lake-50 transition flex items-center justify-center gap-1.5">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> 我的订单
                             </a>
+                            <button @click="resetForm"
+                                    class="px-4 py-3 bg-white border border-brand-200 text-ink-700 text-sm font-semibold rounded-xl hover:border-brand-400 hover:text-brand-600 transition">
+                                继续下单
+                            </button>
                             <a href="contact.html"
-                               class="flex-1 px-4 py-3 bg-gradient-to-r from-brand-600 to-lake-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-brand-500/30 transition flex items-center justify-center gap-1.5">
+                               class="px-4 py-3 bg-white border border-brand-200 text-ink-700 text-sm font-semibold rounded-xl hover:border-brand-400 hover:text-brand-600 transition flex items-center justify-center gap-1.5">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 联系客服
                             </a>
                         </div>

@@ -9,6 +9,47 @@
  */
 const { createApp, ref, nextTick, onMounted } = Vue;
 
+// ══════════════════════════════════════════════════════════════
+// 顶层纯函数（不依赖组件状态）—— 便于 scripts/verify_order_card.js 直接断言
+// ══════════════════════════════════════════════════════════════
+/** 订单状态徽标配色：与个人中心同一套语义（进行中=湖青、待办=日落、终态=灰） */
+function orderStatusClass(order) {
+    const s = (order && order.status) || '';
+    if (s === '已完成') return 'bg-brand-100 text-brand-700';
+    if (s === '已发货') return 'bg-lake-50 text-lake-700';
+    if (s === '已取消') return 'bg-stone-200 text-stone-600';
+    return 'bg-sunset-50 text-sunset-700';            // 未发货 / 退货申请中：还有下一步要做
+}
+
+/** 可执行动作由后端下发（order_presenter.order_actions），前端只做展示判断，不重写规则 */
+function hasAction(order, name) {
+    return !!order && Array.isArray(order.actions) && order.actions.includes(name);
+}
+
+/** 金额统一两位小数（否则 5 显示成 5、12.5 显示成 12.5，卡片里不齐） */
+function moneyOf(v) {
+    return Number(v || 0).toFixed(2);
+}
+
+/**
+ * 「猜你想问」：只在本轮真的弹了名片时给下一步 ——
+ * 客户刚看完名片，最需要的正是「接下来能问什么」。
+ */
+function suggestFor(cards) {
+    const list = Array.isArray(cards) ? cards : [];
+    const orderCards = list.filter((c) => c && c.cardType === 'order');
+    if (orderCards.length) {
+        const unpaid = orderCards.some((c) => hasAction(c.order, 'pay'));
+        return unpaid
+            ? ['为什么要先付款？', '多久能发货？', '怎么申请退货？']
+            : ['怎么查物流？', '怎么申请退货？', '还能再下单吗？'];
+    }
+    if (list.some((c) => c && c.cardType === 'product')) {
+        return ['这款适合什么鱼？', '批发价是多少？', '还有别的推荐吗？'];
+    }
+    return [];
+}
+
 createApp({
     setup() {
         // ========== session_id 持久化 ==========
@@ -62,6 +103,52 @@ createApp({
             window.location.href = 'order.html?product=' + encodeURIComponent(product.id);
         };
 
+        // ========== 订单名片：对话内支付 ==========
+        /**
+         * 对话内支付：客户不必为了付款跳走再回来。
+         * 成功后用后端回传的订单覆盖卡片，保证「聊天里看到的」与「库里的」一致。
+         */
+        const payOrder = async (msg) => {
+            const order = msg && msg.order;
+            if (!order || !order.order_no || payingOrders.value[order.order_no]) return;
+            if (!window.AUTH || !(await AUTH.ensureLogin('登录后即可支付'))) return;
+            payingOrders.value = { ...payingOrders.value, [order.order_no]: true };
+            payErrors.value = { ...payErrors.value, [order.order_no]: '' };
+            try {
+                const resp = await AUTH.authFetch(
+                    '/api/orders/' + encodeURIComponent(order.order_no) + '/pay/',
+                    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }
+                );
+                const d = await resp.json().catch(() => ({}));
+                if (resp.ok && d.success) {
+                    const fresh = d.order || {};
+                    order.payment_status = fresh.payment_status || '已支付';
+                    if (fresh.status) order.status = fresh.status;
+                    // 支付后「pay」动作消失（actions 由后端权威下发）；后端没给就本地摘掉
+                    order.actions = Array.isArray(fresh.actions)
+                        ? fresh.actions
+                        : (order.actions || []).filter((a) => a !== 'pay');
+                    pushSuggest(['怎么查物流？', '多久能发货？', '怎么申请退货？']);
+                } else {
+                    payErrors.value = { ...payErrors.value, [order.order_no]: d.message || '支付失败，请稍后重试' };
+                }
+            } catch (e) {
+                payErrors.value = { ...payErrors.value, [order.order_no]: '网络异常，请稍后重试' };
+            } finally {
+                const next = { ...payingOrders.value };
+                delete next[order.order_no];
+                payingOrders.value = next;
+            }
+        };
+
+        // ========== 追问建议（「猜你想问」） ==========
+        // 只在本轮真的弹了卡片时给下一步（suggestFor 定义在文件头部，便于单测）
+        const pushSuggest = (items) => {
+            if (!items || !items.length) return;
+            messages.value.push({ role: 'suggest', items: items.slice() });
+            scrollToBottom();
+        };
+
         // ========== 快捷提问 ==========
         const quickQuestions = ref([
             '钓鲤鱼用什么饵效果最好？',
@@ -94,6 +181,11 @@ createApp({
         const pendingGuide = ref(false);
         // 本轮 Agent 介绍过的商品（产品名片，可一键下单）
         const pendingProducts = ref([]);
+        // 本轮 Agent 查过的订单（订单名片，可直接支付 / 看物流）
+        const pendingOrders = ref([]);
+        // 对话内支付：按订单号记录「支付中」与错误信息（卡片按钮据此禁用与提示）
+        const payingOrders = ref({});
+        const payErrors = ref({});
 
         // 滚动到底部
         const scrollToBottom = () => {
@@ -149,11 +241,49 @@ createApp({
             localStorage.setItem(SESSION_KEY, sid);
             messages.value = [loginRequired() ? loginPromptMessage : welcomeMessage];
             pendingProducts.value = [];
+            pendingOrders.value = [];
             scrollToBottom();
         };
 
-        // 进入页面即加载历史
-        onMounted(loadHistory);
+        /**
+         * 下单成功后跳回本页时带 `?order=<订单号>`（order.html 成功页的「回到咨询」）。
+         *
+         * 这里拉一次订单详情、在对话里补一张订单名片 —— 接上「下单 → 回到对话 → 支付/查单」
+         * 这最后一跳。改造前客户下完单只能留在下单页，回到对话里 Agent 对这笔单毫无所知。
+         */
+        const showOrderCardFromUrl = async () => {
+            const orderNo = new URLSearchParams(location.search).get('order');
+            if (!orderNo) return;
+            // 立刻清掉参数：刷新/再次进入不重复弹卡（卡片已经在会话里了）
+            history.replaceState(null, '', location.pathname + location.hash);
+            if (loginRequired()) return;
+            try {
+                const resp = await AUTH.authFetch(
+                    '/api/orders/' + encodeURIComponent(orderNo) + '/',
+                    {}, { silentAuthFail: true }
+                );
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const order = data && (data.order || data);
+                if (!order || !order.order_no) return;
+                messages.value.push({
+                    role: 'ai',
+                    content: '这笔订单已经记录好了，后面进度我随时能帮你查。',
+                });
+                messages.value.push({ role: 'card', cardType: 'order', order });
+                pushSuggest(suggestFor([{ cardType: 'order', order }]));
+                scrollToBottom();
+            } catch (e) {
+                // 拉不到订单详情不打断聊天页，静默降级
+                console.warn('回显订单名片失败：', e);
+            }
+        };
+
+        // 进入页面即加载历史；若带 ?order= 再补一张订单名片（下单成功回到对话的闭环）
+        onMounted(async () => {
+            await loadHistory();
+            await showOrderCardFromUrl();
+        });
 
         /**
          * 解析 SSE 行：只处理 data: 开头的行
@@ -202,6 +332,7 @@ createApp({
             let streamEnded = false;
             pendingGuide.value = false;
             pendingProducts.value = [];
+            pendingOrders.value = [];
 
             try {
                 const sessionId = getSessionId();
@@ -272,6 +403,12 @@ createApp({
                                 continue;
                             }
 
+                            // 订单名片（订单号/商品/金额/状态/物流 + 立即支付 / 我的订单）
+                            if (data.type === 'order_card' && data.order) {
+                                pendingOrders.value.push(data.order);
+                                continue;
+                            }
+
                             // 流结束信号
                             if (data.done) {
                                 if (messages.value[aiMsgIdx]) {
@@ -295,11 +432,15 @@ createApp({
                     }
                 }
 
-                // 流结束后统一插卡，固定顺序：产品名片 → 引导卡
+                // 流结束后统一插卡，固定顺序：产品名片 → 订单名片 → 引导卡
                 // （拆成多次 splice 会因 index 相同而倒序，所以先收集再一次性插入）
                 const trailingCards = [];
                 pendingProducts.value.forEach((p) => {
                     trailingCards.push({ role: 'card', cardType: 'product', product: p });
+                });
+                // 订单名片（查订单进度 → 结构化卡片，带「立即支付」）
+                pendingOrders.value.forEach((o) => {
+                    trailingCards.push({ role: 'card', cardType: 'order', order: o });
                 });
                 // 引导转化卡片（去定制服务 / 联系我们）
                 // 优先级1：后端发了 guide_card 事件
@@ -319,6 +460,8 @@ createApp({
                         });
                         scrollToBottom();
                     });
+                    // 名片之后给「猜你想问」：把下一步摆到客户手边（点一下即发送）
+                    pushSuggest(suggestFor(trailingCards));
                 }
             } catch (err) {
                 console.error('SSE 接收失败：', err);
@@ -362,6 +505,13 @@ createApp({
             productImage,
             onImgError,
             goOrder,
+            // 订单名片（纯逻辑取自文件头部的顶层函数，便于单测；模板里按 money(...) 调用）
+            orderStatusClass,
+            hasAction,
+            money: moneyOf,
+            payOrder,
+            payingOrders,
+            payErrors,
         };
     },
 }).mount('#app');

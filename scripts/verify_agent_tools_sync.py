@@ -200,7 +200,32 @@ def main():
            .values("phone").annotate(n=Count("id")).order_by("-n").first())
     if top:
         phone, real_n = top["phone"], top["n"]
-        out = tools.query_orders_by_phone(phone)
+        # ⚠️ 隐私改造后，按手机号查单要求「已登录 + 号码正是本人绑定的号码」：
+        # 未登录会返回登录引导、报他人号码会被拒。所以这段必须先给自己一个
+        # 绑定了该号码的身份 —— 否则断言拿到的是那句引导语，会误报成"总数不对"。
+        # 已有账号绑了就用它；没有就临时造一个，测完连档案一起删。
+        from django.contrib.auth import get_user_model
+        from agent.models import UserProfile
+
+        bound = UserProfile.objects.filter(phone=phone).select_related("user").first()
+        tmp_user = None
+        if bound:
+            actor = bound.user
+        else:
+            tmp_user = get_user_model().objects.create_user(
+                username=f"_vc_phone_{os.getpid()}", password="vc-tmp",
+            )
+            UserProfile.objects.update_or_create(user=tmp_user, defaults={"phone": phone})
+            actor = tmp_user
+        tools.set_current_user(actor)
+        try:
+            out = tools.query_orders_by_phone(phone)
+        finally:
+            tools.set_current_user(None)
+            if tmp_user is not None:
+                UserProfile.objects.filter(user=tmp_user).delete()
+                get_user_model().objects.filter(pk=tmp_user.pk).delete()
+
         cap = 20
         if real_n > cap:
             check(f"超过 {cap} 笔时报出真实总笔数 {real_n}",

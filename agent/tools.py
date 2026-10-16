@@ -87,6 +87,45 @@ def _remember_product(product) -> None:
 
 
 # ──────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────
+# 本轮对话「被工具查过」的订单 → 前端订单名片卡
+# ──────────────────────────────────────────────────────────────
+# 与商品名片同理用 ContextVar：多线程下模块级容器会把 A 客户的订单
+# 泄漏进 B 客户的这一轮对话 —— 订单比商品敏感得多，这条不能省。
+_referenced_orders = contextvars.ContextVar("referenced_orders", default=None)
+
+
+def reset_referenced_orders() -> None:
+    """每轮对话开始前清空（由 agent_stream 调用）。"""
+    _referenced_orders.set([])
+
+
+def get_referenced_orders() -> list:
+    """取本轮工具查过的订单（按出现顺序，已按订单号去重）。"""
+    return list(_referenced_orders.get() or [])
+
+
+def _remember_order(order) -> None:
+    """登记一笔被工具查过的订单，供前端渲染「订单名片」。
+
+    结构出自 `agent/order_presenter.order_card`（唯一出口）——
+    名片上的按钮与个人中心 / 查订单页共用 `order_actions()` 判定，
+    因此不会出现「聊天名片能点支付、个人中心说不能付」。
+    """
+    try:
+        bucket = _referenced_orders.get()
+        if bucket is None:
+            bucket = []
+            _referenced_orders.set(bucket)
+        if any(item["order_no"] == order.order_no for item in bucket):
+            return
+        from agent.order_presenter import order_card
+        bucket.append(order_card(order))
+    except Exception:
+        # 名片登记失败不影响问答主流程
+        logger.exception("登记订单名片失败（order=%s）", getattr(order, "order_no", None))
+
+
 # 当前登录用户 → 工具侧可见（工具函数拿不到 request）
 # ──────────────────────────────────────────────────────────────
 # 视图层在调用 agent_stream 之前注入；`query_my_orders` 依赖它按归属规则
@@ -344,6 +383,9 @@ def get_order_status(order_no: str) -> str:
     if not order:
         return f"没找到订单号「{order_no}」，麻烦确认下号码？"
 
+    # 订单名片：客户问「到哪了」时，回答之外再给一张结构化进度卡（可直接去支付/看物流）
+    _remember_order(order)
+
     lines = [
         f"订单号：{order.order_no}",
         f"客户：{order.customer_name or '无'}",
@@ -405,6 +447,7 @@ def query_orders_by_phone(phone: str) -> str:
         lines = [f"手机号 {masked} 名下共 {total} 笔订单："]
 
     for o in orders:
+        _remember_order(o)              # 订单名片（最多前几张，由 agent_stream 截断）
         status = o.status or "未知"
         dt = o.created_at.strftime("%Y-%m-%d") if o.created_at else "未知"
         line = (
@@ -476,6 +519,7 @@ def query_my_orders(limit: int = 3) -> str:
     )
     lines = [f"【该客户自己的订单】{head}"]
     for o in orders:
+        _remember_order(o)              # 订单名片（最多前几张，由 agent_stream 截断）
         dt = o.created_at.strftime("%Y-%m-%d") if o.created_at else "未知"
         seg = [
             f"订单号 {o.order_no}",

@@ -14,6 +14,7 @@ agent/agent.py — ReAct 式 Agent 循环 + 真·流式输出
 对外：agent_stream(session_id, user_message) 为生成器，逐条 yield 事件 dict：
     {"content": "..."}                            文本增量（兜底清洗后，逐 chunk）
     {"type": "product_card", "product": {...}}    产品名片（名称/规格/图片/价格/库存，可一键下单）
+    {"type": "order_card", "order": {...}}        订单名片（订单号/商品/金额/状态/物流，可去支付）
     {"type": "guide_card"}                        引导转化卡片（去定制服务 / 联系我们）
 
 历史加载 / 存库也收敛在本模块，视图层只负责 HTTP 与 SSE 格式化。
@@ -33,6 +34,8 @@ MAX_TOOL_STEPS = 3
 HISTORY_MAX_MSGS = 10
 # 一轮对话最多补发几张产品名片（防止 calculate_quote 罗列十几种商品时刷屏）
 MAX_PRODUCT_CARDS = 3
+# 订单名片同理：客户问「我的订单」时可能一次查回 20 笔，只给最近几张
+MAX_ORDER_CARDS = 3
 
 # 兜底：去除 AI 输出中
 # 1) Markdown 加粗 **xx**
@@ -145,7 +148,9 @@ def agent_stream(session_id: str, user_message: str):
     from agent.tools import (
         TOOL_SCHEMAS,
         call_tool,
+        get_referenced_orders,
         get_referenced_products,
+        reset_referenced_orders,
         reset_referenced_products,
     )
 
@@ -157,6 +162,9 @@ def agent_stream(session_id: str, user_message: str):
     # 每轮开始清空 —— 否则上一轮问过的商品会跟着这一轮再弹一次
     reset_referenced_products()
     carded_ids: set = set()
+    # 订单名片：本轮「被工具查过」的订单（问「我的订单到哪了」→ 弹结构化进度卡）
+    reset_referenced_orders()
+    carded_order_nos: set = set()
 
     def _drain_product_cards() -> list:
         """把本轮新登记的商品转成 product_card 事件。
@@ -171,6 +179,18 @@ def agent_stream(session_id: str, user_message: str):
                 break
             carded_ids.add(p["id"])
             events.append({"type": "product_card", "product": p})
+        return events
+
+    def _drain_order_cards() -> list:
+        """把本轮新查到的订单转成 order_card 事件（同一单只发一次，最多 MAX_ORDER_CARDS 张）。"""
+        events = []
+        for o in get_referenced_orders():
+            if o["order_no"] in carded_order_nos:
+                continue
+            if len(carded_order_nos) >= MAX_ORDER_CARDS:
+                break
+            carded_order_nos.add(o["order_no"])
+            events.append({"type": "order_card", "order": o})
         return events
 
     system_prompt = load_prompt("system_prompt_agent")
@@ -214,8 +234,10 @@ def agent_stream(session_id: str, user_message: str):
                         if tc.function.arguments:
                             entry["arguments"] += tc.function.arguments
         except Exception as e:
-            # 前几轮工具已查到的商品仍要出名片，别因为本轮报错把整轮成果作废
+            # 前几轮工具已查到的商品/订单仍要出名片，别因为本轮报错把整轮成果作废
             for card in _drain_product_cards():
+                yield card
+            for card in _drain_order_cards():
                 yield card
             if purchase_intent and not guide_emitted:
                 guide_emitted = True
@@ -230,9 +252,11 @@ def agent_stream(session_id: str, user_message: str):
             if not raw_content_parts and last_tool_result:
                 # 模型空回复时，退回最后工具结果兜底
                 yield {"content": last_tool_result}
-            # 顺序固定：回答正文 → 产品名片 → 引导卡
+            # 顺序固定：回答正文 → 产品名片 → 订单名片 → 引导卡
             # （客户先读完介绍，再看到可点的名片与下一步入口）
             for card in _drain_product_cards():
+                yield card
+            for card in _drain_order_cards():
                 yield card
             if purchase_intent and not guide_emitted:
                 guide_emitted = True
@@ -272,6 +296,8 @@ def agent_stream(session_id: str, user_message: str):
 
     # 达到最大轮次仍未收敛 → 用最后工具结果兜底
     for card in _drain_product_cards():
+        yield card
+    for card in _drain_order_cards():
         yield card
     if purchase_intent and not guide_emitted:
         guide_emitted = True
