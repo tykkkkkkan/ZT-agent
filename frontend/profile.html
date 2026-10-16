@@ -284,6 +284,59 @@
                     </div>
                 </div>
             </div>
+
+            <!-- 我的收货地址（地址簿）：下单时可直接选，不必每次重填 -->
+            <div class="mt-6 bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+                <div class="flex items-center justify-between gap-3 px-6 py-4 border-b border-stone-100">
+                    <h3 class="flex items-center gap-2 text-base font-bold text-ink-900">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;color:var(--jade)" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        我的收货地址
+                    </h3>
+                    <span id="addrCount" class="text-xs text-ink-400"></span>
+                </div>
+                <div class="p-6 grid lg:grid-cols-5 gap-6">
+                    <!-- 左：已保存的地址（默认在前，带 ★） -->
+                    <div id="addrList" class="lg:col-span-3 space-y-3">
+                        <div class="text-center text-ink-400 text-sm py-8">加载中…</div>
+                    </div>
+                    <!-- 右：新增 / 编辑。编辑时标题与按钮会切换，并出现「取消」 -->
+                    <div class="lg:col-span-2">
+                        <form id="addrForm" class="space-y-3" onsubmit="return submitAddress(event)">
+                            <div id="addrFormTitle" class="text-sm font-semibold text-ink-800">新增收货地址</div>
+                            <div>
+                                <label class="block text-xs font-medium text-ink-600 mb-1" for="addrReceiver">收货人</label>
+                                <input type="text" id="addrReceiver" maxlength="50" required placeholder="请填写收货人姓名"
+                                       class="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-ink-600 mb-1" for="addrPhone">联系电话</label>
+                                <input type="tel" id="addrPhone" inputmode="numeric" maxlength="20" required placeholder="请输入 7~20 位数字"
+                                       class="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-ink-600 mb-1" for="addrDetail">详细地址</label>
+                                <textarea id="addrDetail" rows="3" maxlength="255" required placeholder="省/市/区 + 街道门牌"
+                                          class="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300"></textarea>
+                            </div>
+                            <label class="flex items-center gap-2 text-xs text-ink-600 cursor-pointer">
+                                <input type="checkbox" id="addrDefault" class="rounded border-stone-300 text-brand-600">
+                                设为默认地址（下单时自动带入）
+                            </label>
+                            <p id="addrDefaultHint" class="hidden text-xs text-ink-400">
+                                默认地址只能切换、不能取消：请把另一条「设为默认」，或直接删除本条。
+                            </p>
+                            <div class="flex items-center gap-2">
+                                <button type="submit" id="addrSubmitBtn"
+                                        class="flex-1 px-4 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition shadow-sm">保存地址</button>
+                                <button type="button" id="addrCancelBtn" onclick="cancelAddressEdit()"
+                                        class="hidden px-4 py-2.5 border border-stone-200 text-ink-600 text-sm rounded-full hover:bg-stone-50 transition">取消</button>
+                            </div>
+                            <p class="text-xs text-ink-400">最多保存 20 条；同一时刻只有一个默认地址。</p>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </section>
 
@@ -845,12 +898,157 @@
         return false;
     };
 
+    // ── 我的收货地址（地址簿）──────────────────────────────
+    // 与下单页共用同一套接口：列表 / 新增 / 编辑 / 删除 / 设默认。
+    // 写接口每次都回带**全量列表**，所以这里整表重绘、不做增量 patch ——
+    // 增量维护最容易和"谁是默认"这个标记不同步。
+    var addrState = { list: [], editingId: null };
+
+    function renderAddresses() {
+        var box = document.getElementById('addrList');
+        if (!box) return;
+        var cnt = document.getElementById('addrCount');
+        if (cnt) cnt.textContent = addrState.list.length ? ('共 ' + addrState.list.length + ' / 20 条') : '';
+
+        if (!addrState.list.length) {
+            box.innerHTML = '<div class="text-center text-ink-400 text-sm py-8">'
+                + '还没有保存的收货地址。<br>用右侧表单存一条，下单时就会自动带入，不用每次重填。</div>';
+            return;
+        }
+        box.innerHTML = addrState.list.map(function (a) {
+            return ''
+                + '<div class="flex items-start gap-3 p-4 rounded-xl border '
+                + (a.is_default ? 'border-lake-200 bg-brand-50' : 'border-stone-200') + '">'
+                +   '<div class="min-w-0 flex-1">'
+                +     '<div class="flex items-center gap-2 flex-wrap mb-1">'
+                +       '<span class="text-sm font-semibold text-ink-800">' + esc(a.receiver) + '</span>'
+                +       '<span class="text-xs text-ink-500">' + esc(a.phone) + '</span>'
+                +       (a.is_default ? '<span class="text-xs text-brand-700 font-semibold">★ 默认</span>' : '')
+                +     '</div>'
+                +     '<div class="text-xs text-ink-500 break-words">' + esc(a.address) + '</div>'
+                +   '</div>'
+                +   '<div class="flex items-center gap-2 flex-shrink-0">'
+                +     (a.is_default ? '' : '<button type="button" class="text-xs text-brand-700 hover:underline" onclick="setDefaultAddress(' + a.id + ')">设为默认</button>')
+                +     '<button type="button" class="text-xs text-ink-600 hover:underline" onclick="editAddress(' + a.id + ')">编辑</button>'
+                +     '<button type="button" class="text-xs text-red-600 hover:underline" onclick="deleteAddress(' + a.id + ')">删除</button>'
+                +   '</div>'
+                + '</div>';
+        }).join('');
+    }
+
+    // 表单在「新增」与「编辑」之间共用：传 null 即回到新增态
+    function fillAddressForm(a) {
+        document.getElementById('addrReceiver').value = a ? a.receiver : '';
+        document.getElementById('addrPhone').value = a ? a.phone : '';
+        document.getElementById('addrDetail').value = a ? a.address : '';
+        // 一条地址都没有时默认勾上 —— 后端本来就保证首条自动成默认，先勾上避免"我想设默认却存成非默认"
+        document.getElementById('addrDefault').checked = a ? !!a.is_default : addrState.list.length === 0;
+        document.getElementById('addrFormTitle').textContent = a ? '编辑收货地址' : '新增收货地址';
+        document.getElementById('addrSubmitBtn').textContent = a ? '保存修改' : '保存地址';
+        document.getElementById('addrCancelBtn').classList[a ? 'remove' : 'add']('hidden');
+        // 当前这条就是默认时，勾选框锁住并给出说明 ——
+        // 后端对 `is_default=false` 是**忽略**的（默认只能切换不能取消），
+        // 让用户点一个点了没反应的勾选框才是更坏的设计。
+        var cb = document.getElementById('addrDefault');
+        cb.disabled = !!(a && a.is_default);
+        document.getElementById('addrDefaultHint').classList[(a && a.is_default) ? 'remove' : 'add']('hidden');
+    }
+
+    function resetAddressForm() {
+        addrState.editingId = null;
+        fillAddressForm(null);
+    }
+
+    window.cancelAddressEdit = function () { resetAddressForm(); };
+
+    window.editAddress = function (id) {
+        var a = addrState.list.filter(function (x) { return x.id === id; })[0];
+        if (!a) return;
+        addrState.editingId = id;
+        fillAddressForm(a);
+        var f = document.getElementById('addrForm');
+        if (f && f.scrollIntoView) f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
+
+    window.setDefaultAddress = async function (id) {
+        try {
+            var d = await api('/api/me/addresses/' + id + '/default/', { method: 'POST' });
+            addrState.list = d.addresses || [];
+            renderAddresses();
+            toast(d.message || '已设为默认地址', 'success');
+        } catch (e) {
+            toast(e.message || '操作失败', 'error');
+        }
+    };
+
+    window.deleteAddress = async function (id) {
+        if (!window.confirm('确定删除这条收货地址吗？删除后下单需要重新填写。')) return;
+        try {
+            var d = await api('/api/me/addresses/' + id + '/', { method: 'DELETE' });
+            addrState.list = d.addresses || [];
+            if (addrState.editingId === id) resetAddressForm();   // 正在编辑的就是它 → 表单退回新增态
+            renderAddresses();
+            toast(d.message || '已删除', 'success');
+        } catch (e) {
+            toast(e.message || '删除失败', 'error');
+        }
+    };
+
+    window.submitAddress = async function (event) {
+        event.preventDefault();
+        var receiver = (document.getElementById('addrReceiver').value || '').trim();
+        var phone = (document.getElementById('addrPhone').value || '').trim();
+        var address = (document.getElementById('addrDetail').value || '').trim();
+        var isDefault = document.getElementById('addrDefault').checked;
+
+        // 前端先拦一道省一次往返；后端同一口径也校验（7~20 位纯数字）
+        if (!receiver) { toast('请填写收货人姓名', 'error'); return false; }
+        if (!/^\d{7,20}$/.test(phone)) { toast('联系电话请填 7~20 位数字', 'error'); return false; }
+        if (!address) { toast('请填写详细地址', 'error'); return false; }
+
+        var editing = addrState.editingId;
+        try {
+            var d = await api(
+                editing ? ('/api/me/addresses/' + editing + '/') : '/api/me/addresses/',
+                {
+                    method: editing ? 'PATCH' : 'POST',
+                    body: JSON.stringify({
+                        receiver: receiver, phone: phone, address: address, is_default: isDefault,
+                    }),
+                }
+            );
+            addrState.list = d.addresses || [];
+            resetAddressForm();
+            renderAddresses();
+            toast(d.message || '已保存', 'success');
+        } catch (e) {
+            toast(e.message || '保存失败', 'error');
+        }
+        return false;
+    };
+
+    async function loadAddresses() {
+        try {
+            var d = await api('/api/me/addresses/');
+            addrState.list = d.addresses || [];
+            renderAddresses();
+            fillAddressForm(null);
+        } catch (e) {
+            var box = document.getElementById('addrList');
+            if (box) {
+                box.innerHTML = '<div class="text-center text-ink-400 text-sm py-8">地址加载失败：'
+                    + esc(e.message) + '</div>';
+            }
+        }
+    }
+
     // ── 初始化 ─────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', async function () {
         var ok = await AUTH.init({ requireAuth: true, reason: '登录后即可查看个人中心' });
         if (!ok) return;                 // 未登录：已跳登录页
         await loadProfile();
         window.setFilter('');            // 默认全部
+        await loadAddresses();           // 我的收货地址（地址簿）
         bindAutoRefresh();
     });
 
