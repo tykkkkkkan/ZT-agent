@@ -6,7 +6,11 @@
     <title>工厂介绍 - 中渔天下</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;600;700;900&display=swap" rel="stylesheet">
+    <!-- 字体加载：Noto Sans SC(正文)/Noto Serif SC(标题) 用「可变字体区间」写法 ——
+         同一分片文件即可覆盖 400-900 全部字重，比逐字重列举少约 2/3 的 CSS，字体下载量不变。
+         preload 提前以高优先级发起字体 CSS 请求，缩短首屏文字等待（LCP）。 -->
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/theme.css">
     <script src="assets/vendor/tailwindcdn.js"></script>
     <script src="assets/tailwind-config.js"></script>
