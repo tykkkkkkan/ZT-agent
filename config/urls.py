@@ -155,6 +155,14 @@ urlpatterns = [
     path("api/me/orders/", me_views.MeOrderListView.as_view(), name="me_orders"),
     path("api/me/orders/<str:order_no>/<str:action>/",
          me_views.MeOrderActionView.as_view(), name="me_order_action"),
+    # 收货地址簿（C 端「我的地址」）：列表/新增 → 设为默认 → 单条编辑/删除
+    # 注意：<id>/default/ 要放在 <id>/ 之前（虽然 Django 靠结尾锚点也能区分，
+    # 但顺序写清楚后，将来加子路径不会踩"被通用规则抢匹配"的坑）
+    path("api/me/addresses/", me_views.MeAddressListView.as_view(), name="me_addresses"),
+    path("api/me/addresses/<int:address_id>/default/",
+         me_views.MeAddressDefaultView.as_view(), name="me_address_default"),
+    path("api/me/addresses/<int:address_id>/",
+         me_views.MeAddressDetailView.as_view(), name="me_address_detail"),
     # 认证（JWT：注册/登录/刷新/退出/当前用户）
     path("api/auth/register/", auth_views.RegisterView.as_view(), name="auth_register"),
     path("api/auth/login/", auth_views.LoginView.as_view(), name="auth_login"),

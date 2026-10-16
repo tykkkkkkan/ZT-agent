@@ -23,6 +23,11 @@ agent/me_views.py — 个人中心（C 端「我的」）接口
     POST   /api/me/orders/<order_no>/pay/          模拟支付（仅未发货 + 未支付）
     POST   /api/me/orders/<order_no>/review/       评价已完成订单（1–5 星，一单一评）
     POST   /api/me/orders/<order_no>/withdraw-return/  撤销退货申请
+    GET    /api/me/addresses/                      收货地址簿（默认在前）
+    POST   /api/me/addresses/                      新增收货地址
+    PATCH  /api/me/addresses/<id>/                 编辑收货地址
+    DELETE /api/me/addresses/<id>/                 删除收货地址
+    POST   /api/me/addresses/<id>/default/         设为默认地址
 """
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -35,6 +40,17 @@ from rest_framework.response import Response
 from agent.me_helpers import get_profile, my_orders_q, phone_taken_by_other
 from agent.models import OrderStatus, Orders, UserProfile
 from agent import pricing
+from agent.addresses import (
+    MAX_PER_USER,
+    AddressError,
+    create_address,
+    default_address,
+    delete_address,
+    list_addresses,
+    serialize_address,
+    set_default,
+    update_address,
+)
 from agent.reviews import ReviewError, create_review, serialize_review
 from agent.services import (
     OrderTransitionError, mark_order_paid, transition_order, withdraw_return_request,
@@ -108,10 +124,16 @@ class MeProfileView(views.APIView):
 
     def get(self, request):
         profile = get_profile(request.user)
+        # 顺带下发默认收货地址：下单页要用它预填（避免用户每次重填）。
+        # 放在 user 之外而不是塞进 _user_payload —— 那是"账号资料"，
+        # 地址簿是另一份可变数据，混在一起以后不好加第二第三个地址字段。
+        addr = default_address(request.user)
         return Response({
             "success": True,
             "user": _user_payload(request.user, profile),
             "stats": _order_stats(request.user),
+            "default_address": serialize_address(addr) if addr else None,
+            "address_count": len(list_addresses(request.user)),
         })
 
     def patch(self, request):
@@ -339,4 +361,117 @@ class MeOrderActionView(views.APIView):
             "success": True,
             "message": result.message,
             "order": _serialize_order(result.order, with_actions=True),
+        })
+
+
+# ════════════════════════════════════════════════════════════════
+# 收货地址簿（C 端「我的」）
+# ════════════════════════════════════════════════════════════════
+# 设计要点
+# --------
+# · **归属只认请求者本人**：地址没有历史包袱，不需要手机号兜底认领，
+#   所以一律 `user=request.user` 查询，别人给的 id 直接当"不存在"处理。
+# · **每次写操作都回全量列表**：前端一次刷新即可，不用自己把返回的
+#   单条往本地数组里插/删/改（那种前端逻辑最容易和默认地址标记不同步）。
+# · 业务规则全在 `agent/addresses.py`，本层只做 JSON ↔ 参数的搬运。
+def _address_list_payload(user):
+    """地址列表的统一返回体（列表 / 默认 id / 条数上限）。"""
+    rows = list_addresses(user)
+    return {
+        "count": len(rows),
+        "max": MAX_PER_USER,
+        "default_id": next((a.pk for a in rows if a.is_default), None),
+        "addresses": [serialize_address(a) for a in rows],
+    }
+
+
+class MeAddressListView(views.APIView):
+    """/api/me/addresses/ —— 收货地址簿：列表 + 新增"""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        return Response({"success": True, **_address_list_payload(request.user)})
+
+    def post(self, request):
+        data = request.data or {}
+        try:
+            addr = create_address(
+                request.user,
+                receiver=data.get("receiver"),
+                phone=data.get("phone"),
+                address=data.get("address"),
+                # 前端多传/少传都当 False；字符串 "true"/"1" 也认（表单控件常见）
+                is_default=str(data.get("is_default", "")).lower() in ("1", "true", "yes", "on"),
+            )
+        except AddressError as e:
+            return _err(e.message, code=400)
+
+        return Response({
+            "success": True,
+            "message": ("已新增收货地址，并设为默认" if addr.is_default else "已新增收货地址"),
+            "address": serialize_address(addr),
+            **_address_list_payload(request.user),
+        })
+
+
+class MeAddressDetailView(views.APIView):
+    """/api/me/addresses/<id>/ —— 编辑（PATCH）/ 删除（DELETE）"""
+
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, address_id):
+        data = request.data or {}
+        # 只把**出现过的**键传下去：None 表示"不改这个字段"
+        fields = {k: data[k] for k in ("receiver", "phone", "address") if k in data}
+        # is_default 只认 True（取消默认请改用「设为默认」到别的地址，或删除本条）
+        if "is_default" in data:
+            fields["is_default"] = str(data.get("is_default")).lower() in ("1", "true", "yes", "on")
+
+        try:
+            addr = update_address(request.user, address_id, **fields)
+        except AddressError as e:
+            return _err(e.message, code=404 if e.code == "not_found" else 400)
+
+        return Response({
+            "success": True,
+            "message": "已设为默认地址" if (fields.get("is_default") and addr.is_default)
+                       else "收货地址已更新",
+            "address": serialize_address(addr),
+            **_address_list_payload(request.user),
+        })
+
+    def delete(self, request, address_id):
+        try:
+            result = delete_address(request.user, address_id)
+        except AddressError as e:
+            return _err(e.message, code=404 if e.code == "not_found" else 400)
+
+        message = "收货地址已删除"
+        if result["new_default_id"]:
+            message += "；原默认地址已删除，已把最新的一条设为默认"
+        return Response({
+            "success": True,
+            "message": message,
+            **result,
+            **_address_list_payload(request.user),
+        })
+
+
+class MeAddressDefaultView(views.APIView):
+    """/api/me/addresses/<id>/default/ —— 设为默认地址（幂等）"""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, address_id):
+        try:
+            addr = set_default(request.user, address_id)
+        except AddressError as e:
+            return _err(e.message, code=404 if e.code == "not_found" else 400)
+
+        return Response({
+            "success": True,
+            "message": "已设为默认地址，下单时会自动带入",
+            "address": serialize_address(addr),
+            **_address_list_payload(request.user),
         })
