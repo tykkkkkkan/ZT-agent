@@ -131,6 +131,8 @@ ZT-agent/
 ├── 需求分析.md                  # 需求分析文档
 ├── test_rag.py                 # ★ RAG 引擎独立单测（无需 Django/MySQL/API Key）
 ├── test_agent.py               # Day2 裸调验证脚本（历史）
+├── start-demo.bat              # ★ 现场演示一键启动（双击即跑；--tunnel 加内网穿透）
+├── scripts/                    # ★ 验收脚本 verify_*.py / verify_*.js（26 个）+ 构建与自检脚本
 ├── .env                        # 环境变量（不入库）
 ├── .gitignore
 ├── manage.py
@@ -195,13 +197,16 @@ DB_PASSWORD=123456
 # 数据库迁移（ContactMessage 等新表）
 python manage.py migrate
 
-# 启动 Django
+# 启动 Django（本机自测）
 python manage.py runserver 127.0.0.1:8000
 
 # 浏览器访问
 # 首页：http://127.0.0.1:8000/
 # 后台：http://127.0.0.1:8000/admin/
 ```
+
+> **要让手机扫码打开收银台，别用上面这条** —— `127.0.0.1` 只接受本机连接，手机连都连不上。
+> 见下一节 [现场演示：手机扫码支付](#现场演示手机扫码支付)。
 
 ### ⑤ 运行 RAG 单测
 
@@ -257,6 +262,67 @@ docker compose up -d --build
 > `python manage.py migrate && python manage.py runserver`，会**自动建立 simplejwt 的
 > `token_blacklist` 表**（JWT 退出 / 刷新黑名单依赖它）。本地开发若手动 `migrate`，
 > 也请确保执行过该步骤，否则 refresh token 旋转会报 500。
+
+---
+
+## 现场演示：手机扫码支付
+
+演示时最常卡住的两件事是「**手机打不开收银台**」和「**二维码里的地址手机访问不到**」。
+两者都不是前端代码问题，而是「服务怎么起」与「二维码里写哪个域名」的问题。
+项目为此提供了一个自检命令，把「算地址 → 查配置 → 起服务 → 开隧道」并成一条。
+
+### 一条命令
+
+```powershell
+# 手机与电脑在同一局域网（寝室 / 家里 / 手机热点）
+python manage.py lancheck --serve
+
+# 手机用 4G 也能扫（内网穿透，需要 _tools/cloudflared/cloudflared.exe）
+python manage.py lancheck --serve --tunnel
+```
+
+或者直接**双击 `start-demo.bat`**（等价于第一条；`start-demo.bat --tunnel` 加隧道）。
+
+始终只有**一个终端**：服务与隧道由同一进程持有，`Ctrl+C` 一起退出，不会留下孤儿隧道进程
+继续把服务挂在公网上。
+
+### 它做了什么
+
+| 步骤 | 说明 |
+|------|------|
+| 算地址 | 问内核路由表取本机出口 IP（比人眼在 `ipconfig` 里挑网卡可靠），打印「电脑端该打开哪个地址」「手机端探针地址」「二维码里会写成什么」 |
+| 查配置 | `ALLOWED_HOSTS` 是否放行该主机、端口有没有监听在通配地址上、隧道客户端在不在、是否误用了虚拟环境里的 Python |
+| 起服务 | `runserver 0.0.0.0:<port>`，带 `--noreload`（演示时手滑改文件不会触发重启） |
+| 开隧道 | `--tunnel` 时托管 cloudflared quick tunnel，并把隧道域名**自动写进 `PUBLIC_BASE_URL` 与 `ALLOWED_HOSTS`** |
+
+不加 `--serve` 时它**只读**：不改库、不起服务、不动任何文件。
+其它开关：`--port`（默认 8000）、`--host`（默认 `0.0.0.0`）、`--force`（端口已被占用时强行再起一个）。
+
+### 关键约定
+
+- **别用 `runserver 127.0.0.1:8000`**：它只接受本机连接，手机连都连不上（页面一直转圈）。
+- **二维码里的地址**由 `PUBLIC_BASE_URL` 决定；未设置时取「你请求收银台时用的那个域名」，
+  都没有才去猜网卡。所以现场请用自检命令打印的那个地址打开收银台，别用 `localhost`。
+- **改完 `.env` 必须完全停掉服务再启动**：`load_dotenv()` 默认不覆盖已存在的环境变量，
+  runserver 自动重载出来的子进程会继承旧值，改了等于没改。
+- **演示时用系统 Python 启动**（`py -3.12` / `python`）：Windows 防火墙的入站放行规则是
+  **按 exe 路径**匹配的，换成虚拟环境里的 python 就对不上规则 —— 本机一切正常、手机连不上。
+- **`ALLOWED_HOSTS` 没放行时 Django 返回 400，而 400 的响应体是空的** →
+  手机浏览器上是一张**纯白页**（既无报错页也无任何文字）。收银台会在二维码下方直接给出原因
+  （`agent/cashier.py::lan_reachability`），不必从手机那一侧猜。
+- 隧道域名每次启动都会变（免费版固定不了），且该地址在公网上 —— 拿到链接的人都能访问，
+  演示完 `Ctrl+C` 即断。
+
+### 常见现象对照
+
+| 现象 | 原因与处理 |
+|------|-----------|
+| 手机打开一直转圈 | 服务只绑了回环地址 → 改用 `0.0.0.0` 启动（或直接用 `lancheck --serve`） |
+| 手机整页纯白、无任何文字 | `ALLOWED_HOSTS` 没放行该域名 → 加上它，或演示期临时填 `*` |
+| `localhost:8000` 打开的是旧进程 | 同一端口挂了两个 runserver（Windows 允许 `0.0.0.0` 与 `127.0.0.1` **同时**监听）→ `netstat -ano \| findstr :8000` 查 PID，停掉多余的那个 |
+| 二维码是空的 | `qrcode` 没装在**跑服务的那只解释器**上 → 装上后无需重启（惰性导入） |
+
+> `lancheck` 的契约验证见 `scripts/verify_lancheck.py`（61 项）。
 
 ---
 
