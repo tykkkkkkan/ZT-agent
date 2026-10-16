@@ -230,7 +230,7 @@ async function boot(seed) {
     const scripts = inlineScripts(HTML);
     check('pay.html 有内联脚本', scripts.length >= 1, String(scripts.length));
     check('内联脚本是 IIFE（可插桩）', scripts.join('').indexOf('})();') !== -1);
-    check('页面引入了 auth.js（收银台要登录）', /<script\s+src="auth\.js"/.test(html));
+    check('页面引入了 auth.js（收银台要登录）', /<script\s+src="\/auth\.js"/.test(html));
     {
         const p = run(makeSandbox({}));
         const need = ['state', 'money', 'orderNoFromPath', 'renderMethodTabs', 'switchMethod',

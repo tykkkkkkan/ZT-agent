@@ -6,69 +6,116 @@
     <title>订单支付 - 中渔天下</title>
     <meta name="description" content="选择扫码或余额完成订单付款。">
     <meta name="robots" content="noindex">
-    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <!-- ⚠️ 本页挂载在 /pay/<订单号>/ 这个**嵌套路径**下，所有站内资源与链接
+         必须用根绝对路径（前导斜杠）。写成相对路径时浏览器会去请求
+         /pay/ZT-xxx/assets/theme.css —— 404，结果是**样式全丢 + auth.js 加载失败**，
+         页面既没样子也永远停在「加载中…」。 -->
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="assets/theme.css">
-    <link rel="stylesheet" href="assets/tailwind.build.css">
-    <script src="auth.js"></script>
+    <link rel="stylesheet" href="/assets/theme.css">
+    <link rel="stylesheet" href="/assets/tailwind.build.css">
+    <script src="/auth.js"></script>
 </head>
 <body class="bg-stone-50 font-sans text-ink-800 antialiased">
     <a class="skip-link" href="#main">跳到主内容</a>
 
-    <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-stone-100">
-        <div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-            <a href="index.html" class="flex items-center gap-2 text-xl font-bold text-ink-900">
+    <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-stone-100" aria-label="主导航">
+        <div class="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
+            <a href="/index.html" class="flex items-center gap-2 text-xl font-bold text-ink-900 shrink-0">
                 <span class="text-brand-600" style="display:inline-flex"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.5em;height:1.5em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></span>
                 <span>中渔天下</span>
             </a>
-            <a href="profile.html" class="text-sm text-ink-600 hover:text-brand-600 transition">我的订单</a>
+            <div class="flex items-center">
+                <a href="/profile.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">我的订单</a>
+                <a href="/contact.html" class="nav-link px-3 py-2 text-sm font-medium text-ink-700 hover:text-brand-600 transition">联系客服</a>
+            </div>
         </div>
     </nav>
 
     <main id="main" tabindex="-1" class="container-x py-10">
-        <div class="max-w-4xl mx-auto">
-            <h1 class="text-2xl font-bold text-ink-900">订单支付</h1>
+        <div class="max-w-5xl mx-auto">
+            <nav aria-label="面包屑" class="flex items-center gap-2 text-xs text-ink-400">
+                <a href="/profile.html" class="hover:text-brand-600 transition">我的订单</a>
+                <span aria-hidden="true">/</span>
+                <span class="text-ink-600">订单支付</span>
+            </nav>
+
+            <h1 class="text-2xl font-bold text-ink-900 mt-3">订单支付</h1>
             <p class="text-sm text-ink-500 mt-1">
-                选择<b>扫码支付</b>（手机扫右侧二维码）或<b>余额支付</b>（直接扣账户余额）。
+                选择<b>扫码支付</b>（手机扫二维码）或<b>余额支付</b>（直接扣账户余额）。
                 付款成功后本页会自动更新，无需手动刷新。
             </p>
 
-            <div class="grid md:grid-cols-2 gap-6 mt-6">
-                <!-- 左：订单摘要 -->
-                <div class="bg-white rounded-2xl border border-brand-100 shadow-xl shadow-brand-500/5 p-6">
-                    <h2 class="text-base font-bold text-ink-900 mb-4">订单信息</h2>
+            <!-- 流程位置感：让「支付」这一步有上下文的锚点。
+                 窄屏不显示（付款动作本身才是主角），故用 hidden lg:flex。 -->
+            <ol class="hidden lg:flex items-center gap-3 mt-6 text-xs" aria-label="下单流程">
+                <li class="flex items-center gap-2 text-ink-400">
+                    <span class="w-5 h-5 rounded-full bg-brand-600 text-white flex items-center justify-center text-xs font-bold" aria-hidden="true">✓</span>
+                    <span>提交订单</span>
+                </li>
+                <li class="flex-1 border-t border-stone-200" aria-hidden="true"></li>
+                <li class="flex items-center gap-2 font-semibold text-brand-700" aria-current="step">
+                    <span class="w-5 h-5 rounded-full bg-brand-600 text-white flex items-center justify-center text-xs font-bold" aria-hidden="true">2</span>
+                    <span>完成支付</span>
+                </li>
+                <li class="flex-1 border-t border-stone-200" aria-hidden="true"></li>
+                <li class="flex items-center gap-2 text-ink-400">
+                    <span class="w-5 h-5 rounded-full border border-stone-300 flex items-center justify-center text-xs font-bold" aria-hidden="true">3</span>
+                    <span>商家发货</span>
+                </li>
+            </ol>
+
+            <!-- 金额横幅：付款页上「付多少」应该是第一眼看到的东西 -->
+            <div class="mt-6 bg-white rounded-2xl border border-brand-100 shadow-xl shadow-brand-500/5 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                    <div class="text-xs text-ink-500">应付金额</div>
+                    <div id="amountText" class="text-3xl font-extrabold text-brand-700 mt-1">—</div>
+                </div>
+                <div class="text-right">
+                    <span id="stateBadge" class="inline-block px-3 py-1 rounded-full bg-stone-100 text-xs font-semibold text-ink-500">待支付</span>
+                    <div class="text-xs text-ink-400 mt-2">订单号 <span id="orderNoText" class="font-mono text-ink-600">—</span></div>
+                </div>
+            </div>
+
+            <div class="grid lg:grid-cols-5 gap-6 mt-6">
+                <!-- 左：支付方式（切换）→ 二维码 / 余额 / 状态 -->
+                <section class="lg:col-span-3 bg-white rounded-2xl border border-stone-200 shadow-sm p-6" aria-labelledby="payTitle">
+                    <h2 id="payTitle" class="text-base font-bold text-ink-900 mb-4">选择支付方式</h2>
+                    <div id="methodTabs" class="grid grid-cols-2 gap-1 p-1 bg-stone-100 rounded-2xl mb-5"
+                         role="tablist" aria-label="支付方式"></div>
+                    <div id="payBox" class="text-center text-sm text-ink-500 py-6" aria-live="polite">正在生成二维码…</div>
+                </section>
+
+                <!-- 右：订单摘要 -->
+                <section class="lg:col-span-2 bg-white rounded-2xl border border-stone-200 shadow-sm p-6" aria-labelledby="orderTitle">
+                    <h2 id="orderTitle" class="text-base font-bold text-ink-900 mb-4">订单信息</h2>
                     <div id="orderBox" class="text-sm text-ink-500">加载中…</div>
 
-                    <div class="mt-6 pt-5 border-t border-stone-100">
-                        <div class="flex items-baseline justify-between">
-                            <span class="text-sm text-ink-500">应付金额</span>
-                            <span id="amountText" class="text-2xl font-bold text-brand-700">—</span>
-                        </div>
-                    </div>
-
-                    <p class="text-xs text-ink-400 mt-4 leading-relaxed">
-                        提示：本页是本项目的<b>模拟收银台</b>。扫码付款时手机需要和这台电脑在同一个局域网内
+                    <p class="text-xs text-ink-400 mt-5 pt-3 border-t border-stone-100 leading-relaxed">
+                        本页是本项目的<b>模拟收银台</b>。扫码付款时手机需要和这台电脑在同一个局域网内
                         （同一 Wi-Fi）—— 二维码里的地址会自动换成电脑的局域网 IP，所以手机才扫得开。
                         余额支付没有这个限制，在本机点一下即可。
                     </p>
-                </div>
 
-                <!-- 右：支付方式（切换）→ 二维码 / 余额 / 状态 -->
-                <div class="bg-white rounded-2xl border border-brand-100 shadow-xl shadow-brand-500/5 p-6">
-                    <div id="methodTabs" class="grid grid-cols-2 gap-2 p-1 bg-stone-100 rounded-xl mb-5"
-                         role="tablist" aria-label="支付方式"></div>
-                    <div id="payBox" class="text-center text-sm text-ink-500 py-6">正在生成二维码…</div>
-                </div>
+                    <div class="mt-5 pt-3 border-t border-stone-100">
+                        <h3 class="text-xs font-bold text-ink-600">本单须知</h3>
+                        <ul class="mt-2 text-xs text-ink-400 leading-relaxed">
+                            <li class="mt-1">支付成功后订单状态变为「已支付」，商家随后安排发货。</li>
+                            <li class="mt-1">余额支付的订单若发生退货，款项会退回账户余额，可在个人中心的「我的余额」里查到流水。</li>
+                            <li class="mt-1">扫码支付走的是本项目自建的模拟渠道，不产生真实扣款。</li>
+                        </ul>
+                    </div>
+                </section>
             </div>
 
             <p class="text-xs text-ink-400 mt-6">
                 付款遇到问题？
-                <a href="contact.html" class="text-brand-700 hover:underline">联系客服</a>
+                <a href="/contact.html" class="text-brand-700 hover:underline">联系客服</a>
                 ，或到
-                <a href="profile.html" class="text-brand-700 hover:underline">我的订单</a>
+                <a href="/profile.html" class="text-brand-700 hover:underline">我的订单</a>
                 里查看这笔订单。
             </p>
         </div>
@@ -110,6 +157,16 @@
         { key: '扫码支付', label: '扫码支付', hint: '手机扫一扫' },
         { key: '余额支付', label: '余额支付', hint: '账户余额' }
     ];
+
+    // 图标内联成 SVG 字符串（不引外部图标库：收银台是**要能在局域网里离线打开**的页面，
+    // 少一个外部依赖就少一种"打不开"的可能）
+    var ICONS = {
+        '扫码支付': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:1.35em;height:1.35em" aria-hidden="true">'
+            + '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>'
+            + '<rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM20 14v1M14 20h1M18 18h3v3h-1"/></svg>',
+        '余额支付': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:1.35em;height:1.35em" aria-hidden="true">'
+            + '<rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 9.5h19"/><circle cx="17" cy="14.5" r="1.2"/></svg>'
+    };
 
     var state = {
         orderNo: '',
@@ -173,11 +230,12 @@
             var on = (state.method === m.key);
             return '<button type="button" role="tab" data-method="' + esc(m.key) + '"'
                 + ' aria-selected="' + (on ? 'true' : 'false') + '"'
-                + ' class="rounded-lg px-3 py-2 transition '
-                + (on ? 'bg-white shadow-sm text-brand-700 font-semibold'
-                      : 'text-ink-500 hover:text-ink-700') + '">'
-                + '<span class="block text-sm">' + esc(m.label) + '</span>'
-                + '<span class="block text-xs ' + (on ? 'text-brand-600' : 'text-ink-400') + '">'
+                + ' class="rounded-xl px-3 py-2.5 flex flex-col items-center gap-1 transition '
+                + (on ? 'bg-white shadow-sm' : 'hover:text-ink-700') + '">'
+                + '<span class="' + (on ? 'text-brand-600' : 'text-ink-400') + '">' + ICONS[m.key] + '</span>'
+                + '<span class="text-sm ' + (on ? 'text-brand-700 font-semibold' : 'text-ink-500') + '">'
+                + esc(m.label) + '</span>'
+                + '<span class="text-xs ' + (on ? 'text-brand-600' : 'text-ink-400') + '">'
                 + esc(m.hint) + '</span>'
                 + '</button>';
         }).join('');
@@ -200,6 +258,14 @@
     }
 
     // ── 订单摘要 ─────────────────────────────────────────────
+    // 顶部横幅上的「状态」徽章：待支付是暖色提醒，已支付/已退款是终态用中性色。
+    // 只按后端给的 payment_status 上色，不在前端自己推断状态。
+    function badgeClass(ps) {
+        if (ps === '已支付') return 'bg-brand-50 text-brand-700';
+        if (ps === '已退款') return 'bg-stone-100 text-ink-500';
+        return 'bg-amber-50 text-amber-700';
+    }
+
     function renderOrder(o) {
         if (!o || !o.order_no) { els.orderBox.innerHTML = '<span class="text-ink-400">订单信息不可用</span>'; return; }
         state.order = o;
@@ -217,6 +283,14 @@
                 + '</div>';
         }).join('');
         els.amountText.textContent = '¥' + money(o.total_price);
+        var noEl = $('orderNoText');
+        if (noEl) noEl.textContent = o.order_no;
+        var badge = $('stateBadge');
+        if (badge) {
+            var ps = o.payment_status || '待支付';
+            badge.textContent = ps;
+            badge.className = 'inline-block px-3 py-1 rounded-full text-xs font-semibold ' + badgeClass(ps);
+        }
     }
 
     // ── 余额支付面板 ─────────────────────────────────────────
@@ -263,7 +337,7 @@
             foot = '<button type="button" id="balBtn" disabled '
                 + 'class="w-full mt-4 px-5 py-2.5 bg-stone-200 text-ink-400 text-sm font-semibold rounded-full">'
                 + '余额不足，还差 ¥' + money(need - bal) + '</button>'
-                + '<a href="profile.html#wallet" class="block mt-2 text-center text-sm text-brand-700 hover:underline">去充值 →</a>';
+                + '<a href="/profile.html#wallet" class="block mt-2 text-center text-sm text-brand-700 hover:underline">去充值 →</a>';
         }
 
         els.payBox.innerHTML = ''
@@ -308,17 +382,17 @@
     function renderReady() {
         var t = state.ticket || {};
         var qr = state.qrSvg
-            ? '<div class="mx-auto bg-white p-2 rounded-xl border border-stone-200" style="width:240px;height:240px">'
+            ? '<div class="mx-auto bg-white p-2 rounded-2xl border border-stone-200" style="width:236px;height:236px">'
               + state.qrSvg.replace('<svg ', '<svg style="width:100%;height:100%;display:block" ')
               + '</div>'
-            : '<div class="mx-auto rounded-xl border border-dashed border-stone-300 text-xs text-ink-400 flex items-center justify-center" style="width:240px;height:240px">'
+            : '<div class="mx-auto rounded-2xl border border-dashed border-stone-300 text-xs text-ink-400 flex items-center justify-center px-6" style="width:236px;height:236px">'
               + '二维码组件不可用，请用下面的链接付款</div>';
 
         els.payBox.innerHTML = ''
             + qr
             + '<p class="text-sm text-ink-600 mt-4">用手机相机 / 微信扫一扫，打开后点「确认付款」</p>'
-            + '<p id="cd" class="text-sm font-semibold text-brand-700 mt-2">二维码剩余有效期 ' + mmss(t.remain_seconds) + '</p>'
-            + '<div class="mt-3 flex items-center justify-center gap-2">'
+            + '<p class="mt-2"><span id="cd" class="inline-block px-3 py-1 rounded-full bg-brand-50 text-xs font-semibold text-brand-700">二维码剩余有效期 ' + mmss(t.remain_seconds) + '</span></p>'
+            + '<div class="mt-4 flex items-center justify-center gap-2">'
             +   '<button type="button" id="copyBtn" class="px-3 py-1.5 text-xs border border-stone-200 text-ink-600 rounded-full hover:bg-stone-50 transition">复制支付链接</button>'
             +   '<button type="button" id="regenBtn" class="px-3 py-1.5 text-xs border border-stone-200 text-ink-600 rounded-full hover:bg-stone-50 transition">重新生成</button>'
             + '</div>'
@@ -338,7 +412,10 @@
             + '</div>'
             + '<p class="text-lg font-bold text-ink-900 mt-4">支付成功</p>'
             + '<p class="text-sm text-ink-500 mt-1">商家将尽快为您安排发货。</p>'
-            + '<a href="profile.html" class="inline-block mt-5 px-5 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition">查看我的订单</a>';
+            + '<div class="mt-5 flex flex-wrap items-center justify-center gap-3">'
+            +   '<a href="/profile.html" class="px-5 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition">查看我的订单</a>'
+            +   '<a href="/index.html" class="px-5 py-2.5 border border-stone-200 text-ink-600 text-sm rounded-full hover:bg-stone-50 transition">继续逛</a>'
+            + '</div>';
     }
 
     function renderNotice(title, desc, actionLabel) {
@@ -350,7 +427,7 @@
             + '</div>'
             + (actionLabel
                 ? '<button type="button" id="retryBtn" class="px-5 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition">' + esc(actionLabel) + '</button>'
-                : '<a href="profile.html" class="inline-block px-5 py-2.5 border border-stone-200 text-ink-600 text-sm rounded-full hover:bg-stone-50 transition">返回我的订单</a>');
+                : '<a href="/profile.html" class="inline-block px-5 py-2.5 border border-stone-200 text-ink-600 text-sm rounded-full hover:bg-stone-50 transition">返回我的订单</a>');
         if (actionLabel) $('retryBtn').onclick = function () { loadTicket(true); };
     }
 

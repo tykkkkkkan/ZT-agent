@@ -6,13 +6,16 @@
     <title>确认付款 - 中渔天下</title>
     <meta name="description" content="确认并完成订单付款。">
     <meta name="robots" content="noindex">
-    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <!-- ⚠️ 本页挂载在 /pay/confirm/<token>/ 这个**嵌套路径**下，站内资源必须用根绝对路径。
+         写成相对路径会去请求 /pay/confirm/<token>/assets/theme.css → 404，
+         手机上看到的就是一个没有样式的裸页面（而手机屏恰恰是最需要排版的地方）。 -->
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="assets/theme.css">
-    <link rel="stylesheet" href="assets/tailwind.build.css">
+    <link rel="stylesheet" href="/assets/theme.css">
+    <link rel="stylesheet" href="/assets/tailwind.build.css">
 </head>
 <body class="bg-stone-50 font-sans text-ink-800 antialiased">
     <!-- 手机确认页：故意不引 auth.js、也不要求登录。

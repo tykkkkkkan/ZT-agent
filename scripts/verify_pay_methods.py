@@ -347,7 +347,7 @@ def main():
         check("进页面先拉余额（不满就来不及提示了）", "loadBalance()" in pay_html)
         check("余额不足时给「还差多少」", "还差 ¥" in pay_html)
         check("余额不足时给充值引导（#wallet 锚点）",
-              'href="profile.html#wallet"' in pay_html)
+              'href="/profile.html#wallet"' in pay_html)
         check("倒计时改成按截止时刻算（防后台节流漂移）", "deadline" in pay_html)
         check("余额支付有提交中锁（防连点）", "state.busy" in pay_html)
 

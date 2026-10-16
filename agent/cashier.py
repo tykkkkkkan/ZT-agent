@@ -32,6 +32,7 @@
    "我明明看到 199 才扫的"才有据可查。
 """
 
+import logging
 import os
 import secrets
 import socket
@@ -51,6 +52,12 @@ from agent.models import (
     PayTicketStatus,
 )
 from agent.services import OrderTransitionError, mark_order_paid
+
+logger = logging.getLogger(__name__)
+
+# 二维码依赖缺失只提醒一次：qr_svg() 每次开票都会被调用，
+# 而"依赖没装"通常是整个进程的生命周期问题，重复刷日志只会淹没别的信息。
+_QR_DEP_WARNED = False
 
 # 二维码有效期：够慢吞吞地掏出手机扫一下，又不至于让一张挂屏的码长时间有效。
 # 可用环境变量覆盖（演示时想快点看到过期，设成 30 秒即可）。
@@ -443,7 +450,13 @@ def qr_svg(text: str) -> str:
 
     对 `qrcode` 缺依赖做**优雅降级**：返回空串，调用方照常把明文 URL 给出去，
     用户仍可手动输入或复制链接 —— 少一个依赖不该让整条支付链路瘫掉。
+
+    ⚠️ 但"优雅"不等于"沉默"：降级时**必须留下一条日志**。现场踩过的坑是
+    服务跑在一个没装 qrcode 的解释器上（requirements 装了，环境里没有），
+    于是收银台永远只显示"二维码组件不可用"，而所有测试都跑在另一个
+    装好依赖的 venv 里、全部通过 —— 功能坏了却没有任何地方说得出话。
     """
+    global _QR_DEP_WARNED
     if not text:
         return ""
     try:
@@ -451,12 +464,19 @@ def qr_svg(text: str) -> str:
 
         import qrcode
         import qrcode.image.svg
-    except Exception:  # noqa: BLE001 — 缺依赖/版本异常都退化为"没有图"
+    except Exception as exc:  # noqa: BLE001 — 缺依赖/版本异常都退化为"没有图"
+        if not _QR_DEP_WARNED:
+            _QR_DEP_WARNED = True
+            logger.warning(
+                "qrcode 不可用，扫码支付降级为明文链接（装：pip install qrcode==8.2）。"
+                "注意确认装的是**跑 runserver 的那个解释器**：%r", exc,
+            )
         return ""
     try:
         img = qrcode.make(text, image_factory=qrcode.image.svg.SvgPathImage, border=2)
         buf = io.BytesIO()
         img.save(buf)
         return buf.getvalue().decode("utf-8")
-    except Exception:  # noqa: BLE001 — 编码失败同样降级，不把 500 抛给用户
+    except Exception as exc:  # noqa: BLE001 — 编码失败同样降级，不把 500 抛给用户
+        logger.warning("二维码编码失败，本次降级为明文链接：%r", exc)
         return ""

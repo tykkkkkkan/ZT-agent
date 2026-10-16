@@ -21,6 +21,16 @@
     报告会把这类 class 单独列出来（"只在工作区存在"）。
 
 退出码：有缺失（或 --rev 模式下有"仅工作区"依赖）时为 1。
+
+两条实测约定（都是踩过才写下来的）
+----------------------------------
+1. class 分**两组**报告：`class="..."` 属性里的（确定）与 `<script>` 字符串字面量里的
+   （疑似）。页面大量用 JS 拼 HTML，只查前者会漏掉一半；而字面量里混着业务字符串，
+   照单全收又会把 `'paid'`、`'不要这个'` 之类的当成 class 报缺 ——
+   所以后者只收「带 `-` / `:` / `/` 的 Tailwind 形态」。
+2. token 必须**以字母/数字/-/!/[ 开头、只含 ASCII**。`class="' + (on ? 'a' : 'b') + '"`
+   这种拼法会把引号、加号、问号切成一堆假 token —— 早期版本没有这层过滤，
+   报出来的"缺失"里一半是 `'`、`+`、`?` 这类噪声，反而盖住了真问题。
 """
 import argparse
 import os
@@ -34,10 +44,44 @@ CSS_FILES = ["frontend/assets/tailwind.build.css", "frontend/assets/theme.css"]
 # Tailwind 对选择器里这些字符要加反斜杠（必须带捕获组，替换时要用 \1）
 NEEDS_ESCAPE = r"([.:/\[\]%#(),!@&*'\"+~>])"
 
+# 一个合法的 Tailwind class token：只含这些 ASCII 字符，且以字母/数字/-/!/[ 开头。
+# 用途是把 `'`、`+`、`?`、`(on`、`支付中…` 这类**非 class** 的东西挡在外面 ——
+# 页面是 JS 拼 HTML 的，`class="' + (on ? 'a' : 'b') + '"` 这种写法会把
+# 引号、加号、问号切成一堆假 token（早期版本没有这层过滤，报出来的"缺失"
+# 一半是噪声，反而盖住了真问题）。
+VALID_TOKEN = re.compile(r"^[A-Za-z0-9_\-:./\[\]%(),#!]+$")
+VALID_START = re.compile(r"^[A-Za-z0-9_\-!\[]")
+# 「疑似 class」的判据：带 - / : / 的才是 Tailwind 形态。
+# 不做这一步的话，拼接式写法里的变量名（`on`、`i`、`b`）会被当成 class 名报缺。
+CLASSY = re.compile(r"[-:/]")
+
+# ⚠️ 扫描一律**锚定 `class="` 之后的那段文本**（到下一个 `"` 为止）。
+# 为什么不按"字符串字面量"去扫整份脚本：脚本里有正则字面量 `/[&<>"']/g`、
+# 有中文引号、有注释里的撇号，任何朴素的引号配对都会错位，一旦错位就会把
+# 一大段代码当成"字符串"，报出 `1e-9`、`ok:`、`status:` 这类鬼东西。
+# 锚定 `class="` 之后，错位是不可能的（最坏情况只是少收几个 token）。
+CLASS_CHUNK_RE = re.compile(r'class\s*=\s*"([^"]*)')
+# 拼接写法里，token 两端会沾上引号/三元的标点，先削掉再校验
+TRIM_CHARS = "'\"()+?;,="
+JS_MARKERS = ("'", "+", "?", "(", ")")
+
+
+# JS 钩子类：只用来给 querySelector / classList 选节点，**本来就不该有样式**。
+# 不排掉它们，`topup-quick`（充值快捷档）这种因设计而无样式的 class 会一直报缺，
+# 报到最后大家就学会无视这个脚本了 —— 那比没有脚本更糟。
+HOOK_RE = re.compile(
+    r"""querySelector(?:All)?\(\s*['"]\.([A-Za-z0-9_\-]+)"""
+    r"""|classList\.(?:add|remove|toggle)\(\s*['"]([A-Za-z0-9_\-]+)"""
+)
+
 
 def read_worktree(rel):
     with open(os.path.join(BASE, rel), encoding="utf-8") as f:
         return f.read()
+
+
+def hook_classes(html):
+    return {a or b for a, b in HOOK_RE.findall(html)}
 
 
 def read_rev(rev, rel):
@@ -46,14 +90,37 @@ def read_rev(rev, rel):
     return r.stdout.decode("utf-8") if r.returncode == 0 else ""
 
 
-def classes_in(html):
-    """取出 class="..." 里的所有 token（去掉 Tailwind 变体里的 esc 转义干扰）。"""
+def _tokens(chunk):
     out = set()
-    for m in re.finditer(r'class\s*=\s*"([^"]*)"', html):
-        for token in m.group(1).split():
-            if token:
-                out.add(token)
+    for raw in chunk.split():
+        tok = raw.strip(TRIM_CHARS)
+        if tok and VALID_TOKEN.match(tok) and VALID_START.match(tok):
+            out.add(tok)
     return out
+
+
+def classes_in(html):
+    """返回 (definite, suspected) 两组 class。
+
+    definite  —— 写在 HTML 属性里的（`class="mt-6 flex"`）：确定要给样式，
+                 缺一个就是真的缺。
+    suspected —— 拼接出来的（`class="' + (on ? 'bg-white' : 'x') + '"`）：
+                 同样是浏览器要渲染的 class，但这一段里混着变量名与标点，
+                 所以只收「带 - / : / 的 Tailwind 形态」。
+
+    已知取舍：脚本里 `classList.add('...')`、Vue `:class` 表达式中的 class
+    不在覆盖范围内（本项目页面都是拼 innerHTML，用不上）。
+    """
+    definite, suspected = set(), set()
+    for m in CLASS_CHUNK_RE.finditer(html):
+        chunk = m.group(1)
+        toks = _tokens(chunk)
+        if any(mark in chunk for mark in JS_MARKERS):
+            suspected |= {t for t in toks if CLASSY.search(t)}
+        else:
+            definite |= toks
+    suspected -= definite
+    return definite, suspected
 
 
 def has_class(css, token):
@@ -89,8 +156,17 @@ def main():
         with open(html_path, encoding="utf-8") as f:
             html = f.read()
 
-        tokens = sorted(classes_in(html))
-        missing = [t for t in tokens if not any(has_class(c, t) for c in css_now.values())]
+        definite, suspected = classes_in(html)
+        hooks = hook_classes(html)
+        tokens = sorted(definite | suspected)
+
+        def miss_of(group):
+            return [t for t in sorted(group)
+                    if t not in hooks
+                    and not any(has_class(c, t) for c in css_now.values())]
+
+        miss_def, miss_sus = miss_of(definite), miss_of(suspected)
+        used_hooks = sorted(h for h in hooks if h in definite | suspected)
         only_wt = []
         if args.rev:
             only_wt = [
@@ -100,14 +176,24 @@ def main():
             ]
 
         name = os.path.basename(html_path)
-        print(f"\n  {name}：{len(tokens)} 个 class")
-        if missing:
+        print(f"\n  {name}：{len(definite)} 个 class"
+              f"（另有 {len(suspected)} 个来自脚本字符串）")
+        if used_hooks:
+            print(f"    · JS 钩子类（只用选择器，无需样式）：{'、'.join(used_hooks)}")
+        if miss_def:
             bad = True
-            print(f"    ✗ 缺 {len(missing)} 个（{label} 的 CSS 里查不到）→ 需重跑 scripts/build_tailwind.py")
-            for t in missing:
+            print(f"    ✗ 确定缺失 {len(miss_def)} 个（{label} 的 CSS 里查不到）"
+                  f"→ 需重跑 scripts/build_tailwind.py")
+            for t in miss_def:
                 print(f"        · {t}")
-        else:
+        elif not miss_sus:
             print(f"    ✓ 全部命中，无需重跑 build_tailwind.py")
+        if miss_sus:
+            bad = True
+            print(f"    ✗ 疑似缺失 {len(miss_sus)} 个（出现在脚本字符串里，"
+                  f"同样会被渲染，请确认不是拼错）：")
+            for t in miss_sus:
+                print(f"        · {t}")
         if only_wt:
             bad = True
             print(f"    ! {len(only_wt)} 个只在**工作区**的 CSS 里（来自别人尚未提交的改动）"
