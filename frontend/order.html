@@ -260,11 +260,33 @@
                                     <label class="block text-sm font-semibold text-ink-800 mb-2">
                                         收货地址 <span class="text-sunset-600">*</span>
                                     </label>
+                                    <!-- 历史收货地址：选中一条即把「收货人 / 电话 / 地址」一并带入，
+                                         省掉每次重填。下方输入框仍可编辑 —— 任务书四·4 要求地址
+                                         由用户在下单界面确认后提交，这里只是替他把草稿填好。 -->
+                                    <select v-if="savedAddresses.length" v-model="pickedAddressId"
+                                            @change="onAddressPick"
+                                            aria-label="从历史收货地址中选择"
+                                            class="form-input w-full px-4 py-3 border border-stone-200 rounded-xl text-sm transition mb-2">
+                                        <option value="">从历史地址中选择…（共 {{ savedAddresses.length }} 条）</option>
+                                        <option v-for="a in savedAddresses" :key="a.id" :value="a.id">
+                                            {{ a.is_default ? '★ ' : '' }}{{ a.summary }}
+                                        </option>
+                                    </select>
                                     <input v-model="form.address" type="text" required maxlength="255"
                                            placeholder="省/市/区 + 详细地址，如：山东省济南市历下区经十路1号"
                                            :aria-invalid="!!errors.address" aria-describedby="f-address-error"
                                            class="form-input w-full px-4 py-3 border border-stone-200 rounded-xl text-sm transition" />
                                     <p v-if="errors.address" class="field-error">{{ errors.address }}</p>
+
+                                    <!-- 第一次填的地址顺手存起来，否则地址簿永远是空的（也就永远省不掉重填） -->
+                                    <label v-if="canOfferSaveAddress"
+                                           class="flex items-center gap-2 text-xs text-ink-500 mt-2">
+                                        <input type="checkbox" v-model="saveToBook" />
+                                        存入「我的地址簿」，下次下单直接选
+                                    </label>
+                                    <p v-else-if="!savedAddresses.length" class="text-xs text-ink-400 mt-1.5">
+                                        填一次会存进「我的地址簿」，下次下单直接选，不用再填。
+                                    </p>
                                 </div>
                                 <div class="sm:col-span-2">
                                     <label class="block text-sm font-semibold text-ink-800 mb-2">
@@ -504,6 +526,14 @@
             const errors = reactive({ customer_name: '', phone: '', address: '', product_id: '', quantity: '' });
             const PHONE_RE = /^1[3-9]\d{9}$/;
 
+            // ── 历史收货地址（地址簿）─────────────────────────────
+            // 用户的诉求原话："收货地址不必要每一次都重新填。"
+            // 这里只负责**把上次填过的带出来**；地址最终仍在提交时随订单一起
+            // 落库（后端做快照），任务书四·4 的验收口径没有改变。
+            const savedAddresses = Vue.ref([]);     // 已保存的地址（默认在前）
+            const pickedAddressId = Vue.ref('');    // 下拉框当前选中项
+            const saveToBook = Vue.ref(true);       // 下单时顺手存进地址簿
+
             // 期望交期的最小可选日期（不能早于今天）
             // 用本地时间拼，不能用 toISOString()——那是 UTC，东八区早上 8 点前会差一天
             const _now = new Date();
@@ -567,6 +597,18 @@
                     Number(form.quantity) > 0 && !!selectedProduct.value && selectedProduct.value.can_buy;
             });
 
+            // 当前填的这组信息还不在地址簿里 → 才提供"顺手存起来"的勾选。
+            // 按 (收货人, 电话, 地址) 三元组判重，与后端回填时同一口径 ——
+            // 只比地址的话，同一地址换个人收货会被误判成"已存在"。
+            const canOfferSaveAddress = computed(() => {
+                const addr = form.address.trim();
+                if (!addr) return false;
+                const name = form.customer_name.trim();
+                const phone = form.phone.trim();
+                return !savedAddresses.value.some(a =>
+                    a.address === addr && a.phone === phone && a.receiver === name);
+            });
+
             // 不可购原因的中文标签（原因码由后端给，文案在这里集中映射）
             const BLOCK_TAGS = {
                 purchase_paused: '暂停接单',
@@ -604,20 +646,70 @@
                 }
             }
 
-            // 预填已登录用户的收货人姓名与手机号（个人中心已绑定的）
+            // 预填已登录用户的收货人姓名与手机号（个人中心已绑定的），
+            // 随后再拉一次地址簿、把默认收货地址直接带出来。
             // —— 避免每次下单重填，也避免填了不同手机号导致历史订单归属漂移
-            (function prefillFromProfile() {
+            (async function prefillFromProfile() {
                 if (!window.AUTH || !AUTH.isLoggedIn()) return;
-                AUTH.authFetch('/api/me/profile/')
-                    .then(r => (r.ok ? r.json() : null))
-                    .then(d => {
-                        if (!d || !d.success) return;
+                try {
+                    const r = await AUTH.authFetch('/api/me/profile/');
+                    const d = r.ok ? await r.json() : null;
+                    if (d && d.success) {
                         const u = d.user || {};
                         if (u.nickname && !form.customer_name) form.customer_name = u.nickname;
                         if (u.phone && !form.phone) form.phone = u.phone;
-                    })
-                    .catch(() => { /* 预填属增强体验，失败静默 */ });
+                    }
+                } catch (e) { /* 预填属增强体验，失败静默 */ }
+                // 地址簿比 nickname/phone 更具体（收货人可能不是账号本人），所以放在后面覆盖
+                await loadAddressBook();
             })();
+
+            function applyAddress(a) {
+                form.customer_name = a.receiver || form.customer_name;
+                form.phone = a.phone || form.phone;
+                form.address = a.address || '';
+            }
+
+            function onAddressPick() {
+                const a = savedAddresses.value.find(x => x.id === pickedAddressId.value);
+                if (a) applyAddress(a);
+            }
+
+            // 拉地址簿；有默认地址且用户还没填地址时，直接带出来（省掉一次手填）
+            async function loadAddressBook() {
+                if (!window.AUTH || !AUTH.isLoggedIn()) return;
+                try {
+                    const r = await AUTH.authFetch('/api/me/addresses/');
+                    const d = r.ok ? await r.json() : null;
+                    if (!d || !d.success) return;
+                    savedAddresses.value = d.addresses || [];
+                    const def = savedAddresses.value.find(a => a.is_default) || savedAddresses.value[0];
+                    if (def && !form.address) {
+                        pickedAddressId.value = def.id;
+                        applyAddress(def);
+                    }
+                } catch (e) { /* 地址簿属增强体验，失败静默 */ }
+            }
+
+            // 下单成功后把这条地址存进地址簿（勾选状态下）。
+            // 失败**绝不能**影响下单结果 —— 所以不 await、不弹错。
+            async function saveAddressToBook() {
+                try {
+                    const r = await AUTH.authFetch('/api/me/addresses/', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            receiver: form.customer_name.trim(),
+                            phone: form.phone.trim(),
+                            address: form.address.trim(),
+                            // 第一条自动成为默认（后端也如此，这里显式表达意图）
+                            is_default: savedAddresses.value.length === 0,
+                        }),
+                    });
+                    const d = await r.json().catch(() => ({}));
+                    if (r.ok && d.success) savedAddresses.value = d.addresses || [];
+                } catch (e) { /* 静默：不能因为存地址失败让用户以为下单失败 */ }
+            }
 
             function onProductChange() {
                 errorMsg.value = '';
@@ -670,6 +762,8 @@
                         Object.assign(result, d);
                         submitted.value = true;
                         window.scrollTo({ top: 0, behavior: 'smooth' });
+                        // 顺手存地址：放在最后且不 await —— 存地址的耗时不能拖住下单反馈
+                        if (saveToBook.value && canOfferSaveAddress.value) saveAddressToBook();
                     } else {
                         errorMsg.value = d.message || '下单失败，请稍后重试';
                     }
@@ -724,12 +818,17 @@
                 errorMsg.value = '';
                 payError.value = '';
                 Object.keys(errors).forEach(k => errors[k] = '');
+                // 地址簿留在原地，并重新带出默认地址 —— "继续下单"不该让用户再填一遍
+                pickedAddressId.value = '';
+                saveToBook.value = true;
+                loadAddressBook();
             }
 
             return { products, form, loading, submitted, errorMsg, result, errors, selectedProduct, totalPrice, canSubmit,
                      onProductChange, submitOrder, resetForm, today, payNow, paying, payError,
                      pausedCount, maxQuantity, buyTag, buyMessage,
-                     unitPrice, priceTier, toWholesale };
+                     unitPrice, priceTier, toWholesale,
+                     savedAddresses, pickedAddressId, saveToBook, canOfferSaveAddress, onAddressPick };
         },
     }).mount('#app');
 </script>
