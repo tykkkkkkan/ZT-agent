@@ -32,6 +32,7 @@ from agent.cashier import (
     CashierError,
     create_ticket,
     expire_stale_tickets,
+    lan_reachability,
     load_ticket,
     order_pay_state,
     order_summary,
@@ -102,6 +103,9 @@ def create_ticket_api(request, order_no):
             "ticket": ticket_payload(ticket),
             "pay_url": url,
             "qr_svg": qr_svg(url),
+            # 手机能不能打开这张码，服务端比用户更清楚：打不开时手机那边是**白页**，
+            # 一个字的提示都送不过去 —— 所以把原因交给 PC 端这一屏来展示。
+            "qr_hint": lan_reachability(url),
             "amount": str(ticket.amount),
             "order": order_summary(order),
         })

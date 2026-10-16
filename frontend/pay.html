@@ -173,6 +173,7 @@
         method: '扫码支付',
         ticket: null,
         qrSvg: '',
+        qrHint: '',         // 后端判定"手机可能打不开这张码"的原因，空串=没问题
         payUrl: '',
         balance: null,      // null = 还没拿到；拿到后是字符串（如 "312.50"）
         order: null,
@@ -390,6 +391,10 @@
 
         els.payBox.innerHTML = ''
             + qr
+            + (state.qrHint
+                ? '<div class="mt-4 px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-xs text-left text-amber-700">'
+                  + '<b>手机可能打不开这张码：</b>' + esc(state.qrHint) + '</div>'
+                : '')
             + '<p class="text-sm text-ink-600 mt-4">用手机相机 / 微信扫一扫，打开后点「确认付款」</p>'
             + '<p class="mt-2"><span id="cd" class="inline-block px-3 py-1 rounded-full bg-brand-50 text-xs font-semibold text-brand-700">二维码剩余有效期 ' + mmss(t.remain_seconds) + '</span></p>'
             + '<div class="mt-4 flex items-center justify-center gap-2">'
@@ -497,6 +502,7 @@
             }
             state.ticket = r.data.ticket || {};
             state.qrSvg = r.data.qr_svg || '';
+            state.qrHint = r.data.qr_hint || '';
             state.payUrl = r.data.pay_url || '';
             renderOrder(r.data.order);
             if (state.ticket.status === '已支付') { state.paid = true; renderPaid(); return; }

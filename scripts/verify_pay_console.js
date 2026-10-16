@@ -161,6 +161,7 @@ function makeSandbox(seed) {
                         amount: '20.00', order_no: ORDER.order_no, remain_seconds: 300, open: true },
                     pay_url: 'http://192.168.1.7:8001/pay/confirm/tok-abc/',
                     qr_svg: '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h1v1H0z"/></svg>',
+                    qr_hint: seed.qrHint || '',
                     amount: '20.00', order: ORDER,
                 });
             }
@@ -473,6 +474,29 @@ async function boot(seed) {
         check('源码里用的是 deadline（截止时刻）而不是累减', src.indexOf('deadline') !== -1);
         check('每 tick 由 deadline − now 重算剩余秒数',
             /Math\.round\(\(deadline - Date\.now\(\)\) \/ 1000\)/.test(src));
+    }
+
+    // ════════════════════════════════════════════════════════════
+    console.log('\n【L】手机打不开这张码时，PC 端要说出原因');
+    // ════════════════════════════════════════════════════════════
+    // 手机那边是**白页**（Django 的 400 响应体是空的），任何提示都送不过去，
+    // 所以"为什么打不开"必须由能打开的这一端（PC 收银台）来展示。
+    {
+        const { sb } = await boot({});
+        const pb = sb.doc.getElementById('payBox').innerHTML;
+        check('后端没报问题时，不显示多余的警告', pb.indexOf('手机可能打不开') === -1);
+        check('二维码照常渲染（有警告也不该挡住支付）', pb.indexOf('<svg') !== -1);
+    }
+    {
+        const hint = '服务的 ALLOWED_HOSTS 没放行 192.168.1.7 —— 手机打开只会得到 400。';
+        const { sb } = await boot({ qrHint: hint });
+        const pb = sb.doc.getElementById('payBox').innerHTML;
+        check('后端给了 qr_hint → 页面上出现「手机可能打不开」提示',
+            pb.indexOf('手机可能打不开') !== -1);
+        check('提示里带上后端给的具体原因', pb.indexOf('ALLOWED_HOSTS') !== -1);
+        check('提示用警示色（amber）而不是普通灰色文案',
+            pb.indexOf('border-amber-200') !== -1 && pb.indexOf('text-amber-700') !== -1);
+        check('提示不挡住二维码本身', pb.indexOf('<svg') !== -1);
     }
 
     // ════════════════════════════════════════════════════════════

@@ -36,9 +36,12 @@ import logging
 import os
 import secrets
 import socket
+import time
 from datetime import timedelta
 from decimal import Decimal
+from urllib.parse import urlsplit
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
@@ -443,6 +446,66 @@ def reachable_base_url(request) -> str:
 def pay_url(request, ticket: PayTicket) -> str:
     """手机扫码后要打开的确认页地址。"""
     return f"{reachable_base_url(request)}/pay/confirm/{ticket.token}/"
+
+
+# ════════════════════════════════════════════════════════════════
+# 手机能不能打开这张码 —— 服务端自检
+# ════════════════════════════════════════════════════════════════
+# 手机扫不开二维码时，用户从手机那一侧**拿不到任何线索**（见下面 ②），
+# 所以这件事必须由服务端判、并写在**电脑端能打开的那个页面**上。
+#
+#   ① 二维码里的主机名不在 ALLOWED_HOSTS → Django 返回 400，而 400 的**响应体是空的**，
+#      手机浏览器拿到的就是一张纯白页 —— 既不是"无法访问"报错页，也没有任何文字，
+#      是最难查的一类症状（现场就踩过：用户只能描述"扫码之后打不开"）。
+#   ② 服务只监听 127.0.0.1 → 手机连都连不上（页面一直转圈）。
+#
+# 两个条件都能在本进程里判定（②用"从本机连一下自己的局域网地址"来验：
+# 只绑回环时这一步必然被拒），因此由服务端算一次、把原因交给 PC 端展示。
+_LAN_CHECK = {"at": 0.0, "url": "", "text": ""}
+
+
+def lan_reachability(url: str, *, ttl: float = 30.0) -> str:
+    """这张二维码里的地址，手机打开会遇到什么问题。返回 "" 表示没发现问题。
+
+    结果按 (url, ttl 秒) 缓存：开票会被反复调用，而这两个条件都是
+    进程级/网络级的，短期内不会变，没必要每次都去连一次 socket。
+    """
+    now = time.monotonic()
+    if _LAN_CHECK["url"] == url and (now - _LAN_CHECK["at"]) < ttl:
+        return _LAN_CHECK["text"]
+    text = _lan_reachability_uncached(url)
+    _LAN_CHECK.update({"at": now, "url": url, "text": text})
+    return text
+
+
+def _lan_reachability_uncached(url: str) -> str:
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    port = parts.port or (443 if parts.scheme == "https" else 80)
+    if not host:
+        return "二维码里的地址不完整，手机打不开。请检查 PUBLIC_BASE_URL 配置。"
+
+    if host in ("127.0.0.1", "localhost", "0.0.0.0", "::1"):
+        return (f"码里是 {host} —— 手机扫出来打开的是**手机自己**的这个地址，必然打不开。"
+                "请改用局域网 IP 访问收银台，或设置 PUBLIC_BASE_URL。")
+
+    hosts = list(getattr(settings, "ALLOWED_HOSTS", None) or [])
+    if "*" not in hosts and host not in hosts:
+        return (f"服务的 ALLOWED_HOSTS 没放行 {host} —— 手机打开只会得到 400（页面全白）。"
+                f"把 .env 改成 ALLOWED_HOSTS=127.0.0.1,localhost,{host} 再重启服务即可。")
+
+    # 端口探测：本机连自己的局域网地址，只绑回环时必然被拒。
+    # ⚠️ 这一条测的是"服务有没有监听在局域网接口上"，**不含防火墙** ——
+    # 回环进的流量不过入站规则，所以这里通过不代表手机一定连得上（防火墙是另一半）。
+    try:
+        with socket.create_connection((host, port), timeout=0.4):
+            pass
+    except OSError:
+        return (f"服务没有监听在 {host}:{port} —— 手机连不上（页面一直转圈）。"
+                f"请用 `python manage.py runserver 0.0.0.0:{port}` 启动，"
+                "并确认 Windows 防火墙放行了该端口与 python.exe。")
+
+    return ""
 
 
 def qr_svg(text: str) -> str:
