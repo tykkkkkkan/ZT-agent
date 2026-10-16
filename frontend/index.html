@@ -358,7 +358,7 @@
                                         </div>
                                     </div>
 
-                                    <!-- 引导/订单卡片（AI 客服收尾动作） -->
+                                    <!-- 引导 / 产品名片（AI 客服收尾动作） -->
                                     <div
                                         v-if="msg.role === 'card'"
                                         :key="'card-' + idx"
@@ -451,42 +451,6 @@
                                                             class="px-2 py-2.5 bg-white text-ink-700 text-xs font-semibold rounded-lg border border-brand-100 hover:border-brand-400 hover:text-brand-600 transition flex items-center justify-center gap-1"
                                                         >
                                                             <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> 联系我们
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </template>
-                                            <!-- 订单成功卡片（兼容保留） -->
-                                            <template v-else>
-                                                <div class="px-5 py-3 bg-gradient-to-r from-brand-600 to-lake-600 text-white flex items-center gap-2">
-                                                    <span class="text-lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></span>
-                                                    <span class="font-semibold text-sm">订单创建成功</span>
-                                                </div>
-                                                <div class="px-5 py-4 space-y-3">
-                                                    <div v-if="msg.orderNo" class="flex items-center gap-2 text-sm">
-                                                        <span class="text-ink-500">订单号：</span>
-                                                        <span class="font-mono font-semibold text-brand-700">{{ msg.orderNo }}</span>
-                                                    </div>
-                                                    <p class="text-sm text-ink-600 leading-relaxed">
-                                                        您的订单已提交成功！我们的客服会尽快与您联系确认详情。
-                                                    </p>
-                                                    <div class="grid grid-cols-3 gap-2 pt-2">
-                                                        <button
-                                                            @click="goToPage('custom.html')"
-                                                            class="px-2 py-2.5 bg-brand-600 text-white text-xs font-semibold rounded-lg hover:bg-brand-700 transition shadow-sm flex items-center justify-center gap-1"
-                                                        >
-                                                            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></span> 去定制
-                                                        </button>
-                                                        <button
-                                                            @click="goToPage('order_query.html')"
-                                                            class="px-2 py-2.5 bg-sunset-700 text-white text-xs font-semibold rounded-lg hover:bg-sunset-800 transition shadow-sm flex items-center justify-center gap-1"
-                                                        >
-                                                            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span> 查订单
-                                                        </button>
-                                                        <button
-                                                            @click="goToPage('contact.html')"
-                                                            class="px-2 py-2.5 bg-white text-ink-700 text-xs font-semibold rounded-lg border border-brand-100 hover:border-brand-400 hover:text-brand-600 transition flex items-center justify-center gap-1"
-                                                        >
-                                                            <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span> 联系客服
                                                         </button>
                                                     </div>
                                                 </div>
@@ -691,35 +655,6 @@
         modalMessages.scrollTop = modalMessages.scrollHeight;
     }
 
-    // 渲染订单成功卡片
-    function appendCard(orderNo) {
-        const wrap = document.createElement('div');
-        wrap.className = 'flex justify-start items-end gap-2';
-        const av = document.createElement('div');
-        av.className = 'w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-lake-600 text-white flex items-center justify-center text-sm flex-shrink-0 shadow-sm';
-        av.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg>';
-        wrap.appendChild(av);
-        const card = document.createElement('div');
-        card.className = 'max-w-[85%] overflow-hidden rounded-2xl border border-brand-200 shadow-lg';
-        card.innerHTML = `
-            <div class="px-4 py-2 bg-gradient-to-r from-brand-600 to-lake-600 text-white flex items-center gap-2">
-                <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></span><span class="font-semibold text-sm">订单创建成功</span>
-            </div>
-            <div class="px-4 py-3 space-y-2 bg-white">
-                ${orderNo ? `<div class="text-xs"><span class="text-ink-500">订单号：</span><span class="font-mono font-semibold text-brand-700">${orderNo}</span></div>` : ''}
-                <p class="text-xs text-ink-600">您的订单已提交成功！客服会尽快联系您。</p>
-                <div class="grid grid-cols-3 gap-2 pt-1">
-                    <a href="custom.html" class="text-center px-2 py-2 bg-brand-600 text-white text-xs font-semibold rounded-lg hover:bg-brand-700 transition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg> 去定制</a>
-                    <a href="order_query.html" class="text-center px-2 py-2 bg-sunset-700 text-white text-xs font-semibold rounded-lg hover:bg-sunset-800 transition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg> 查订单</a>
-                    <a href="contact.html" class="text-center px-2 py-2 bg-white text-ink-700 text-xs font-semibold rounded-lg border border-brand-100 hover:border-brand-400 transition"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> 联系客服</a>
-                </div>
-            </div>
-        `;
-        wrap.appendChild(card);
-        modalMessages.appendChild(wrap);
-        modalMessages.scrollTop = modalMessages.scrollHeight;
-    }
-
     // 渲染引导转化卡片（去定制服务 / 联系我们，AI 客服收尾）
     function appendGuideCard() {
         const wrap = document.createElement('div');
@@ -817,7 +752,6 @@
         const bubble = appendBubble('ai', '', true);
 
         const sid = getSid();
-        let orderCardData = null;
         let guideCard = false;
 
         try {
@@ -852,7 +786,6 @@
                         try {
                             const data = JSON.parse(trimmed.substring(5).trim());
                             if (data.session_id) localStorage.setItem(SESSION_KEY, data.session_id);
-                            if (data.type === 'order_success') { orderCardData = data; continue; }
                             if (data.type === 'guide_card') { guideCard = true; continue; }
                             if (data.done) { done = true; break; }
                             if (data.content) { bubble.textContent += data.content; modalMessages.scrollTop = modalMessages.scrollHeight; }
@@ -863,7 +796,6 @@
             // 去除流式光标
             bubble.innerHTML = bubble.textContent;
 
-            if (orderCardData) appendCard(orderCardData.order_no);
             if (guideCard) appendGuideCard();
             // 兜底：AI 未走工具但回复含引导词时，也渲染引导卡片
             else if (/(定制服务|联系我们|提交需求|联系客服)/.test(bubble.textContent)) appendGuideCard();

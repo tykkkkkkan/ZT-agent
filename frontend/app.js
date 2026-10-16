@@ -2,7 +2,7 @@
  * 中渔天下企业官网 - 首页 Vue3 逻辑
  *
  * 功能：
- *   - SSE 流式 AI 对话 + 打字机效果 + 订单成功卡片
+ *   - SSE 流式 AI 对话 + 打字机效果 + 产品名片/引导卡
  *   - session_id 持久化（localStorage）
  *   - 历史消息恢复：进入页面时从后端 /api/agent/history/<sid>/ 拉取，跳转后不丢消息
  *   - 新对话：一键重置会话
@@ -91,7 +91,6 @@ createApp({
         const loading = ref(false);
         const historyLoaded = ref(false);
         const messageBox = ref(null);
-        const pendingCard = ref(null);
         const pendingGuide = ref(false);
         // 本轮 Agent 介绍过的商品（产品名片，可一键下单）
         const pendingProducts = ref([]);
@@ -149,7 +148,6 @@ createApp({
             const sid = Math.random().toString(36).substring(2) + Date.now().toString(36);
             localStorage.setItem(SESSION_KEY, sid);
             messages.value = [loginRequired() ? loginPromptMessage : welcomeMessage];
-            pendingCard.value = null;
             pendingProducts.value = [];
             scrollToBottom();
         };
@@ -202,7 +200,6 @@ createApp({
             scrollToBottom();
 
             let streamEnded = false;
-            pendingCard.value = null;
             pendingGuide.value = false;
             pendingProducts.value = [];
 
@@ -257,14 +254,6 @@ createApp({
                                 localStorage.setItem(SESSION_KEY, data.session_id);
                             }
 
-                            // 订单成功卡片（兼容保留）
-                            if (data.type === 'order_success') {
-                                pendingCard.value = {
-                                    orderNo: data.order_no || '',
-                                };
-                                continue;
-                            }
-
                             // 引导转化卡片（去定制服务 / 联系我们）
                             if (data.type === 'guide_card') {
                                 pendingGuide.value = true;
@@ -306,16 +295,9 @@ createApp({
                     }
                 }
 
-                // 流结束后统一插卡，固定顺序：订单成功 → 产品名片 → 引导卡
+                // 流结束后统一插卡，固定顺序：产品名片 → 引导卡
                 // （拆成多次 splice 会因 index 相同而倒序，所以先收集再一次性插入）
                 const trailingCards = [];
-                if (pendingCard.value) {
-                    trailingCards.push({
-                        role: 'card',
-                        cardType: 'order_success',
-                        orderNo: pendingCard.value.orderNo,
-                    });
-                }
                 pendingProducts.value.forEach((p) => {
                     trailingCards.push({ role: 'card', cardType: 'product', product: p });
                 });
