@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="中渔天下">
+  <rect width="32" height="32" rx="7" fill="#1F6B54"/>
+  <path d="M5.6 17c2.7-4.8 6.9-4.8 9.6 0 2.7 4.8 6.9 4.8 9.6 0"
+        fill="none" stroke="#F6F1E7" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M18.4 17l5.6-4.1v8.2z" fill="#F6F1E7"/>
+  <circle cx="11.4" cy="15" r="1.15" fill="#1F6B54"/>
+</svg>
