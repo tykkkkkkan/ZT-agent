@@ -129,6 +129,19 @@ def has_class(css, token):
     return re.search(pattern, css) is not None
 
 
+def missing_classes(group, hooks, css):
+    """筛出「CSS 里查不到、又不是 JS 钩子」的 class。
+
+    刻意放在模块级、把三个输入都显式传进来：早先写在 `for path in ...` 循环里
+    当闭包，捕获了循环变量 `hooks`，ruff 的 B023 会报警 —— 这里虽然"当次迭代
+    立即调用"所以行为其实是对的，但那种写法一旦有人把它挪到循环外再调用就会
+    静默拿到上一轮的取值，不如显式传参来得稳。
+    """
+    return [t for t in sorted(group)
+            if t not in hooks
+            and not any(has_class(c, t) for c in css)]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("files", nargs="+")
@@ -160,12 +173,9 @@ def main():
         hooks = hook_classes(html)
         tokens = sorted(definite | suspected)
 
-        def miss_of(group):
-            return [t for t in sorted(group)
-                    if t not in hooks
-                    and not any(has_class(c, t) for c in css_now.values())]
-
-        miss_def, miss_sus = miss_of(definite), miss_of(suspected)
+        css_values = css_now.values()
+        miss_def = missing_classes(definite, hooks, css_values)
+        miss_sus = missing_classes(suspected, hooks, css_values)
         used_hooks = sorted(h for h in hooks if h in definite | suspected)
         only_wt = []
         if args.rev:
@@ -187,7 +197,7 @@ def main():
             for t in miss_def:
                 print(f"        · {t}")
         elif not miss_sus:
-            print(f"    ✓ 全部命中，无需重跑 build_tailwind.py")
+            print("    ✓ 全部命中，无需重跑 build_tailwind.py")
         if miss_sus:
             bad = True
             print(f"    ✗ 疑似缺失 {len(miss_sus)} 个（出现在脚本字符串里，"

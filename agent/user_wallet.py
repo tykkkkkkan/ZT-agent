@@ -89,14 +89,16 @@ def clean_amount(value, *, max_amount: Decimal = None) -> Decimal:
         raise UserWalletError("请填写金额")
     try:
         amt = Decimal(raw)
-    except (InvalidOperation, ValueError, ArithmeticError):
-        raise UserWalletError("金额格式有误：请填写数字，如 100 或 99.9")
+    except (InvalidOperation, ValueError, ArithmeticError) as exc:
+        # 带上 from exc：用户看到的是"金额格式有误"，但日志里要能追到
+        # 究竟是 Decimal 抛了什么（比如传进来的是 None 而不是数字）。
+        raise UserWalletError("金额格式有误：请填写数字，如 100 或 99.9") from exc
     if not amt.is_finite():
         raise UserWalletError("金额格式有误：请填写有效的数字")
     try:
         amt = amt.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    except (InvalidOperation, ArithmeticError):
-        raise UserWalletError("金额格式有误：最多两位小数")
+    except (InvalidOperation, ArithmeticError) as exc:
+        raise UserWalletError("金额格式有误：最多两位小数") from exc
     if amt <= 0:
         raise UserWalletError("金额必须大于 0")
     if max_amount is not None and amt > max_amount:

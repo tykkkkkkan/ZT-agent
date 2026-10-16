@@ -50,8 +50,8 @@ from django.utils import timezone
 
 from agent import user_wallet
 from agent.models import (
-    OrderStatus,
     Orders,
+    OrderStatus,
     PayChannel,
     PaymentStatus,
     PayTicket,

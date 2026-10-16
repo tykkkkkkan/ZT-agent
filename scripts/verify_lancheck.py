@@ -313,7 +313,7 @@ if probe:
 
 _exe = lc.find_cloudflared()
 if _exe:
-    check(f"本机找得到云梯客户端 → --tunnel 可用",
+    check("本机找得到云梯客户端 → --tunnel 可用",
           os.path.isfile(_exe), _exe)
 else:
     check("本机没装云梯客户端（--tunnel 会在运行时明确报错，属预期）", True)

@@ -18,7 +18,7 @@ agent/order_presenter.py — 订单「对外呈现」的唯一出口
 
 `agent/views.py` 仍以 `_order_actions` / `_serialize_order` 的名字重新导出，
 因此 `agent/admin.py`、`agent/me_views.py` 与既有验证脚本无需改动。
-""" 
+"""
 
 from agent.models import OrderStatus, PaymentStatus, ReturnStatus
 

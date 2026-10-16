@@ -33,8 +33,10 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
 from agent import agent as agent_mod  # noqa: E402
-from agent import llm  # noqa: E402
-from agent import tools  # noqa: E402
+from agent import (
+    llm,  # noqa: E402
+    tools,  # noqa: E402
+)
 from agent.models import (  # noqa: E402
     Orders,
     OrderStatus,
@@ -42,7 +44,7 @@ from agent.models import (  # noqa: E402
     Products,
     UserProfile,
 )
-from agent.order_presenter import order_card, order_actions, serialize_order  # noqa: E402
+from agent.order_presenter import order_actions, order_card, serialize_order  # noqa: E402
 
 PASS, FAIL = [], []
 
