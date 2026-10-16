@@ -21,10 +21,10 @@ agent/services.py — 库存联动 + 订单状态机（事务安全）
                                 （库存回滚 + 退款）
 
     · 发货：扣减 stock 和 reserved_stock，自动记「订单收入」
-    · 取消：释放 reserved_stock
+    · 取消：释放 reserved_stock；已支付过的订单同时把余额原路退回
     · 完成：不动库存、不再记账（发货时已完成物权与计账）
     · 申请退货：只登记申请，**不动库存不动账**（防止用户单方触发资金/库存变动）
-    · 同意退货：库存回滚 + 自动记「订单退款」
+    · 同意退货：库存回滚 + 记公司账「订单退款」+ **余额原路退回用户账**
     · 拒绝退货：仅回退状态 + 记录理由
 
 调用样例
@@ -56,6 +56,10 @@ from agent.models import (
     Inventory, Orders, OrderStatus, PaymentStatus, ReturnStatus,
     Wallet, Transaction, TxType, TxCategory,
 )
+
+# 用户钱包（C 端余额）：订单终结（取消 / 退货）时把**当初扣掉的钱**原路退回。
+# 依赖是单向的 —— user_wallet 不认识订单状态机，这里才认识它，避免两个模块互相 import。
+from agent.user_wallet import refund_order_if_paid
 
 logger = logging.getLogger(__name__)
 
@@ -445,7 +449,22 @@ def transition_order(
             order.cancelled_at = timezone.now()
             order.cancel_reason = cancel_reason or ""
             inv = release_inventory_on_cancel(order)
-            msg = f"订单已取消，预占库存已释放。" if inv else "订单已取消。"
+            # 未发货阶段**即使已经付过款也允许取消**（商家还没发货，用户有权反悔），
+            # 但取消就必须把钱退回去 —— 否则用户付了款、订单没了、余额也没了，
+            # 钱只可能"卡"在系统里，且从流水上看不出它去哪了。
+            # 退回的是**当初从余额扣的实际金额**（以流水为凭）；
+            # 扫码支付的订单没有用户余额流水，这里自然退不到余额 —— 那笔走
+            # 渠道原路退回，本项目不模拟渠道退款，所以不假装退过。
+            refunded = refund_order_if_paid(
+                order, note=f"订单 {order.order_no} 已取消，余额原路退回")
+            if order.payment_status == PaymentStatus.PAID:
+                order.payment_status = PaymentStatus.REFUNDED
+            parts = []
+            if inv:
+                parts.append(f"预占库存已释放 {order.quantity or 0} 包")
+            if refunded is not None:
+                parts.append(f"¥{refunded.amount:,.2f} 已退回余额")
+            msg = "订单已取消" + ("（" + "，".join(parts) + "）。" if parts else "。")
 
         elif to_status == OrderStatus.COMPLETED:
             # 用户确认收货：交易完结。库存已在发货时扣减，这里不再动库存、不再记账。
@@ -472,8 +491,13 @@ def transition_order(
             order.cancelled_at = timezone.now()  # 复用为退货时间
             order.cancel_reason = return_reason or cancel_reason or "客户退货"
             inv = restock_inventory_on_return(order)
-            # 退货：库存回滚 + 自动记一笔「订单退款」
+            # 公司账：商家退掉一笔钱（经营账）
             record_order_refund(order, note=f"订单 {order.order_no} 退货退款")
+            # 用户账：当初用余额付的，钱要**真的回到他余额里**。
+            # 公司账只说明"商家少收了 100 元"，不代表用户手里多了 100 元 ——
+            # 两本账互不代表，这一步才是"款项已原路退回"名副其实的落点。
+            refunded = refund_order_if_paid(
+                order, note=f"订单 {order.order_no} 退货，余额原路退回")
             order.return_status = ReturnStatus.APPROVED
             order.return_handled_at = timezone.now()
             if return_reason:
@@ -483,7 +507,11 @@ def transition_order(
             # 标成「已退款」会凭空造出一条不存在的资金流。
             if order.payment_status == PaymentStatus.PAID:
                 order.payment_status = PaymentStatus.REFUNDED
-            msg = f"订单已退货，库存已回滚 {order.quantity} 包，款项已原路退回账户。"
+            if refunded is not None:
+                msg = (f"订单已退货，库存已回滚 {order.quantity or 0} 包，"
+                       f"¥{refunded.amount:,.2f} 已退回账户余额。")
+            else:
+                msg = f"订单已退货，库存已回滚 {order.quantity or 0} 包，款项已原路退回账户。"
 
         order.status = to_status
         order.save(update_fields=[

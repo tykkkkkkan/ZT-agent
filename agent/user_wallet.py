@@ -25,9 +25,24 @@
 为什么金额一律存**正数**、方向由 `kind` 决定？
     与公司钱包的 `Transaction` 保持同一口径。负数金额会在聚合时诱导出
     "金额求和 = 净流量"的错误写法，而实际语义要按 `kind` 分组才能算对。
+
+与订单的桥接（**一处，别在别处重写**）
+--------------------------------------
+订单终结（取消 / 退货）时，钱该回到谁手里？答案是**当初被扣钱的那个钱包**。
+这个判定收在 `refund_order_if_paid()` 一个函数里，判定依据是**流水**而不是订单字段：
+
+    · 「付过没有」→ `UserTransaction(kind='支付', order_no=…)` 是否存在
+      （扫码支付同样让订单变「已支付」，但它没有用户余额流水，也就没有钱可退）
+    · 「退给谁」  → 支付流水所属的钱包
+      （凭手机号下的单 `user_id` 可能为空，只有流水能说明钱从哪个钱包出的）
+    · 「退多少」  → 该订单在该钱包下的 PAY 流水之和（实付额，不是订单总价）
+
+`agent/services.py` 的取消 / 退货分支只调这一个函数，不自己判支付状态 ——
+否则「哪些单该退、退多少」会长出第二套口径，和价格口径分裂是同一类坑。
 """
 
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from typing import Optional
 
 from django.db import transaction
 from django.db.models import Q, Sum
@@ -249,6 +264,75 @@ def refund(user, amount, *, order_no: str = "", note: str = "", allow_negative: 
         order_no=order_no,
         note=note or (f"订单 {order_no} 退款退回余额" if order_no else "退款退回余额"),
         allow_negative=allow_negative,
+    )
+
+
+@transaction.atomic
+def refund_order_if_paid(order, *, note: str = "") -> Optional[UserTransaction]:
+    """订单终结（取消 / 退货）时，把**当初从余额扣走的那笔钱**原路退回余额。
+
+    为什么必须有这一步
+    ------------------
+    订单退款在公司账上只是一笔「支出 −100」（`services.record_order_refund`），
+    而公司账是**经营账**：它记的是"商家退掉了 100 元"，
+    并不代表用户手里多出 100 元。用户当初若用余额付款，钱是从他自己的
+    预存账里扣的 —— 只有把退款流水写回**用户钱包**，这 100 元才真的回到他账上。
+    两本账互不代表：缺了这一步，钱出了用户账就再也回不来（真发生过的坑）。
+
+    为什么判定全部基于流水、而不是订单字段
+    --------------------------------------
+    · **付过没有** → 查 `UserTransaction(kind=支付, order_no=…)`。
+      用 `order.payment_status` 判会错：扫码支付的订单同样是「已支付」，
+      但它没有用户余额流水，本来就没有钱可退（那笔走渠道原路退回，本项目不模拟）。
+    · **退给谁**   → 按**支付流水所属的钱包**倒查，不读 `order.user_id`。
+      凭手机号下单的订单 `user_id` 可能为空，只有流水能回答"钱从哪个钱包出去的"。
+    · **退多少**   → 该订单在该钱包下所有 PAY 流水之和（**实付额**），
+      不读 `order.total_price`：订单总价是"应付"、流水才是"实付"，
+      两者万一不一致时以实付为准，绝不退多。
+
+    幂等：同一订单已经有过退款流水就直接返回 None。
+    收银台会被刷新、后台可能连点两次、状态机可能被人工扭转 ——
+    幂等判据放在业务层，而不是指望调用方只调一次。
+
+    :return: 写出的退款流水；返回 None 的三种情况都属"本来就不该退"，不是失败 ——
+             订单号为空 / 这单没走过余额支付 / 已经退过了。
+    """
+    order_no = str(getattr(order, "order_no", "") or "").strip()
+    if not order_no:
+        return None
+
+    # ① 已退过 → 不再退第二次
+    if UserTransaction.objects.filter(
+        kind=UserTxKind.REFUND, order_no=order_no,
+    ).exists():
+        return None
+
+    # ② 定位"当初被扣钱的那个钱包"
+    paid = (
+        UserTransaction.objects
+        .filter(kind=UserTxKind.PAY, order_no=order_no)
+        .select_related("wallet__user")
+        .order_by("id")
+        .first()
+    )
+    if paid is None or paid.wallet_id is None or getattr(paid, "wallet", None) is None:
+        return None
+    user = getattr(paid.wallet, "user", None)
+    if user is None or not getattr(user, "pk", None):
+        return None
+
+    # ③ 退实付额（同一钱包、同一订单的 PAY 之和）
+    amount = (
+        UserTransaction.objects
+        .filter(wallet_id=paid.wallet_id, kind=UserTxKind.PAY, order_no=order_no)
+        .aggregate(s=Sum("amount"))
+    )["s"] or Decimal("0.00")
+    if amount <= 0:
+        return None
+
+    return refund(
+        user, amount, order_no=order_no,
+        note=note or f"订单 {order_no} 退款，余额原路退回",
     )
 
 
