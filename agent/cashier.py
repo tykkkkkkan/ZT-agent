@@ -32,11 +32,14 @@
    "我明明看到 199 才扫的"才有据可查。
 """
 
+import ipaddress
 import logging
 import os
 import secrets
 import socket
 import time
+import urllib.error
+import urllib.request
 from datetime import timedelta
 from decimal import Decimal
 from urllib.parse import urlsplit
@@ -494,7 +497,10 @@ def _lan_reachability_uncached(url: str) -> str:
         return (f"服务的 ALLOWED_HOSTS 没放行 {host} —— 手机打开只会得到 400（页面全白）。"
                 f"把 .env 改成 ALLOWED_HOSTS=127.0.0.1,localhost,{host} 再重启服务即可。")
 
-    # 端口探测：本机连自己的局域网地址，只绑回环时必然被拒。
+    if _looks_public(host):
+        return _check_public_url(parts, host)
+
+    # ── 局域网地址：本机连自己的局域网地址，只绑回环时必然被拒 ──
     # ⚠️ 这一条测的是"服务有没有监听在局域网接口上"，**不含防火墙** ——
     # 回环进的流量不过入站规则，所以这里通过不代表手机一定连得上（防火墙是另一半）。
     try:
@@ -506,6 +512,50 @@ def _lan_reachability_uncached(url: str) -> str:
                 "并确认 Windows 防火墙放行了该端口与 python.exe。")
 
     return ""
+
+
+def _looks_public(host: str) -> bool:
+    """这个主机名是不是"要走公网"的那种（隧道域名 / 反向代理域名）。
+
+    判据很朴素：**是域名就是公网**（内网不会给设备发公网域名）；
+    是 IP 则看它是不是私有 / 回环 / 链路本地 / 保留段。
+    """
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return True  # 域名 → 公网
+    return not (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_unspecified)
+
+
+def _check_public_url(parts, host: str) -> str:
+    """公网域名的检查方式与局域网**完全不同**。
+
+    局域网那套（拿 socket 去连 host:port）在这里是错的：本地进程根本没监听在
+    443 上，拿它当"服务在不在"会得到驴唇不对马嘴的结论 ——
+    曾经对 `https://xxx.trycloudflare.com` 报出「请用 runserver 0.0.0.0:443 启动」。
+    公网域名要问的是另一件事：**这个 URL 现在从外面打得开吗**，
+    所以直接发一次真正的 HTTP 请求（走的是和手机一样的路）。
+    """
+    scheme = parts.scheme or "http"
+    netloc = parts.netloc or host
+    probe = f"{scheme}://{netloc}/healthz"
+    # 刻意绕开系统代理：手机不会走我们这台机器的代理，
+    # 走代理测出来的"通"是假阳性（代理能出去不等于手机能进来）。
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    try:
+        with opener.open(probe, timeout=3.0) as resp:
+            code = getattr(resp, "status", 200)
+    except urllib.error.HTTPError as exc:
+        code = exc.code
+    except Exception as exc:  # noqa: BLE001 — 网络类异常五花八门，都归为"打不开"
+        return (f"{host} 现在打不开（{type(exc).__name__}）—— 手机扫码会白屏。"
+                "请确认隧道 / 反向代理还在运行、地址没有过期。")
+
+    if code >= 500:
+        return f"{host} 返回 {code} —— 服务自己出错了，手机扫码打不开。"
+    return ""
+
 
 
 def qr_svg(text: str) -> str:

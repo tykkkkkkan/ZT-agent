@@ -17,6 +17,14 @@
            再起一个不报错，却会导致 localhost 命中旧进程（最难查的一类）。
         —— 同时守住「默认只读」的承诺：不带 --serve 时绝不启动服务。
   【6】`--serve` 模式的输出同样 GBK 可编码（各分支都要，不只是默认分支）
+  【7】`--tunnel`：公网地址这条路
+        —— 公网域名与局域网 IP 的检查方式**必须不同**：前者要发真正的 HTTP
+           请求（走的是和手机一样的路），后者才用 socket 直连。
+           曾经对 `https://xxx.trycloudflare.com` 报出「请用 runserver 0.0.0.0:443
+           启动」—— 驴唇不对马嘴。
+        —— 云梯客户端缺失 / 隧道建立失败时，必须**明确中止**，绝不悄悄降级成
+           局域网地址（降级会让你以为隧道通了，实际码里还是局域网 IP）。
+  【8】双击启动器 `start-demo.bat`：纯 ASCII、CRLF、走 `py -3.12`
 
 用法：./.venv/Scripts/python.exe scripts/verify_lancheck.py
 """
@@ -117,7 +125,7 @@ print("\n【4】四种状态各说各的话")
 with override_settings(ALLOWED_HOSTS=["*"]):
     t, _ = run()
     check("ALLOWED_HOSTS=* → 判定放行", "√ ALLOWED_HOSTS = *" in t)
-    check("ALLOWED_HOSTS=* → 说明「换网络不用改配置」", "换任何网络都不用再改配置" in t)
+    check("ALLOWED_HOSTS=* → 说明「换网络不用改配置」", "换任何网络" in t and "不用再改配置" in t)
 
 with override_settings(ALLOWED_HOSTS=["127.0.0.1", "localhost"]):
     t, _ = run()
@@ -255,6 +263,79 @@ helped = lc.Command().create_parser("manage.py", "lancheck").format_help()
 check("--help 里列出了 --serve", "--serve" in helped)
 check("--help 里列出了 --host 与 --port", "--host" in helped and "--port" in helped)
 check("--help 输出 GBK 可编码", gbk_ok(helped)[0], gbk_ok(helped)[1])
+
+# ════════════════════════════════════════════════════════════════
+print("\n【7】--tunnel：公网地址这条路")
+# ════════════════════════════════════════════════════════════════
+from agent.cashier import _looks_public, lan_reachability  # noqa: E402
+
+check("--tunnel 开关存在", parser.parse_args(["--tunnel"]).tunnel is True)
+check("域名被判为公网（走 HTTP 探测）", _looks_public("abc-def.trycloudflare.com") is True)
+check("私有 IP 不被判为公网（走端口探测）", _looks_public("192.168.31.78") is False)
+check("回环不被判为公网", _looks_public("127.0.0.1") is False)
+
+# ⚠️ 用 `.invalid` 域名而不是 `203.0.113.9` 这种"文档保留 IP"：
+#    Python 的 `ipaddress` 把 TEST-NET 段也算作 `is_private`，
+#    于是它会被判成内网地址、走到端口探测那条路上去（第一次就踩了这个）。
+#    域名则一定判为公网，且 `.invalid` 解析必然失败，跑得又快又确定。
+# 用 override_settings 固定 ALLOWED_HOSTS，免得用户 .env 换了值就让断言飘。
+with override_settings(ALLOWED_HOSTS=["*"]):
+    msg_public = lan_reachability("http://demo-does-not-exist.invalid/pay/confirm/ABC/")
+    check("公网地址连不上 → 报「打不开」，且不提 runserver",
+          "打不开" in msg_public and "runserver" not in msg_public, repr(msg_public))
+
+    if ip and not _looks_public(ip):
+        # 私有 IP 仍走原来的端口探测：这里必须给出"怎么起服务"的可执行提示
+        msg_local = lan_reachability(f"http://{ip}:9/pay/confirm/ABC/")
+        check("局域网地址仍走端口探测那套（提示 runserver 0.0.0.0）",
+              "runserver" in msg_local, repr(msg_local))
+
+if probe:
+    calls.clear()
+    _orig_call, _orig_find = lc.call_command, lc.find_cloudflared
+    lc.call_command = lambda *a, **k: calls.append((a, k))
+    lc.find_cloudflared = lambda: ""
+    try:
+        t, e = run(port=probe, tunnel=True)  # 只给 --tunnel，不给 --serve
+        blob = t + e
+        check("--tunnel 隐含 --serve（不写 --serve 也会进「启动服务」段）",
+              "启动服务" in blob, blob[-400:])
+        check("没有云梯客户端时给出明确的失败原因",
+              "没找到 cloudflared.exe" in blob and "隧道没起来" in blob)
+        check("没有云梯客户端时告诉用户该把 exe 放哪",
+              "_tools" in blob and "CLOUDFLARED" in blob)
+        check("隧道起不来时**绝不**悄悄降级成局域网地址（不调用 runserver）",
+              not calls, f"calls={calls}")
+        check("该分支输出 GBK 可编码", gbk_ok(blob)[0], gbk_ok(blob)[1])
+    finally:
+        lc.call_command = _orig_call
+        lc.find_cloudflared = _orig_find
+
+_exe = lc.find_cloudflared()
+if _exe:
+    check(f"本机找得到云梯客户端 → --tunnel 可用",
+          os.path.isfile(_exe), _exe)
+else:
+    check("本机没装云梯客户端（--tunnel 会在运行时明确报错，属预期）", True)
+
+# ════════════════════════════════════════════════════════════════
+print("\n【8】双击启动器 start-demo.bat")
+# ════════════════════════════════════════════════════════════════
+_bat = os.path.join(BASE, "start-demo.bat")
+_raw = open(_bat, "rb").read() if os.path.isfile(_bat) else b""
+check("start-demo.bat 存在（双击即跑，一个终端）", bool(_raw))
+if _raw:
+    check("内容纯 ASCII —— cmd 按 cp936 读 .bat，UTF-8 中文会变乱码",
+          all(b < 128 for b in _raw))
+    check("行尾全是 CRLF（.bat 用 LF 容易出怪问题）",
+          _raw.count(b"\n") == _raw.count(b"\r\n"),
+          f"LF {_raw.count(b'\\n')} 个，其中 CRLF {_raw.count(b'\\r\\n')} 个")
+    check("用 py -3.12 启动（防火墙规则按 exe 路径匹配，venv 的 python 对不上）",
+          b"py -3.12" in _raw)
+    check("入口是 lancheck --serve（不是裸 runserver 127.0.0.1）",
+          b"lancheck --serve" in _raw)
+    check("支持透传参数（start-demo.bat --tunnel）", b"%*" in _raw)
+    check("出错时留窗（否则用户看不到原因，窗口一闪就没）", b"pause" in _raw)
 
 print()
 print("=" * 64)
