@@ -779,31 +779,14 @@
                 }).finally(() => { loading.value = false; });
             }
 
-            // 模拟支付（任务书五·1）：本项目不接真实支付渠道，点一下即完成支付。
-            // 走 AUTH.authFetch，由 auth.js 统一补 Authorization 头并处理 401 续期。
-            async function payNow() {
-                if (!result.order_no || paying.value) return;
-                if (!window.AUTH || !(await AUTH.ensureLogin('登录后即可支付'))) return;
-                paying.value = true;
-                payError.value = '';
-                try {
-                    const resp = await AUTH.authFetch(
-                        '/api/orders/' + encodeURIComponent(result.order_no) + '/pay/',
-                        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }
-                    );
-                    const d = await resp.json().catch(() => ({}));
-                    if (resp.ok && d.success) {
-                        // 用后端回传的订单覆盖本地结果，保证页面与库里一致
-                        if (d.order) Object.assign(result, d.order);
-                        else result.payment_status = '已支付';
-                    } else {
-                        payError.value = d.message || '支付失败，请稍后重试';
-                    }
-                } catch (e) {
-                    payError.value = '网络异常，请稍后重试';
-                } finally {
-                    paying.value = false;
-                }
+            // 立即支付（任务书五·1）→ 收银台 /pay/<order_no>/
+            // 支付方式的实现（扫码 / 余额、余额不足引导充值）**只在收银台一处**，
+            // 这里再写一套就会长出「两个地方都能付、行为不一致」的老毛病。
+            // paying / payError 仍保留：模板绑定与「支付中…」按钮状态还在用。
+            function payNow() {
+                if (!result.order_no) return;
+                paying.value = true;          // 跳转前的过渡态，避免重复点击
+                window.location.href = '/pay/' + encodeURIComponent(result.order_no) + '/';
             }
 
             function resetForm() {

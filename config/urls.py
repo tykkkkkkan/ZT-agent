@@ -219,6 +219,8 @@ urlpatterns = [
     # 这样扫码的人不必在手机上再登录一次；PC 端两个接口要登录且做归属校验。
     path("api/pay/<str:order_no>/ticket/", views_cashier.create_ticket_api, name="api_pay_ticket"),
     path("api/pay/<str:order_no>/status/", views_cashier.ticket_status_api, name="api_pay_ticket_status"),
+    # 余额支付：不出票、不扫码，登录后直接扣用户钱包（与扫码同一条订单入账出口）
+    path("api/pay/<str:order_no>/balance/", views_cashier.balance_pay_api, name="api_pay_balance"),
     path("api/pay/ticket/<str:token>/", views_cashier.ticket_info_api, name="api_pay_ticket_info"),
     path("api/pay/confirm/<str:token>/", views_cashier.confirm_ticket_api, name="api_pay_confirm"),
     # 收银台页面：`/pay/confirm/<token>/` 必须排在 `/pay/<order_no>/` 之前（更具体优先）

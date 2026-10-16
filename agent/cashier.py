@@ -12,6 +12,12 @@
     ② 扫码   `load_ticket()` / `redeem_ticket()`   手机打开确认页 → 点「确认付款」
     ③ 入账   `redeem_ticket()` 内部调 `services.mark_order_paid()`
 
+同一个「入账」出口还有第二条路：**余额支付**（`pay_with_balance()`）。
+它不出票、不扫码，直接从用户钱包扣款 —— 因为「用户自己的钱」不需要
+向任何外部渠道求证；出票那套（一次性 token + 有效期 + 防重放）是为
+**"这个操作确实来自本人"** 服务的，余额扣款本身就在已登录的会话里完成。
+两条路最终都汇到 `mark_order_paid()`，所以订单侧的规则只有一份。
+
 这样答辩时能讲清楚：**我们模拟的是「收款动作」，不是「支付渠道」**。
 将来换成真实渠道，要改的只有 ③ 由谁触发（回调 URL 取代手机页面），
 ①② 与订单侧的状态机完全不用动。
@@ -35,6 +41,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 
+from agent import user_wallet
 from agent.models import (
     OrderStatus,
     Orders,
@@ -307,6 +314,77 @@ def redeem_ticket(token: str, *, by_user=None) -> dict:
         "ok": True, "code": "paid", "already": False,
         "ticket": ticket, "order": result.order,
         "message": result.message or "支付成功，商家将尽快为您安排发货。",
+    }
+
+
+# ════════════════════════════════════════════════════════════════
+# ③′ 入账（余额支付）—— 不经过二维码，直接从用户钱包扣款
+# ════════════════════════════════════════════════════════════════
+@transaction.atomic
+def pay_with_balance(order: Orders, user, *, note: str = "") -> dict:
+    """用**用户钱包余额**支付订单：扣余额 + 记流水 + 订单落「已支付」。
+
+    与扫码支付的一句话区别：**扣款这一步没有"客人操作"的环节**。
+    扫码是「PC 开票 → 客人在手机上按确认 → 我们才动账」，中间有一次外部确认；
+    余额支付是「客人点了按钮 → 我们直接动账」，没有可以等待的外部信号。
+
+    于是它多两条约束：
+
+    · **扣款与落单同事务**：钱扣了单没落 → 用户白付；单落了钱没扣 →
+      商家收不到钱。同一 `transaction.atomic` 里办完，中途任何一步失败全回滚。
+    · **扣款必须在落单之前**：余额不足时 `user_wallet.pay` 抛
+      `UserWalletError(code='insufficient')`，异常直接冲出事务 → 订单**一点没动**。
+      反过来的顺序（先 mark_order_paid 再扣钱）一旦余额不够，订单已经付掉了，
+      只能靠回滚掩盖，日志里也看不出"是钱不够导致的失败"。
+
+    为什么不用 `has_paid_order` 做幂等判据：`order_pay_state(order) == 'paid'`
+    已经把"这笔付过了"说全了（无论当初是扫码还是余额付的），
+    再查一遍流水只会多一次查询、多一个可能与状态不一致的分支。
+    重复调用返回 `already=True`，与 `mark_order_paid` 的幂等口径一致。
+
+    返回 `{ok, code, already, order, transaction, amount, message}`；
+    **不可付款的状态抛 `CashierError`**（这里没有"要留痕的失败态"，
+    与 `redeem_ticket` 的取舍不同 —— 那张票的存在本身就是要留的痕）。
+    """
+    locked = Orders.objects.select_for_update().filter(pk=order.pk).first()
+    if locked is None:
+        raise CashierError("订单不存在，请联系客服核对。", code="not_found")
+
+    state = order_pay_state(locked)
+    if state == "paid":
+        return {
+            "ok": True, "code": "already_paid", "already": True,
+            "order": locked, "transaction": None,
+            "amount": str(locked.total_price or 0),
+            "message": _PAY_STATE_MESSAGE["paid"],
+        }
+    if state != "payable":
+        raise CashierError(
+            _PAY_STATE_MESSAGE.get(state, "该订单当前无法付款。"), code=state,
+        )
+
+    amount = Decimal(locked.total_price or 0)
+    if amount <= 0:
+        raise CashierError("该订单金额为 0，无需支付。", code="zero_amount")
+
+    # ① 先扣钱（余额不足在这里就中断，订单一个字段都没动）
+    tx = user_wallet.pay(
+        user, amount, order_no=locked.order_no,
+        note=note or f"余额支付订单 {locked.order_no}",
+    )
+
+    # ② 再落单
+    result = mark_order_paid(locked, operator=user)
+
+    # ③ 屏上若还挂着这张单的二维码，一并作废 —— 已经付清了，那张码不该还能扫
+    PayTicket.objects.filter(
+        order_no=locked.order_no, status=PayTicketStatus.PENDING,
+    ).update(status=PayTicketStatus.CANCELLED)
+
+    return {
+        "ok": True, "code": "paid", "already": False,
+        "order": result.order, "transaction": tx, "amount": str(amount),
+        "message": "余额支付成功，商家将尽快为您安排发货。",
     }
 
 

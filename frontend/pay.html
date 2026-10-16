@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>扫码支付 - 中渔天下</title>
-    <meta name="description" content="扫码完成订单付款。">
+    <title>订单支付 - 中渔天下</title>
+    <meta name="description" content="选择扫码或余额完成订单付款。">
     <meta name="robots" content="noindex">
     <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -30,9 +30,10 @@
 
     <main id="main" tabindex="-1" class="container-x py-10">
         <div class="max-w-4xl mx-auto">
-            <h1 class="text-2xl font-bold text-ink-900">扫码支付</h1>
+            <h1 class="text-2xl font-bold text-ink-900">订单支付</h1>
             <p class="text-sm text-ink-500 mt-1">
-                用手机扫描右侧二维码完成付款，支付成功后本页会自动更新，无需手动刷新。
+                选择<b>扫码支付</b>（手机扫右侧二维码）或<b>余额支付</b>（直接扣账户余额）。
+                付款成功后本页会自动更新，无需手动刷新。
             </p>
 
             <div class="grid md:grid-cols-2 gap-6 mt-6">
@@ -49,14 +50,16 @@
                     </div>
 
                     <p class="text-xs text-ink-400 mt-4 leading-relaxed">
-                        提示：本页是本项目的<b>模拟收银台</b>。手机需要和这台电脑在同一个局域网内
-                        （同一 Wi-Fi），二维码里的地址会自动换成电脑的局域网 IP，所以手机才扫得开。
+                        提示：本页是本项目的<b>模拟收银台</b>。扫码付款时手机需要和这台电脑在同一个局域网内
+                        （同一 Wi-Fi）—— 二维码里的地址会自动换成电脑的局域网 IP，所以手机才扫得开。
+                        余额支付没有这个限制，在本机点一下即可。
                     </p>
                 </div>
 
-                <!-- 右：二维码 / 状态 -->
+                <!-- 右：支付方式（切换）→ 二维码 / 余额 / 状态 -->
                 <div class="bg-white rounded-2xl border border-brand-100 shadow-xl shadow-brand-500/5 p-6">
-                    <h2 class="text-base font-bold text-ink-900 mb-4">支付二维码</h2>
+                    <div id="methodTabs" class="grid grid-cols-2 gap-2 p-1 bg-stone-100 rounded-xl mb-5"
+                         role="tablist" aria-label="支付方式"></div>
                     <div id="payBox" class="text-center text-sm text-ink-500 py-6">正在生成二维码…</div>
                 </div>
             </div>
@@ -75,10 +78,13 @@
 /* ════════════════════════════════════════════════════════════
    收银台（PC 端）—— /pay/<order_no>/
 
-   流程：进页面 → 要一张一次性凭据（含二维码） → 每 3 秒问一次订单付了没
-        → 手机那边确认后本页自动切成「支付成功」。
+   两种支付方式，同一个终点（订单落「已支付」）：
+     · 扫码支付：要一张一次性凭据 → 渲染二维码 → 每 3 秒问一次付了没
+     · 余额支付：本会话已登录，直接扣账户余额，点一下就到账
+   切换方式不会作废已开的二维码（切回去还能扫），但任一条路付成功后，
+   屏上那张码会被后端一并作废 —— 已经付清了，不该还能再扫。
 
-   三个刻意的取舍：
+   五个刻意的取舍：
    1. **订单号从路径里解析**，不读查询串 —— 收银台是要刷新、要回退、
       要贴给别人看的页面，路径更稳。
    2. **轮询而不是 WebSocket**：本项目已有 SSE 流式输出的经验，但收银台
@@ -86,19 +92,36 @@
       页面切到后台时暂停轮询（visibilitychange），别让没人看的页面一直打接口。
    3. **不做乐观更新**：只有后端明确说「已支付」才切成功态 ——
       支付这种事的容错方向必须是"慢一点"，而不是"看起来成功了"。
+   4. **余额不足在点击前就告诉用户**：进页面就拉一次余额，不够时按钮直接禁用
+      并写明"还差多少 + 去哪充"。让用户点了才报错，是把可避免的失败当成常态。
+      服务端仍然会拦（另一标签页刚花掉钱这类竞态），但那属于兜底，
+      不是主要交互路径。
+   5. **余额与金额都用字符串搬运**：金额是 Decimal，JS 的 Number 在
+      0.1+0.2 上就出偏差，收银台上一个浮点误差就是账实不符。展示用
+      parseFloat 只为排版，"够不够付"的比较一律在后端做。
    ════════════════════════════════════════════════════════════ */
 (function () {
     'use strict';
 
     var POLL_MS = 3000;
 
+    // 支付方式的展示文案集中一处 —— 与后端 PayChannel 的取值同名，方便对照
+    var METHODS = [
+        { key: '扫码支付', label: '扫码支付', hint: '手机扫一扫' },
+        { key: '余额支付', label: '余额支付', hint: '账户余额' }
+    ];
+
     var state = {
         orderNo: '',
+        method: '扫码支付',
         ticket: null,
         qrSvg: '',
         payUrl: '',
+        balance: null,      // null = 还没拿到；拿到后是字符串（如 "312.50"）
+        order: null,
         timer: null,      // 倒计时
         poll: null,       // 轮询
+        busy: false,      // 余额支付提交中
         paid: false,
         alive: true
     };
@@ -128,13 +151,58 @@
     }
 
     function stopTimers() {
-        if (state.timer) { clearInterval(state.timer); state.timer = null; }
+        stopCountdown();
         if (state.poll) { clearInterval(state.poll); state.poll = null; }
+    }
+
+    function stopCountdown() {
+        if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    }
+
+    // 金额一律走字符串 → 显示时才 parseFloat。JS 的 Number 连 0.1+0.2 都不准，
+    // 收银台上一个浮点误差就是账实不符；"够不够付"的比较完全交给后端。
+    function money(v) {
+        var n = parseFloat(v);
+        if (isNaN(n)) return v == null ? '0.00' : String(v);
+        return n.toFixed(2);
+    }
+
+    // ── 支付方式切换 ─────────────────────────────────────────
+    function renderMethodTabs() {
+        els.methodTabs.innerHTML = METHODS.map(function (m) {
+            var on = (state.method === m.key);
+            return '<button type="button" role="tab" data-method="' + esc(m.key) + '"'
+                + ' aria-selected="' + (on ? 'true' : 'false') + '"'
+                + ' class="rounded-lg px-3 py-2 transition '
+                + (on ? 'bg-white shadow-sm text-brand-700 font-semibold'
+                      : 'text-ink-500 hover:text-ink-700') + '">'
+                + '<span class="block text-sm">' + esc(m.label) + '</span>'
+                + '<span class="block text-xs ' + (on ? 'text-brand-600' : 'text-ink-400') + '">'
+                + esc(m.hint) + '</span>'
+                + '</button>';
+        }).join('');
+        Array.prototype.forEach.call(els.methodTabs.querySelectorAll('[data-method]'), function (b) {
+            b.onclick = function () { switchMethod(b.getAttribute('data-method')); };
+        });
+    }
+
+    function switchMethod(key) {
+        if (state.paid || state.method === key) return;
+        state.method = key;
+        renderMethodTabs();
+        renderPayArea();
+    }
+
+    function renderPayArea() {
+        if (state.paid) { renderPaid(); return; }
+        if (state.method === '余额支付') { renderBalance(''); return; }
+        renderReady();
     }
 
     // ── 订单摘要 ─────────────────────────────────────────────
     function renderOrder(o) {
         if (!o || !o.order_no) { els.orderBox.innerHTML = '<span class="text-ink-400">订单信息不可用</span>'; return; }
+        state.order = o;
         var rows = [
             ['订单号', o.order_no],
             ['产品', (o.product_name || '—') + (o.quantity ? (' × ' + o.quantity) : '')],
@@ -148,7 +216,92 @@
                 + '<span class="flex-1 text-ink-800 break-words">' + esc(r[1]) + '</span>'
                 + '</div>';
         }).join('');
-        els.amountText.textContent = '¥' + (o.total_price || '0.00');
+        els.amountText.textContent = '¥' + money(o.total_price);
+    }
+
+    // ── 余额支付面板 ─────────────────────────────────────────
+    async function loadBalance() {
+        try {
+            var r = await callApi('/api/me/wallet/?limit=1');
+            if (r.ok && r.data && r.data.balance != null) {
+                state.balance = String(r.data.balance);
+            }
+        } catch (e) { /* 拿不到余额就按"未知"处理：扫码支付仍可正常用 */ }
+        return state.balance;
+    }
+
+    function renderBalance(hint) {
+        stopCountdown();                        // 没有二维码要倒计时
+        var need = parseFloat((state.order && state.order.total_price) || 0) || 0;
+        var bal = (state.balance == null) ? null : parseFloat(state.balance);
+        var known = (bal !== null && !isNaN(bal));
+        var enough = known && (bal + 1e-9 >= need);
+
+        var rows = ''
+            + '<div class="flex items-baseline justify-between py-2 border-b border-stone-100">'
+            +   '<span class="text-ink-400">账户余额</span>'
+            +   '<span class="text-ink-800 font-semibold">' + (known ? '¥' + money(bal) : '读取中…') + '</span>'
+            + '</div>'
+            + '<div class="flex items-baseline justify-between py-2 border-b border-stone-100">'
+            +   '<span class="text-ink-400">本单应付</span>'
+            +   '<span class="text-ink-800">¥' + money(need) + '</span>'
+            + '</div>'
+            + '<div class="flex items-baseline justify-between py-2">'
+            +   '<span class="text-ink-400">支付后余额</span>'
+            +   '<span class="text-ink-800">' + (known ? '¥' + money(Math.max(0, bal - need)) : '—') + '</span>'
+            + '</div>';
+
+        var foot;
+        if (!known) {
+            foot = '<button type="button" id="balBtn" disabled '
+                + 'class="w-full mt-4 px-5 py-2.5 bg-stone-200 text-ink-400 text-sm font-semibold rounded-full">余额读取中…</button>';
+        } else if (enough) {
+            foot = '<button type="button" id="balBtn" '
+                + 'class="w-full mt-4 px-5 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition">'
+                + '用余额支付 ¥' + money(need) + '</button>';
+        } else {
+            foot = '<button type="button" id="balBtn" disabled '
+                + 'class="w-full mt-4 px-5 py-2.5 bg-stone-200 text-ink-400 text-sm font-semibold rounded-full">'
+                + '余额不足，还差 ¥' + money(need - bal) + '</button>'
+                + '<a href="profile.html#wallet" class="block mt-2 text-center text-sm text-brand-700 hover:underline">去充值 →</a>';
+        }
+
+        els.payBox.innerHTML = ''
+            + (hint ? '<div class="mb-4 px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-xs text-left text-amber-700">' + esc(hint) + '</div>' : '')
+            + '<div class="text-sm text-left">' + rows + '</div>'
+            + foot
+            + '<p class="text-xs text-ink-400 mt-4 leading-relaxed">'
+            + '余额支付直接扣本账户的预存余额，不经过第三方渠道，确认后立即到账。'
+            + '</p>';
+
+        if (enough) $('balBtn').onclick = function () { payByBalance(); };
+    }
+
+    async function payByBalance() {
+        if (state.busy || state.paid) return;
+        state.busy = true;
+        var btn = $('balBtn');
+        if (btn) { btn.disabled = true; btn.textContent = '支付中…'; }
+        try {
+            var r = await callApi('/api/pay/' + encodeURIComponent(state.orderNo) + '/balance/', { method: 'POST' });
+            if (r.data && r.data.balance != null) state.balance = String(r.data.balance);
+            if (r.ok) {
+                state.paid = true;
+                if (r.data.order) renderOrder(r.data.order);
+                renderPaid();
+                return;
+            }
+            if (r.data && r.data.code === 'insufficient') {
+                // 竞态兜底：别的地方刚花掉了钱。刷新余额并给充值引导，不是"重试"。
+                renderBalance('余额不足，还差 ¥' + money(r.data.shortage || 0) + '。请先充值后重试。');
+                return;
+            }
+            renderBalance((r.data && r.data.message) || ('支付失败（' + r.status + '）'));
+        } catch (e) {
+            renderBalance('网络异常：' + (e.message || '请稍后重试'));
+        } finally {
+            state.busy = false;
+        }
     }
 
     // ── 二维码与状态 ─────────────────────────────────────────
@@ -202,19 +355,24 @@
     }
 
     function startCountdown() {
-        if (state.timer) clearInterval(state.timer);
+        stopCountdown();
+        // 用「截止时刻」而不是「剩余秒数递减」：后台标签页里 setInterval 会被浏览器
+        // 节流甚至冻结，累减出来的倒计时会越走越偏 —— 而收银台上的倒计时
+        // 一旦说谎（显示还有 3 分钟、其实早过期了），用户会一直等着扫一张废码。
         var left = (state.ticket && state.ticket.remain_seconds) || 0;
-        state.timer = setInterval(function () {
-            left -= 1;
+        var deadline = Date.now() + left * 1000;
+        var tick = function () {
+            var sec = Math.max(0, Math.round((deadline - Date.now()) / 1000));
             var node = $('cd');
-            if (left > 0) {
-                if (node) node.textContent = '二维码剩余有效期 ' + mmss(left);
+            if (sec > 0) {
+                if (node) node.textContent = '二维码剩余有效期 ' + mmss(sec);
                 return;
             }
-            clearInterval(state.timer);
-            state.timer = null;
+            stopCountdown();
             renderNotice('二维码已过期', '为安全起见，二维码有效期只有几分钟。点下面重新生成一张即可。', '重新生成二维码');
-        }, 1000);
+        };
+        state.timer = setInterval(tick, 1000);
+        tick();
     }
 
     function copyUrl() {
@@ -265,7 +423,8 @@
             state.payUrl = r.data.pay_url || '';
             renderOrder(r.data.order);
             if (state.ticket.status === '已支付') { state.paid = true; renderPaid(); return; }
-            renderReady();
+            renderMethodTabs();
+            renderPayArea();
             startPolling();
         } catch (e) {
             renderNotice('网络异常', e.message || '请检查网络后重试', '重新试一次');
@@ -297,6 +456,7 @@
         els.orderBox = $('orderBox');
         els.payBox = $('payBox');
         els.amountText = $('amountText');
+        els.methodTabs = $('methodTabs');
 
         var ok = await AUTH.init({ requireAuth: true, reason: '登录后即可查看并支付这笔订单' });
         if (!ok) return;
@@ -315,6 +475,8 @@
             checkStatus();
         });
 
+        renderMethodTabs();
+        await loadBalance();     // 先拿余额：够不够付要在用户点击**之前**说清楚
         await loadTicket();
     });
 })();

@@ -1,10 +1,11 @@
 """/api/pay/* —— 模拟收银台的 HTTP 面。
 
-四个接口，两两一组：
+五个接口，按「谁能调」分两组：
 
     PC 端（要登录，JWT 优先于 session，与 /api/me/* 同一套身份解析）
       POST /api/pay/<order_no>/ticket/    开票：拿一次性 token + 二维码 + 可扫地址
       GET  /api/pay/<order_no>/status/    轮询：订单付掉了没（手机确认后 PC 自动刷新）
+      POST /api/pay/<order_no>/balance/   **余额支付**：扣用户钱包 → 订单落已支付
 
     手机端（**不需要登录** —— 二维码本身就是授权，真实扫码支付同理）
       GET  /api/pay/ticket/<token>/       看订单摘要（脱敏）与凭据状态
@@ -14,7 +15,14 @@
 256 位随机、一次性、5 分钟失效，并且只出现在该账号自己发起的收银台上。
 换来的是**不需要在手机上再登录一次**的顺滑体验（真实扫码支付也是如此）。
 如果哪天后端要给 token 加更多权限，这条"不登录"的前提就必须重新评估。
+
+**余额支付为什么不走二维码**：扫那套凭据是在验证"操作来自本人"（人不在电脑前，
+用手机隔空发起）。余额扣款发生在**已登录的 PC 会话**里，身份已经确凿，
+再发一张一次性票只是把同一件事做两遍。所以它直接登录 + 归属校验后扣款，
+但**同样汇到 `mark_order_paid`** —— 订单侧的规则只有一份。
 """
+
+from decimal import Decimal
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -28,12 +36,14 @@ from agent.cashier import (
     order_pay_state,
     order_summary,
     pay_url,
+    pay_with_balance,
     qr_svg,
     redeem_ticket,
     ticket_payload,
 )
 from agent.me_helpers import my_orders_q
 from agent.models import Orders, PayTicket
+from agent.user_wallet import UserWalletError, serialize_transaction, wallet_balance
 from agent.views import _resolve_request_user, _server_error
 
 # 订单状态把"能不能付款"这件事说清楚了 → 用 HTTP 语义表达，前端好分支：
@@ -132,6 +142,61 @@ def ticket_status_api(request, order_no):
             "ticket": ticket_payload(ticket) if ticket else None,
             "order": order_summary(order),
         })
+    except Exception as e:  # noqa: BLE001
+        return _server_error(e)
+
+
+# ════════════════════════════════════════════════════════════════
+# PC 端：余额支付（第二条入账通路）
+# ════════════════════════════════════════════════════════════════
+@csrf_exempt
+@require_POST
+def balance_pay_api(request, order_no):
+    """POST /api/pay/<order_no>/balance/ —— 用钱包余额支付【需登录 + 归属校验】。
+
+    与开票接口同样要求登录，但**不开票**：身份在本会话里已经确定，
+    再发一张一次性凭据只是把同一件事做两遍（见模块 docstring）。
+
+    返回体里始终带 `balance` —— 前端据此当场刷新余额显示，
+    不用再单独请求一次 `/api/me/wallet/`。
+    """
+    me, ok = _resolve_request_user(request)
+    if not ok or me is None:
+        return _error("请先登录后再付款", "login_required", status=401)
+
+    order = None
+    try:
+        order = _find_order(request, order_no, me)
+        if order is None:
+            return _error("订单不存在，或不属于当前账号", "not_found", status=404)
+
+        result = pay_with_balance(order, me)
+        tx = result.get("transaction")
+        return JsonResponse({
+            "success": True,
+            "code": result["code"],
+            "message": result["message"],
+            "already": result["already"],
+            "amount": result["amount"],
+            "transaction": serialize_transaction(tx) if tx else None,
+            "balance": str(wallet_balance(me)),
+            "order": order_summary(result["order"]),
+        })
+    except UserWalletError as e:
+        # 余额不足要能让前端区分出「去充值」而不是「重试」——
+        # 所以额外把当前余额与缺口金额带回去，前端才说得出"还差多少"。
+        payload = {"success": False, "message": e.message, "code": e.code}
+        if e.code == "insufficient":
+            balance = wallet_balance(me)
+            payload["balance"] = str(balance)
+            try:
+                need = Decimal(str(order.total_price or 0)) if order is not None else Decimal("0.00")
+                payload["shortage"] = str(max(Decimal("0.00"), need - balance))
+            except (ArithmeticError, TypeError, ValueError):
+                payload["shortage"] = ""
+        return JsonResponse(payload, status=400)
+    except CashierError as e:
+        return _error(e.message, e.code)
     except Exception as e:  # noqa: BLE001
         return _server_error(e)
 

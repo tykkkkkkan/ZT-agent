@@ -103,42 +103,24 @@ createApp({
             window.location.href = 'order.html?product=' + encodeURIComponent(product.id);
         };
 
-        // ========== 订单名片：对话内支付 ==========
+        // ========== 订单名片：对话内发起支付 ==========
         /**
-         * 对话内支付：客户不必为了付款跳走再回来。
-         * 成功后用后端回传的订单覆盖卡片，保证「聊天里看到的」与「库里的」一致。
+         * 点「立即支付」→ 收银台 `/pay/<order_no>/`。
+         *
+         * 为什么不在对话里直接把订单标成已支付（早前是这么做的）：
+         * 收银台现在承担「**支付方式选择**」的唯一职责 —— 扫码 / 余额两种走法、
+         * 余额不足怎么引导充值，都在那一处实现。对话里再写一套就会重新长出
+         * 「两个地方都能付、行为却不一致」的老毛病（和此前价格口径分裂同源）。
+         * 名片该做的只是把用户**送到**付款这件事上，一屏之内完成。
+         *
+         * 保持 async：`payingOrders` / `payErrors` 两个响应式容器与模板绑定仍在，
+         * 且验收脚本按 Promise 调用（`.catch`），不能改成同步返回值。
          */
         const payOrder = async (msg) => {
             const order = msg && msg.order;
-            if (!order || !order.order_no || payingOrders.value[order.order_no]) return;
+            if (!order || !order.order_no) return;
             if (!window.AUTH || !(await AUTH.ensureLogin('登录后即可支付'))) return;
-            payingOrders.value = { ...payingOrders.value, [order.order_no]: true };
-            payErrors.value = { ...payErrors.value, [order.order_no]: '' };
-            try {
-                const resp = await AUTH.authFetch(
-                    '/api/orders/' + encodeURIComponent(order.order_no) + '/pay/',
-                    { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }
-                );
-                const d = await resp.json().catch(() => ({}));
-                if (resp.ok && d.success) {
-                    const fresh = d.order || {};
-                    order.payment_status = fresh.payment_status || '已支付';
-                    if (fresh.status) order.status = fresh.status;
-                    // 支付后「pay」动作消失（actions 由后端权威下发）；后端没给就本地摘掉
-                    order.actions = Array.isArray(fresh.actions)
-                        ? fresh.actions
-                        : (order.actions || []).filter((a) => a !== 'pay');
-                    pushSuggest(['怎么查物流？', '多久能发货？', '怎么申请退货？']);
-                } else {
-                    payErrors.value = { ...payErrors.value, [order.order_no]: d.message || '支付失败，请稍后重试' };
-                }
-            } catch (e) {
-                payErrors.value = { ...payErrors.value, [order.order_no]: '网络异常，请稍后重试' };
-            } finally {
-                const next = { ...payingOrders.value };
-                delete next[order.order_no];
-                payingOrders.value = next;
-            }
+            window.location.href = '/pay/' + encodeURIComponent(order.order_no) + '/';
         };
 
         // ========== 追问建议（「猜你想问」） ==========

@@ -21,6 +21,7 @@ agent/me_views.py — 个人中心（C 端「我的」）接口
     POST   /api/me/orders/<order_no>/return/       申请退货 → 退货申请中
     POST   /api/me/orders/<order_no>/cancel/       取消订单（仅未发货）
     POST   /api/me/orders/<order_no>/pay/          模拟支付（仅未发货 + 未支付）
+                                                   ⚠️ C 端已改用收银台，此接口仅作状态机直达入口
     POST   /api/me/orders/<order_no>/review/       评价已完成订单（1–5 星，一单一评）
     POST   /api/me/orders/<order_no>/withdraw-return/  撤销退货申请
     GET    /api/me/addresses/                      收货地址簿（默认在前）

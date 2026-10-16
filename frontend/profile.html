@@ -337,6 +337,61 @@
                 </div>
             </div>
 
+            <!-- 我的余额（钱包）：余额支付的钱袋子 —— 余额 + 模拟充值 + 流水 -->
+            <div id="wallet" class="mt-6 bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden"
+                 style="scroll-margin-top:6rem">
+                <div class="flex items-center justify-between gap-3 px-6 py-4 border-b border-stone-100">
+                    <h3 class="flex items-center gap-2 text-base font-bold text-ink-900">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;color:var(--jade)" aria-hidden="true"><rect x="2" y="6" width="20" height="13" rx="2"/><path d="M2 10h20"/><circle cx="17.5" cy="14.5" r="1.2"/></svg>
+                        我的余额
+                    </h3>
+                    <span id="walletHeadHint" class="text-xs text-ink-400"></span>
+                </div>
+                <div class="p-6 grid lg:grid-cols-5 gap-6">
+                    <!-- 左：余额 + 模拟充值 -->
+                    <div class="lg:col-span-2">
+                        <div class="rounded-2xl border border-brand-100 bg-brand-50 p-5">
+                            <div class="text-xs text-ink-500">可用余额</div>
+                            <div id="walletBalance" class="text-3xl font-extrabold text-brand-700 mt-1">—</div>
+                            <div id="walletSummary" class="text-xs text-ink-500 mt-2">加载中…</div>
+                        </div>
+                        <form id="topupForm" class="mt-4 space-y-3" onsubmit="return submitTopup(event)">
+                            <div>
+                                <label for="topupAmount" class="block text-xs font-medium text-ink-600 mb-1">充值金额（元）</label>
+                                <input type="text" id="topupAmount" inputmode="decimal" maxlength="12"
+                                       placeholder="如 100 或 99.50" autocomplete="off"
+                                       class="w-full px-3 py-2 border border-stone-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300">
+                            </div>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" class="topup-quick px-3 py-1.5 text-xs font-semibold text-brand-700 border border-brand-200 rounded-full hover:bg-brand-50 transition" data-amt="50">¥50</button>
+                                <button type="button" class="topup-quick px-3 py-1.5 text-xs font-semibold text-brand-700 border border-brand-200 rounded-full hover:bg-brand-50 transition" data-amt="100">¥100</button>
+                                <button type="button" class="topup-quick px-3 py-1.5 text-xs font-semibold text-brand-700 border border-brand-200 rounded-full hover:bg-brand-50 transition" data-amt="200">¥200</button>
+                                <button type="button" class="topup-quick px-3 py-1.5 text-xs font-semibold text-brand-700 border border-brand-200 rounded-full hover:bg-brand-50 transition" data-amt="500">¥500</button>
+                            </div>
+                            <button type="submit" id="topupBtn"
+                                    class="w-full px-4 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-full hover:bg-brand-700 transition shadow-sm disabled:opacity-50">
+                                模拟充值
+                            </button>
+                            <p class="text-xs text-ink-400 leading-relaxed">
+                                这是<b>模拟充值</b>。真实系统里余额只可能由支付渠道的异步回调增加 ——
+                                不可能存在一个"前端说加钱就加钱"的接口。本项目收银台模拟的是
+                                <b>收款动作</b>，不是支付渠道。
+                            </p>
+                        </form>
+                    </div>
+                    <!-- 右：流水（只读账本） -->
+                    <div class="lg:col-span-3">
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-sm font-bold text-ink-900">最近流水</h4>
+                            <button type="button" onclick="loadWallet()" class="text-xs text-brand-700 hover:underline">刷新</button>
+                        </div>
+                        <div id="txList" class="space-y-2">
+                            <div class="text-center text-ink-400 text-sm py-8">加载中…</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </section>
 
@@ -698,8 +753,12 @@
         } else if (action === 'withdraw-return') {
             if (!confirm('确定撤销这笔退货申请吗？')) return;
         } else if (action === 'pay') {
-            // 模拟支付（任务书五·1）：本项目不接真实支付渠道，点确认即完成支付
-            if (!confirm('确认支付这笔订单？\n\n（毕业设计作品使用模拟支付，不会产生真实扣款）')) return;
+            // 立即支付（任务书五·1）→ 收银台 /pay/<order_no>/
+            // 支付方式的唯一实现处在那里（扫码 / 余额，余额不足就地引导充值）；
+            // 这里只负责把人送过去，不再自己发支付请求 —— 否则又会出现
+            // 「同一个动作、两个入口、行为不一致」。
+            window.location.href = '/pay/' + encodeURIComponent(orderNo) + '/';
+            return;
         }
         // 二次确认防误触
         if (action === 'cancel' && reason !== null && !confirm('确定取消该订单？')) return;
@@ -1042,6 +1101,113 @@
         }
     }
 
+    // ── 我的余额（钱包）──────────────────────────────────────
+    //  余额只由后端算：前端不做任何本地加减，每次写操作后都用返回体重绘。
+    //  #70 定的三条不变式（同事务 / balance_after 可逐条验算 / 余额不为负）
+    //  在 agent/user_wallet.py 里，这里只负责把它显示出来。
+    //  金额一律按字符串搬运，显示时才 Number() —— 别让浮点误差落到账上。
+    var TX_STYLE = {
+        '充值': { sign: '+', bg: 'rgba(16,122,87,.12)', fg: '#0E6B4C' },
+        '退款': { sign: '+', bg: 'rgba(29,78,216,.12)', fg: '#1D4ED8' },
+        '支付': { sign: '−', bg: 'rgba(180,83,9,.12)', fg: '#B45309' }
+    };
+
+    function yuan(v) {
+        var n = Number(v);
+        return isNaN(n) ? '0.00' : n.toFixed(2);
+    }
+
+    function txBadge(kind) {
+        var s = TX_STYLE[kind] || { sign: '', bg: '#EEE', fg: '#333' };
+        return '<span style="display:inline-block;padding:2px 8px;border-radius:999px;background:' + s.bg
+            + ';color:' + s.fg + ';font-size:11px;font-weight:600;white-space:nowrap;">'
+            + s.sign + esc(kind) + '</span>';
+    }
+
+    function renderTransactions(list) {
+        var box = document.getElementById('txList');
+        if (!box) return;
+        if (!list || !list.length) {
+            box.innerHTML = '<div class="text-center text-ink-400 text-sm py-8">'
+                + '还没有流水。充值或用余额支付后会出现在这里。</div>';
+            return;
+        }
+        box.innerHTML = list.map(function (t) {
+            var s = TX_STYLE[t.kind] || { sign: '' };
+            var note = t.order_no ? ('订单 ' + t.order_no) : (t.note || '');
+            return '<div class="flex items-start justify-between gap-3 px-4 py-3 rounded-xl border border-stone-100 bg-stone-50">'
+                + '<div class="min-w-0">'
+                +   '<div class="flex items-center gap-2">' + txBadge(t.kind)
+                +     '<span class="text-xs text-ink-400">' + esc(t.created_at || '') + '</span></div>'
+                +   '<div class="text-xs text-ink-500 mt-1 truncate">' + esc(note) + '</div>'
+                + '</div>'
+                + '<div class="text-right flex-shrink-0">'
+                +   '<div class="text-sm font-semibold" style="color:'
+                +     (s.sign === '+' ? 'var(--jade)' : 'var(--ink)') + '">'
+                +     (s.sign || '') + '¥' + yuan(t.amount) + '</div>'
+                +   '<div class="text-xs text-ink-400">余额 ¥' + yuan(t.balance_after) + '</div>'
+                + '</div>'
+                + '</div>';
+        }).join('');
+    }
+
+    function renderWallet(d) {
+        var el = document.getElementById('walletBalance');
+        if (el) el.textContent = '¥' + yuan(d.balance);
+        var sum = document.getElementById('walletSummary');
+        if (sum) {
+            sum.textContent = '累计充值 ¥' + yuan(d.recharged)
+                + '　累计支付 ¥' + yuan(d.paid)
+                + (Number(d.refunded || 0) > 0 ? ('　累计退款 ¥' + yuan(d.refunded)) : '');
+        }
+        var head = document.getElementById('walletHeadHint');
+        if (head) head.textContent = (d.tx_count || 0) + ' 笔流水';
+        renderTransactions(d.transactions);
+    }
+
+    async function loadWallet() {
+        try {
+            var d = await api('/api/me/wallet/?limit=20');
+            renderWallet(d);
+        } catch (e) {
+            var box = document.getElementById('txList');
+            if (box) {
+                box.innerHTML = '<div class="text-center text-ink-400 text-sm py-8">余额加载失败：'
+                    + esc(e.message) + '</div>';
+            }
+            var sum = document.getElementById('walletSummary');
+            if (sum) sum.textContent = '加载失败';
+        }
+    }
+
+    window.submitTopup = async function (event) {
+        event.preventDefault();
+        var input = document.getElementById('topupAmount');
+        var raw = (input && input.value || '').trim();
+        // 前端只做"格式明显不对"的拦阻（少一次往返）；金额范围、上限、
+        // NaN/Infinity 这类判断一律留给后端 —— 两处都写只会长出两套口径。
+        if (!raw) { toast('请输入充值金额', 'error'); return false; }
+        if (!/^\d{1,8}(\.\d{1,2})?$/.test(raw) || Number(raw) <= 0) {
+            toast('金额需大于 0，且最多两位小数', 'error');
+            return false;
+        }
+        var btn = document.getElementById('topupBtn');
+        if (btn) btn.disabled = true;
+        try {
+            var d = await api('/api/me/wallet/recharge/', {
+                method: 'POST', body: JSON.stringify({ amount: raw })
+            });
+            renderWallet(d);
+            if (input) input.value = '';
+            toast(d.message || '充值成功', 'success');
+        } catch (e) {
+            toast(e.message || '充值失败', 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+        return false;
+    };
+
     // ── 初始化 ─────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', async function () {
         var ok = await AUTH.init({ requireAuth: true, reason: '登录后即可查看个人中心' });
@@ -1049,7 +1215,25 @@
         await loadProfile();
         window.setFilter('');            // 默认全部
         await loadAddresses();           // 我的收货地址（地址簿）
+        await loadWallet();              // 我的余额（钱包）
         bindAutoRefresh();
+
+        // 充值金额快捷档：只填输入框、不直接提交 —— 让用户还能改成别的数
+        Array.prototype.forEach.call(document.querySelectorAll('.topup-quick'), function (b) {
+            b.onclick = function () {
+                var amt = document.getElementById('topupAmount');
+                if (amt) amt.value = b.getAttribute('data-amt');
+            };
+        });
+
+        // 收银台「余额不足 → 去充值」带着 #wallet 跳过来：把这张卡滚到眼前，
+        // 顺带把输入框聚焦 —— 用户点那个链接的意图就是"现在充钱"。
+        if (location.hash === '#wallet') {
+            var card = document.getElementById('wallet');
+            if (card && card.scrollIntoView) card.scrollIntoView({ block: 'start' });
+            var amt = document.getElementById('topupAmount');
+            if (amt && amt.focus) amt.focus();
+        }
     });
 
     // ── 自动刷新：回到本页时同步最新订单 ─────────────────────
