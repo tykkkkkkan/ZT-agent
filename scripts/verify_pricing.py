@@ -36,13 +36,13 @@ sys.path.insert(0, BASE)
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
-from django.conf import settings                        # noqa: E402
-from django.contrib.admin.sites import AdminSite        # noqa: E402
-from django.contrib.auth import get_user_model          # noqa: E402
-from django.test import Client                          # noqa: E402
+from django.conf import settings  # noqa: E402
+from django.contrib.admin.sites import AdminSite  # noqa: E402
+from django.contrib.auth import get_user_model  # noqa: E402
+from django.test import Client  # noqa: E402
 
-from agent import pricing, tools                        # noqa: E402
-from agent.admin import UserProfileAdmin                # noqa: E402
+from agent import pricing, tools  # noqa: E402
+from agent.admin import UserProfileAdmin  # noqa: E402
 from agent.models import Inventory, Orders, Products, UserProfile  # noqa: E402
 
 PASS, FAIL = [], []

@@ -8,9 +8,13 @@ P2 增强（RAG 知识库数据化）：
 - seed_knowledge_to_db()：幂等地把种子语料写入 DB（已存在跳过）
 """
 
+import logging
 import os
+from typing import Union
 
-from agent.rag import RAGEngine
+from agent.rag import HybridRAGEngine, RAGEngine
+
+logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────
 # 知识库语料（企业政策 + 钓鱼知识）
@@ -231,26 +235,46 @@ def _load_docs():
     return docs
 
 
-def get_knowledge_rag() -> RAGEngine:
+def _build_engine(backend: str) -> Union[RAGEngine, HybridRAGEngine]:
+    """按 RAG_BACKEND 构建后端引擎。
+
+    - 'tfidf'：TfidfEmbedder + InMemoryVectorStore（零依赖）
+    - 'embedding'：OpenaiEmbedder（语义向量）+ ChromaStore（持久化向量库）
+    - 'hybrid'：上面两路并行召回 + RRF 融合（任务书「相结合的双路方案」）
+    """
+    if backend == 'tfidf':
+        return RAGEngine()
+    # embedding / hybrid 共用同一套语义子引擎
+    from agent.embeddings.openai_embedder import OpenaiEmbedder
+    from agent.vectorstores.chroma_store import ChromaStore
+    semantic = RAGEngine(embedder=OpenaiEmbedder(), store_factory=ChromaStore)
+    if backend == 'hybrid':
+        return HybridRAGEngine(semantic_engine=semantic)
+    return semantic
+
+
+def get_knowledge_rag() -> Union[RAGEngine, HybridRAGEngine]:
     """构建并缓存企业知识库 RAG 引擎（惰性初始化，首次调用构建索引）。
 
     P2 增强：索引数据来自 DB（knowledge_chunks），可在线维护；
     DB 不可用时回退静态 KNOWLEDGE_BASE。
 
-    后端切换（环境变量 RAG_BACKEND）：
-    - 'tfidf'（默认）：TfidfEmbedder + InMemoryVectorStore（零依赖）
-    - 'embedding'：OpenaiEmbedder（语义向量）+ ChromaStore（持久化向量库）
+    后端切换（环境变量 RAG_BACKEND）：'tfidf'（默认）/ 'embedding' / 'hybrid'。
+    语义后端构建失败（缺 EMBEDDING_API_KEY / 向量库损坏 / API 不可达）时，
+    记日志并降级为 TF-IDF 字面路，保证对话可用、不会 500。
     """
     global _rag_cache
     if _rag_cache is None:
         backend = os.getenv('RAG_BACKEND', 'tfidf').strip().lower()
-        if backend == 'embedding':
-            from agent.embeddings.openai_embedder import OpenaiEmbedder
-            from agent.vectorstores.chroma_store import ChromaStore
-            engine = RAGEngine(embedder=OpenaiEmbedder(), store_factory=ChromaStore)
-        else:
+        docs = _load_docs()
+        try:
+            engine = _build_engine(backend)
+            engine.ingest(docs)
+        except Exception as exc:
+            # 降级路径：语义后端任何故障都不影响系统可用性
+            logger.warning("RAG 后端 %s 构建失败，降级为 TF-IDF：%s", backend, exc)
             engine = RAGEngine()
-        engine.ingest(_load_docs())
+            engine.ingest(docs)
         _rag_cache = engine
     return _rag_cache
 

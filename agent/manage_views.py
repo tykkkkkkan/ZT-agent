@@ -9,10 +9,9 @@ agent/manage_views.py — 独立的管理员登录入口（/manage/）
 """
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect
-from django.urls import reverse
-from django.views.decorators.http import require_http_methods
+from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.http import require_http_methods
 
 
 @csrf_protect

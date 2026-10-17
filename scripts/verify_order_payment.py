@@ -35,20 +35,29 @@ sys.path.insert(0, BASE)
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
-from django.conf import settings                        # noqa: E402
-from django.contrib.auth import get_user_model          # noqa: E402
-from django.db import connection                        # noqa: E402
-from django.test import Client, override_settings       # noqa: E402
-from django.utils import timezone                       # noqa: E402
+from django.conf import settings  # noqa: E402
+from django.contrib.auth import get_user_model  # noqa: E402
+from django.db import connection  # noqa: E402
+from django.test import Client, override_settings  # noqa: E402
+from django.utils import timezone  # noqa: E402
 
-from agent.models import (                              # noqa: E402
-    Inventory, Orders, OrderStatus, PaymentStatus, Products, Transaction, Wallet,
+from agent.models import (  # noqa: E402
+    Inventory,
+    Orders,
+    OrderStatus,
+    PaymentStatus,
+    Products,
+    Transaction,
+    Wallet,
 )
-from agent.services import (                            # noqa: E402
-    OrderTransitionError, cancel_unpaid_orders, mark_order_paid,
-    transition_order, unpaid_expired_orders,
+from agent.services import (  # noqa: E402
+    OrderTransitionError,
+    cancel_unpaid_orders,
+    mark_order_paid,
+    transition_order,
+    unpaid_expired_orders,
 )
-from agent.views import _order_actions                  # noqa: E402
+from agent.views import _order_actions  # noqa: E402
 
 PASS, FAIL = [], []
 
@@ -124,7 +133,8 @@ def main():
             # ══ 1. 下单 → 未支付 ════════════════════════════════
             print("\n[1] 下单后订单处于「未支付」")
             d1 = place_order(c, auth, product.id, 2, "13800000001")
-            no1 = d1["order_no"]; created.append(no1)
+            no1 = d1["order_no"]
+            created.append(no1)
             check("下单响应回显 payment_status=未支付", d1.get("payment_status") == "未支付",
                   str(d1.get("payment_status")))
             o1 = Orders.objects.get(order_no=no1)
@@ -180,7 +190,8 @@ def main():
             # （DRF 视图，只认 JWT）。两条通道都必须能付，否则"个人中心付不了款"。
             print("\n[4b] 个人中心的支付入口（DRF / JWT 通道）")
             d5 = place_order(c, auth, product.id, 1, "13800000009")
-            no5 = d5["order_no"]; created.append(no5)
+            no5 = d5["order_no"]
+            created.append(no5)
             st, d = jpost(c, f"/api/me/orders/{no5}/pay/", {}, auth)
             check("个人中心 pay 动作可用（200）", st == 200 and d.get("success"),
                   f"HTTP {st} {d.get('message')}")
@@ -206,7 +217,8 @@ def main():
             # ══ 6. 历史订单不被牵连 ═════════════════════════════
             print("\n[6] 历史订单（支付状态为空）不受新规则约束")
             d2 = place_order(c, auth, product.id, 1, "13800000002")
-            no2 = d2["order_no"]; created.append(no2)
+            no2 = d2["order_no"]
+            created.append(no2)
             # 模拟"支付功能上线前的老订单"：清空支付状态
             Orders.objects.filter(order_no=no2).update(payment_status="")
             o2 = Orders.objects.get(order_no=no2)
@@ -220,7 +232,8 @@ def main():
             print("\n[7] AI 工具层能说出真实原因")
             from agent import tools
             d3 = place_order(c, auth, product.id, 1, "13800000003")
-            no3 = d3["order_no"]; created.append(no3)
+            no3 = d3["order_no"]
+            created.append(no3)
             txt = tools.get_order_status(no3)
             check("未支付订单：工具输出含「未支付」", "未支付" in txt)
             check("未支付订单：工具说明付款后才会发货", "支付" in txt and "发货" in txt)
@@ -237,7 +250,8 @@ def main():
             # ══ 8. 超时未支付自动取消 ═══════════════════════════
             print("\n[8] 超时未支付自动取消并释放预占")
             d4 = place_order(c, auth, product.id, 3, "13800000004")
-            no4 = d4["order_no"]; created.append(no4)
+            no4 = d4["order_no"]
+            created.append(no4)
             reserved_before = Inventory.objects.get(pk=inv.pk).reserved_stock
 
             r0 = cancel_unpaid_orders(30, dry_run=True)

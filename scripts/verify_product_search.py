@@ -26,16 +26,16 @@ sys.path.insert(0, BASE)
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
-from django.conf import settings                        # noqa: E402
-from django.contrib.admin.sites import AdminSite        # noqa: E402
-from django.contrib.auth import get_user_model          # noqa: E402
-from django.db import connection                        # noqa: E402
-from django.test import Client                          # noqa: E402
+from django.conf import settings  # noqa: E402
+from django.contrib.admin.sites import AdminSite  # noqa: E402
+from django.contrib.auth import get_user_model  # noqa: E402
+from django.db import connection  # noqa: E402
+from django.test import Client  # noqa: E402
 
-from agent import tools                                 # noqa: E402
-from agent.admin import ProductsAdmin                   # noqa: E402
-from agent.models import Products                       # noqa: E402
-from agent.views import _serialize_product               # noqa: E402
+from agent import tools  # noqa: E402
+from agent.admin import ProductsAdmin  # noqa: E402
+from agent.models import Products  # noqa: E402
+from agent.views import _serialize_product  # noqa: E402
 
 # test Client 的 Host 是 testserver，不在默认 ALLOWED_HOSTS 里 → 否则一律 400（DisallowedHost）
 if "testserver" not in settings.ALLOWED_HOSTS:

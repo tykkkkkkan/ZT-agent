@@ -25,7 +25,7 @@ import logging
 from django.db import IntegrityError, transaction
 from django.db.models import Avg, Count
 
-from agent.models import OrderStatus, Orders, Review
+from agent.models import Orders, OrderStatus, Review
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,8 @@ def has_review(order: Orders) -> bool:
     订单列表逐条调用本函数，别在未 prefetch 的循环里用。
     """
     try:
-        order.review
+        # 访问反向 OneToOne 描述符即完成一次存在性探测，结果本身不需要保留
+        _ = order.review
         return True
     except Review.DoesNotExist:
         return False
@@ -111,7 +112,8 @@ def create_review(
     try:
         rating = int(rating)
     except (TypeError, ValueError):
-        raise ReviewError("请先打分（1–5 星）", code="invalid_rating")
+        # 原始异常只是解析噪声，用户需要的是可读提示，故不保留异常链
+        raise ReviewError("请先打分（1–5 星）", code="invalid_rating") from None
     if not (MIN_RATING <= rating <= MAX_RATING):
         raise ReviewError(f"评分需在 {MIN_RATING}–{MAX_RATING} 星之间",
                           code="invalid_rating")
@@ -136,11 +138,11 @@ def create_review(
                 rating=rating,
                 content=content,
             )
-    except IntegrityError:
+    except IntegrityError as exc:
         # 唯一约束拦住并发下的第二次提交 —— 这正是我们想要的行为，
-        # 转成一句人话告诉用户，而不是抛 500。
+        # 转成一句人话告诉用户，而不是抛 500；保留异常链便于日志排查。
         raise ReviewError("这笔订单已经评价过了，每笔订单只能评价一次。",
-                          code="duplicate_review")
+                          code="duplicate_review") from exc
 
     logger.info("订单 %s 已评价：%s 星", order.order_no, rating)
     return review

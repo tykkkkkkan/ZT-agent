@@ -11,7 +11,6 @@ from django.urls import path, include
 from django.http import JsonResponse, HttpResponse, FileResponse
 from django.db import connection
 from django.conf import settings
-from django.views.static import serve
 
 import os
 import mimetypes
@@ -19,6 +18,11 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Windows 自带的 mimetypes 库不认识 .webp（guess_type 返回 None），
+# 会让下方 serve_frontend_asset 退回 application/octet-stream，
+# 浏览器据此拒绝渲染图片（表现为裂图）。显式注册该 MIME 类型。
+mimetypes.add_type("image/webp", ".webp")
 
 from agent import views as views_agent
 from agent import views_cashier
@@ -65,7 +69,7 @@ def serve_pay_confirm_page(request, token=""):
 def serve_frontend_asset(request, filepath):
     """服务 frontend/assets/ 下的静态资源（图片/SVG 等）。
 
-    前端页面通过相对路径 assets/images/xxx.png 引用图片，
+    前端页面通过相对路径 assets/images/xxx.webp 引用图片，
     Django 需为这些文件提供路由，否则图片会 404。
     """
     base = (FRONTEND_DIR / "assets").resolve()
@@ -169,6 +173,8 @@ urlpatterns = [
     path("api/me/profile/", me_views.MeProfileView.as_view(), name="me_profile"),
     path("api/me/password/", me_views.MePasswordView.as_view(), name="me_password"),
     path("api/me/orders/", me_views.MeOrderListView.as_view(), name="me_orders"),
+    path("api/me/contact-messages/", me_views.MeContactMessageListView.as_view(),
+         name="me_contact_messages"),
     path("api/me/orders/<str:order_no>/<str:action>/",
          me_views.MeOrderActionView.as_view(), name="me_order_action"),
     # 收货地址簿（C 端「我的地址」）：列表/新增 → 设为默认 → 单条编辑/删除
@@ -237,7 +243,6 @@ urlpatterns = [
     path("login.html", serve_frontend_file, {"filename": "login.html"}),
     path("register.html", serve_frontend_file, {"filename": "register.html"}),
     path("auth.js", serve_frontend_file, {"filename": "auth.js"}),
-    path("style.css", serve_frontend_file, {"filename": "style.css"}),
     path("app.js", serve_frontend_file, {"filename": "app.js"}),
     path("assets/theme.css", serve_frontend_file, {"filename": "assets/theme.css"}),
     # 静态资源（图片/SVG 等）catch-all 路由，需放在精确路由之后

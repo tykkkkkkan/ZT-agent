@@ -22,6 +22,7 @@ agent/rag.py — 轻量级 RAG（检索增强生成）引擎
 
 from __future__ import annotations
 
+import logging
 import math
 import os
 import re
@@ -29,8 +30,13 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+logger = logging.getLogger(__name__)
+
 # BM25 重排权重：cosine 召回分与 BM25 字面分的混合比例（0~1），可经环境变量调节
 RAG_BM25_WEIGHT = float(os.getenv("RAG_BM25_WEIGHT", "0.5"))
+
+# RRF 融合常数 k：文献常用 60，控制"排名靠前优先"的衰减速度
+RRF_K = float(os.getenv("RAG_RRF_K", "60"))
 
 # ---------------------------------------------------------------------------
 # 分词：中文按「单字 + 相邻 bigram」切分，英文/数字按词切分（零依赖）
@@ -214,6 +220,33 @@ class InMemoryVectorStore:
         return scored[:top_k]
 
 
+def reciprocal_rank_fusion(
+    ranked_lists: List[List[str]], k: float = RRF_K
+) -> Dict[str, float]:
+    """RRF（倒数排名融合）合并多路排序结果，返回 {文档 id: 融合分}。
+
+    各路分数尺度不可比（字面路是余弦+BM25 混合分，语义路是 0~1 余弦）时，
+    只取"排名"做融合：score = Σ 1/(k + rank_i)，k 越大排名靠前的文档优势越平缓。
+    """
+    scores: Dict[str, float] = {}
+    for ranked in ranked_lists:
+        for rank, doc_id in enumerate(ranked, start=1):
+            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
+    return scores
+
+
+def format_hits(hits: List[Tuple["Chunk", float]]) -> str:
+    """把检索命中列表拼成带来源标题的上下文文本（供工具层直接使用）。"""
+    if not hits:
+        return ""
+    parts = []
+    for i, (chunk, score) in enumerate(hits, 1):
+        title = chunk.meta.get("title", "")
+        label = f"【{title}】" if title else f"【片段{i}】"
+        parts.append(f"{label}（相关度 {score:.3f}）\n{chunk.text}")
+    return "\n\n".join(parts)
+
+
 # ---------------------------------------------------------------------------
 # RAG 引擎：切块 → 向量化 → 召回 → 重排
 # ---------------------------------------------------------------------------
@@ -312,12 +345,81 @@ class RAGEngine:
 
     def query(self, query: str, top_k: int = 3) -> str:
         """便捷方法：返回检索到的上下文的拼接文本（供工具层直接使用）。"""
-        hits = self.retrieve(query, top_k=top_k)
-        if not hits:
-            return ""
-        parts = []
-        for i, (chunk, score) in enumerate(hits, 1):
-            title = chunk.meta.get("title", "")
-            label = f"【{title}】" if title else f"【片段{i}】"
-            parts.append(f"{label}（相关度 {score:.3f}）\n{chunk.text}")
-        return "\n\n".join(parts)
+        return format_hits(self.retrieve(query, top_k=top_k))
+
+
+# ---------------------------------------------------------------------------
+# 混合检索引擎：TF-IDF/BM25 字面路 + 语义向量路，RRF 融合
+# ---------------------------------------------------------------------------
+class HybridRAGEngine:
+    """双路混合检索（hybrid retrieval）：两路并行召回 + RRF 融合排序。
+
+    与 RAGEngine 保持相同接口（ingest / retrieve / query），上层可无缝替换：
+    - 字面路：TF-IDF 余弦召回 + BM25 重排（内部自建 RAGEngine）
+    - 语义路：BGE-M3 稠密向量 + Chroma（由调用方构建好传入 semantic_engine）
+    两路 ingest 同一批文档、切块逻辑相同，因此 Chunk.id 天然对齐，融合时按 id 归并。
+
+    容错设计：语义路依赖外部 Embedding API，检索失败时记日志并降级为字面路结果，
+    不阻断对话（对齐"外部调用失败必须有降级路径"约定）。
+    """
+
+    def __init__(self, semantic_engine: RAGEngine, rrf_k: float = RRF_K) -> None:
+        self._lexical = RAGEngine()          # 字面路：零依赖
+        self._semantic = semantic_engine     # 语义路：BGE-M3 + Chroma
+        self._rrf_k = rrf_k
+
+    def ingest(self, documents: List) -> int:
+        """向双路写同一批文档并各自建索引，返回切块总数。"""
+        n = self._lexical.ingest(documents)
+        self._semantic.ingest(documents)
+        return n
+
+    def retrieve(
+        self,
+        query: str,
+        top_k: int = 3,
+        recall_k: Optional[int] = None,
+        min_score: float = 0.0,
+    ) -> List[Tuple[Chunk, float]]:
+        """双路并行召回 + RRF 融合。
+
+        返回 (Chunk, RRF 融合分)；任一单路为空时退回另一路的原始排序；
+        语义路异常时降级为字面路（记日志）。min_score 对 RRF 尺度无意义，
+        默认 0 不过滤，调用方无需传阈值。
+        """
+        if not self._lexical.chunks:
+            return []
+
+        recall_k = recall_k or max(top_k * 2, 6)
+        lex_hits = self._lexical.retrieve(query, top_k=recall_k)
+        try:
+            sem_hits = self._semantic.retrieve(query, top_k=recall_k)
+        except Exception as exc:
+            logger.warning("语义路检索失败，降级为字面路：%s", exc)
+            sem_hits = []
+
+        # 单路为空 → 直接返回另一路（保留其原生分数，便于上层阈过滤语义）
+        if not lex_hits:
+            return sem_hits[:top_k]
+        if not sem_hits:
+            return lex_hits[:top_k]
+
+        rrf = reciprocal_rank_fusion(
+            [[c.id for c, _ in lex_hits], [c.id for c, _ in sem_hits]], self._rrf_k
+        )
+        id2chunk = {c.id: c for c, _ in lex_hits}
+        id2chunk.update({c.id: c for c, _ in sem_hits})
+        fused = [
+            (id2chunk[cid], s)
+            for cid, s in rrf.items()
+            if cid in id2chunk
+        ]
+        fused.sort(key=lambda x: -x[1])
+        results = fused[:top_k]
+        if min_score > 0:
+            results = [(c, s) for c, s in results if s >= min_score]
+        return results
+
+    def query(self, query: str, top_k: int = 3) -> str:
+        """便捷方法：返回检索到的上下文的拼接文本（供工具层直接使用）。"""
+        return format_hits(self.retrieve(query, top_k=top_k))

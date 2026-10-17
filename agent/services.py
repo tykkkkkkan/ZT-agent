@@ -53,8 +53,15 @@ from django.db import transaction
 from django.utils import timezone
 
 from agent.models import (
-    Inventory, Orders, OrderStatus, PaymentStatus, ReturnStatus,
-    Wallet, Transaction, TxType, TxCategory,
+    Inventory,
+    Orders,
+    OrderStatus,
+    PaymentStatus,
+    ReturnStatus,
+    Transaction,
+    TxCategory,
+    TxType,
+    Wallet,
 )
 
 # 用户钱包（C 端余额）：订单终结（取消 / 退货）时把**当初扣掉的钱**原路退回。

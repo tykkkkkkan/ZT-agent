@@ -26,9 +26,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
+from agent import tools  # noqa: E402
 from agent.models import Inventory, Orders, OrderStatus, ProductCoordination, Products  # noqa: E402
-from agent.purchase_guard import evaluate                                              # noqa: E402
-from agent import tools                                                                # noqa: E402
+from agent.purchase_guard import evaluate  # noqa: E402
 
 PASS, FAIL = [], []
 

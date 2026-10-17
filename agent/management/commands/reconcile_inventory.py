@@ -32,7 +32,7 @@ B. **断货暂停死锁**：营销 Agent 因断货下发 `pause_product` 后，
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from agent.models import Inventory, OrderStatus, Orders, ProductCoordination
+from agent.models import Inventory, Orders, OrderStatus, ProductCoordination
 
 
 class Command(BaseCommand):
@@ -62,7 +62,7 @@ class Command(BaseCommand):
                 drifted.append((inv, expect, actual))
 
         self.stdout.write(self.style.MIGRATE_HEADING('A. 预占对账（reserved_stock vs 未发货订单）'))
-        self.stdout.write(f'  不变量：reserved_stock == Σ「未发货」订单数量')
+        self.stdout.write('  不变量：reserved_stock == Σ「未发货」订单数量')
         if not drifted:
             self.stdout.write(self.style.SUCCESS('  ✓ 全部一致，无需修正'))
             return 0
@@ -138,7 +138,7 @@ class Command(BaseCommand):
             return len(deadlocked), len(manual)
 
         with transaction.atomic():
-            for _name, c, inv in deadlocked:
+            for _name, _c, inv in deadlocked:
                 locked = Inventory.objects.select_for_update().get(pk=inv.pk)
                 msg = auto_resume_stockout_pause(locked)
                 if msg:

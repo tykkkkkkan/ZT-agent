@@ -16,29 +16,50 @@ import json
 import logging
 import threading
 from decimal import Decimal
-from django.db.models import F, Sum, Q, Count
-from django.db.models.functions import Coalesce
-from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
-from django.utils import timezone
-from django.utils.html import format_html
-from django.utils.safestring import mark_safe
-from django.urls import path, reverse
+
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
+from django.db.models import Count, F, Sum
+from django.db.models.functions import Coalesce
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
+from django.urls import path, reverse
+from django.utils import timezone
+from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from unfold.admin import ModelAdmin as _UnfoldModelAdmin
 
+from agent.knowledge_data import invalidate_rag_cache
 from agent.models import (
-    Products, Inventory, Orders, Conversations, ContactMessage, CustomRequest,
-    KnowledgeChunk, Wallet, Transaction, TxType, TxCategory, OrderStatus, ReturnStatus,
-    PaymentStatus, ProductCoordination, Review, UserProfile,
-    UserTransaction, UserTxKind, UserWallet,
+    ContactMessage,
+    Conversations,
+    CustomRequest,
+    Inventory,
+    KnowledgeChunk,
+    Orders,
+    OrderStatus,
+    PaymentStatus,
+    ProductCoordination,
+    Products,
+    ReturnStatus,
+    Review,
+    Transaction,
+    TxCategory,
+    TxType,
+    UserProfile,
+    UserTransaction,
+    UserTxKind,
+    UserWallet,
+    Wallet,
 )
 from agent.services import (
-    transition_order, revert_shipped_to_pending, manual_wallet_adjust,
-    adjust_inventory_stock, reject_return_request, OrderTransitionError,
+    OrderTransitionError,
+    adjust_inventory_stock,
+    manual_wallet_adjust,
+    reject_return_request,
+    revert_shipped_to_pending,
+    transition_order,
 )
-from agent.knowledge_data import invalidate_rag_cache
 
 logger = logging.getLogger(__name__)
 
@@ -437,7 +458,6 @@ class InventoryAdmin(ZYModelAdmin):
         coord = self._coord_map().get(obj.product_id)
         paused = bool(coord and coord.purchase_paused)
         avail = obj.available_stock
-        name = obj.product.name if obj.product else ''
 
         if not paused and avail > 0:
             return format_html('<span style="color:var(--zy-accent);font-weight:600;">● 可下单</span>')
@@ -784,7 +804,7 @@ class OrdersAdmin(ZYModelAdmin):
         elif s in (OrderStatus.SHIPPED, OrderStatus.COMPLETED):
             effect, color = f'已扣减 {qty} 包', 'var(--zy-accent-strong)'
         elif s in (OrderStatus.CANCELLED, OrderStatus.RETURNED):
-            effect, color = f'库存已回滚（未占用）', 'var(--zy-text-soft)'
+            effect, color = '库存已回滚（未占用）', 'var(--zy-text-soft)'
         else:   # 退货申请中
             effect, color = '退货申请中，尚未回滚库存（等商家同意才入库）', 'var(--zy-warn)'
 
@@ -1179,18 +1199,33 @@ class ConversationsAdmin(ZYModelAdmin):
 # ══════════════════════════════════════════════════════════════
 @admin.register(ContactMessage)
 class ContactMessageAdmin(ZYQuickToggleAdmin):
-    list_display = ('id', 'name', 'phone', 'short_message', 'read_status', 'quick_ops', 'created_at')
+    list_display = ('id', 'name', 'phone', 'short_message', 'read_status',
+                    'replied_status', 'quick_ops', 'created_at')
     search_fields = ('name', 'phone')
     list_filter = ('is_read',)
     list_per_page = 25
     ordering = ('id',)                                       # id 升序
     actions = [mark_as_read]
 
+    # 任务书六·5：留言详情页留出「客服答复」区，答复时间由 save_model 自动打戳，
+    # 避免人工填错；提交时间与答复时间都设为只读，保证审计痕迹不可篡改。
+    fieldsets = (
+        ('留言内容', {'fields': ('name', 'phone', 'email', 'message', 'created_at')}),
+        ('客服处理', {'fields': ('is_read', 'reply', 'replied_at')}),
+    )
+    readonly_fields = ('created_at', 'replied_at')
+
     # 行内「标记已读 / 未读」一键切换（替代勾选+运行动作）
     toggle_field = 'is_read'
     toggle_url_name = 'agent_contactmessage_quick_toggle'
     toggle_on_label = '标记已读'
     toggle_off_label = '标记未读'
+
+    def save_model(self, request, obj, form, change):
+        """答复内容有改动时自动记录答复时间（客服受理留痕）。"""
+        if 'reply' in getattr(form, 'changed_data', []):
+            obj.replied_at = timezone.now()
+        super().save_model(request, obj, form, change)
 
     @admin.display(description='内容预览')
     def short_message(self, obj):
@@ -1199,6 +1234,10 @@ class ContactMessageAdmin(ZYQuickToggleAdmin):
     @admin.display(description='已读', boolean=True)
     def read_status(self, obj):
         return obj.is_read
+
+    @admin.display(description='已答复', boolean=True)
+    def replied_status(self, obj):
+        return bool((obj.reply or '').strip())
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1460,6 +1499,7 @@ class WalletAdmin(ZYModelAdmin):
     def income_trend_panel(self, obj):
         """近 30 日收入柱状趋势（纯 CSS，无需图表库）+ 全部流水入口。"""
         from datetime import date, timedelta
+
         from django.db.models.functions import TruncDate
         days = 30
         today = date.today()
@@ -2055,8 +2095,8 @@ User = get_user_model()
 admin.site.unregister(User)
 # 注销 Django 默认 GroupAdmin（它的 changelist 标题还是"选择 组 来修改"），换成继承 ZYModelAdmin 的版本
 try:
-    from django.contrib.auth.models import Group
     from django.contrib.auth.admin import GroupAdmin as DjangoGroupAdmin
+    from django.contrib.auth.models import Group
     admin.site.unregister(Group)
     @admin.register(Group)
     class ZYGroupAdmin(ZYModelAdmin, DjangoGroupAdmin):
@@ -2068,7 +2108,7 @@ except Exception:
 
 # 隐藏 token_blacklist（JWT 内部模块，业务后台不需要；模型仍可用，只是不在 admin 露出来）
 try:
-    from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+    from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
     admin.site.unregister(OutstandingToken)
     admin.site.unregister(BlacklistedToken)
 except Exception:

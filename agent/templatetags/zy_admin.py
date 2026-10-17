@@ -24,7 +24,8 @@ def zy_pending_counts():
     键：pending_orders 待发货订单 / low_stock 库存预警 / unread 未读留言+定制
     """
     from django.db.models import F
-    from agent.models import Orders, Inventory, ContactMessage, CustomRequest
+
+    from agent.models import ContactMessage, CustomRequest, Inventory, Orders
 
     return {
         "pending_orders": _safe(lambda: Orders.objects.filter(status="未发货").count()),

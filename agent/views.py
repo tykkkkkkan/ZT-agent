@@ -20,13 +20,15 @@ from django.db import transaction
 from django.http import JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST, require_GET, require_http_methods
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from agent.agent import agent_stream, _save_conversation
+from agent.agent import _save_conversation, agent_stream
 from agent.safety import check_message
 from agent.services import (
-    OrderTransitionError, InsufficientStockError,
-    transition_order, reserve_inventory,
+    InsufficientStockError,
+    OrderTransitionError,
+    reserve_inventory,
+    transition_order,
 )
 
 logger = logging.getLogger(__name__)
@@ -342,10 +344,10 @@ def product_list(request):
 
     参数：?include_inactive=1 可看全部（含下架）；默认只返回在售商品。
     """
-    from agent.models import Products, Inventory, ProductCoordination
-    from agent.purchase_guard import evaluate
-    from agent import reviews as review_helper
     from agent import pricing
+    from agent import reviews as review_helper
+    from agent.models import Inventory, ProductCoordination, Products
+    from agent.purchase_guard import evaluate
     try:
         # 任务书二·5：本接口是公开的，但**登录后会按身份裁剪价格字段**。
         # 这里不强制登录，只是"能认出你是谁就按你的身份给价"。
@@ -459,7 +461,7 @@ def create_order_api(request):
     if quantity <= 0:
         return JsonResponse({"success": False, "message": "数量必须大于 0"}, status=400)
 
-    from agent.models import Products, Orders
+    from agent.models import Orders, Products
 
     # 查产品
     try:
@@ -624,8 +626,8 @@ def query_orders(request):
     if len(phone) > 20:
         return JsonResponse({"success": False, "message": "手机号格式有误"}, status=400)
 
-    from agent.models import Orders
     from agent.me_helpers import get_profile, my_orders_q
+    from agent.models import Orders
 
     me, ok = _resolve_request_user(request)
     if not ok or me is None:
@@ -714,8 +716,8 @@ def order_detail(request, order_no):
       · staff 可直接查看（后台排障需要）。
     返回体同时补上 `actions`（用户端可执行操作），让前端不必自己推导状态规则。
     """
-    from agent.models import Orders
     from agent.me_helpers import my_orders_q
+    from agent.models import Orders
 
     me, ok = _resolve_request_user(request)
     if not ok or me is None:
@@ -764,8 +766,8 @@ def pay_order_api(request, order_no):
     归属校验与 `order_detail` 完全一致：只能支付自己的订单，且不存在/无权统一 404，
     不泄露"这个订单号确实存在，只是不属于你"。
     """
-    from agent.models import Orders
     from agent.me_helpers import my_orders_q
+    from agent.models import Orders
     from agent.services import mark_order_paid
 
     me, ok = _resolve_request_user(request)
@@ -817,9 +819,9 @@ def create_review_api(request, order_no):
     归属校验与 `order_detail` 一致：staff 可跨用户，普通用户只能评自己的订单；
     不存在与无权统一 404，不泄露订单号是否存在。
     """
-    from agent.models import Orders
-    from agent.me_helpers import my_orders_q
     from agent import reviews as review_helper
+    from agent.me_helpers import my_orders_q
+    from agent.models import Orders
 
     me, ok = _resolve_request_user(request)
     if not ok or me is None:
@@ -1037,8 +1039,8 @@ def products_collection(request):
     """GET /api/products/all/   列出全部产品（含下架）【需管理员】
     POST /api/products/all/  新建产品【需管理员】
     """
-    from agent.models import Products, Inventory
     from agent import reviews as review_helper
+    from agent.models import Inventory, Products
 
     if request.method == "GET":
         try:
@@ -1106,8 +1108,8 @@ def products_collection(request):
 @staff_required
 def product_detail_api(request, product_id):
     """GET/PATCH/PUT/DELETE /api/products/<id>/ — 单产品 CRUD【需管理员】"""
-    from agent.models import Products, Inventory
     from agent import reviews as review_helper
+    from agent.models import Inventory, Products
     try:
         p = Products.objects.get(id=product_id)
     except Products.DoesNotExist:
@@ -1182,7 +1184,7 @@ def inventory_list_api(request):
     L5 编排：额外带回 ProductCoordination 覆盖状态（暂停购买/客户提示），
     供 storefront 与营销 Agent 感知「多 Agent 协商后的临时状态」。
     """
-    from agent.models import Products, Inventory, ProductCoordination
+    from agent.models import Inventory, ProductCoordination
     try:
         coord_map = {c.product_id: c for c in ProductCoordination.objects.all()}
         items = []
@@ -1229,7 +1231,7 @@ def coordination_inbound_api(request):
 
     有界性：只写入 product_coordination 覆盖表；event 不在白名单一律 400。
     """
-    from agent.models import Products, ProductCoordination
+    from agent.models import ProductCoordination, Products
 
     try:
         body = json.loads(request.body or b"{}")
@@ -1353,6 +1355,18 @@ def inventory_update_api(request, product_id):
 # ══════════════════════════════════════════════════════════════
 # 留言/定制管理（P0 补齐：标记已读；P1 补齐：列表/删除）【全部需管理员】
 # ══════════════════════════════════════════════════════════════
+def _serialize_contact_message(msg) -> dict:
+    """留言序列化（列表与详情共用，含任务书六·5 的客服答复字段）。"""
+    return {
+        "id": msg.id, "name": msg.name, "phone": msg.phone, "email": msg.email,
+        "message": msg.message, "is_read": msg.is_read,
+        "reply": msg.reply or "",
+        "replied_at": (msg.replied_at.strftime("%Y-%m-%d %H:%M:%S")
+                       if msg.replied_at else None),
+        "created_at": msg.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
 @csrf_exempt
 @require_GET
 @staff_required
@@ -1375,11 +1389,7 @@ def contact_messages_list(request):
 
         total = qs.count()
         rows = qs[offset:offset + limit]
-        data = [{
-            "id": m.id, "name": m.name, "phone": m.phone, "email": m.email,
-            "message": m.message, "is_read": m.is_read,
-            "created_at": m.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-        } for m in rows]
+        data = [_serialize_contact_message(m) for m in rows]
         return JsonResponse({
             "success": True, "total": total,
             "has_more": (offset + len(rows)) < total,
@@ -1442,16 +1452,27 @@ def contact_message_api(request, message_id):
             body = json.loads(request.body or b"{}")
         except json.JSONDecodeError:
             body = {}
+        fields = []
         if "is_read" in body:
             msg.is_read = bool(body["is_read"])
-            msg.save(update_fields=["is_read"])
+            fields.append("is_read")
+        if "reply" in body:
+            # 任务书六·5：客服受理后给出答复。答复留痕 + 自动打时间戳；
+            # 传空串 = 撤回答复，同时清掉答复时间，避免残留错误时间。
+            reply = (body.get("reply") or "").strip()
+            if reply != (msg.reply or ""):
+                msg.reply = reply
+                msg.replied_at = timezone.now() if reply else None
+                fields += ["reply", "replied_at"]
+            if reply and not msg.is_read:
+                msg.is_read = True          # 有答复即视为已受理
+                fields.append("is_read")
+        fields = list(dict.fromkeys(fields))  # 去重，update_fields 不接受重复项
+        if fields:
+            msg.save(update_fields=fields)
     return JsonResponse({
         "success": True,
-        "message": {
-            "id": msg.id, "name": msg.name, "phone": msg.phone, "email": msg.email,
-            "message": msg.message, "is_read": msg.is_read,
-            "created_at": msg.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-        },
+        "message": _serialize_contact_message(msg),
     })
 
 

@@ -30,11 +30,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
-from django.conf import settings                            # noqa: E402
-from django.utils import timezone                            # noqa: E402
+from django.conf import settings  # noqa: E402
+from django.utils import timezone  # noqa: E402
 
 from agent.models import Inventory, Orders, OrderStatus, Products, Transaction  # noqa: E402
-from agent.services import OrderTransitionError, transition_order                # noqa: E402
+from agent.services import OrderTransitionError, transition_order  # noqa: E402
 
 RECEIVED = []
 PASS, FAIL = [], []

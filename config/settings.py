@@ -6,6 +6,7 @@ Day4: 接入 MySQL + DeepSeek API
 Day5: 安装 simpleui 后台框架 + 中文配置
 """
 
+import logging
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -166,9 +167,7 @@ USE_TZ = False
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
-# 必须带前导斜杠：Unfold 的 STYLES 会拼成相对路径，
-# 少了它就会在 /admin/ 下解析成 /admin/admin/xxx.css（404），后台自定义样式静默失效。
-STATIC_URL = '/static/'
+STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 
@@ -185,25 +184,8 @@ UNFOLD = {
     'SITE_URL': '/admin/dashboard/',    # 点击 logo 进入运营看板
     'SHOW_HISTORY': False,
 
-    # ── 色板 ─────────────────────────────────────────────────
-    # base：中性灰阶改为「绿调」——取 WorkBuddy 当前皮肤同一套取值
-    #   （#f6f8f5 底 / #e8f0e9 次级面 / #dce7dd 线 / #12261a 字），
-    #   让后台底色与品牌湖青同族，不再出现冷蓝灰与米黄纸两种杂色。
-    # primary：品牌「湖青」色阶，全站唯一强调色。
+    # 主色（primary）套用品牌「湖青」色阶，覆盖 Unfold 默认紫色
     'COLORS': {
-        'base': {
-            '50': '#f6f8f5',
-            '100': '#eef2ef',
-            '200': '#e2e9e3',
-            '300': '#cdd7cf',
-            '400': '#a3aea6',
-            '500': '#7a857d',
-            '600': '#5c6760',
-            '700': '#454f48',
-            '800': '#2e3733',
-            '900': '#1d2420',
-            '950': '#121714',
-        },
         'primary': {
             '50': '#EAF6F1',
             '100': '#D2E9E0',
@@ -269,16 +251,8 @@ UNFOLD = {
         ],
     },
 
-    # 注入后台样式：zy-tokens.css 是设计令牌（唯一色值出口，必须最先加载）
-    # ⚠️ Unfold 对这些条目是「原样输出 href」，不会套 {% static %}（见其
-    #    templates/unfold/layouts/skeleton.html）。因此必须自己拼上 STATIC_URL，
-    #    否则会变成相对路径 admin/xxx.css —— 在 /admin/ 下解析为 /admin/admin/xxx.css，
-    #    样式静默失效（历史上 zy-unfold.css 就一直没生效过）。
-    # 注：zy-admin-ops.css 仍由 agent/admin.py 通过 Media 在列表页局部加载。
-    'STYLES': [
-        f'{STATIC_URL}admin/zy-tokens.css',
-        f'{STATIC_URL}admin/zy-unfold.css',
-    ],
+    # 注入品牌补充样式（渔火橙强调、看板卡片等）
+    'STYLES': ['admin/zy-unfold.css'],
 }
 
 

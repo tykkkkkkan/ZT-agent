@@ -17,6 +17,7 @@ agent/me_views.py — 个人中心（C 端「我的」）接口
     PATCH  /api/me/profile/                        更新绑定手机号 / 收货人姓名
     POST   /api/me/password/                       修改密码（可选拉黑当前 refresh）
     GET    /api/me/orders/?status=&page=           我的订单（分页）
+    GET    /api/me/contact-messages/               我的留言与客服答复（只读）
     POST   /api/me/orders/<order_no>/confirm/      确认收货 → 已完成
     POST   /api/me/orders/<order_no>/return/       申请退货 → 退货申请中
     POST   /api/me/orders/<order_no>/cancel/       取消订单（仅未发货）
@@ -35,13 +36,10 @@ agent/me_views.py — 个人中心（C 端「我的」）接口
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Count, Q, Sum
-
 from rest_framework import views
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from agent.me_helpers import get_profile, my_orders_q, phone_taken_by_other
-from agent.models import OrderStatus, Orders, UserProfile
 from agent import pricing
 from agent.addresses import (
     MAX_PER_USER,
@@ -54,9 +52,14 @@ from agent.addresses import (
     set_default,
     update_address,
 )
+from agent.me_helpers import get_profile, my_orders_q, phone_taken_by_other
+from agent.models import Orders, OrderStatus, UserProfile
 from agent.reviews import ReviewError, create_review, serialize_review
 from agent.services import (
-    OrderTransitionError, mark_order_paid, transition_order, withdraw_return_request,
+    OrderTransitionError,
+    mark_order_paid,
+    transition_order,
+    withdraw_return_request,
 )
 from agent.user_wallet import (
     MAX_TOPUP,
@@ -305,6 +308,44 @@ class MeOrderListView(views.APIView):
             "has_more": start + PAGE_SIZE < total,
             "stats": _order_stats(request.user),
             "orders": [_serialize_order(o, with_actions=True) for o in rows],
+        })
+
+
+class MeContactMessageListView(views.APIView):
+    """/api/me/contact-messages/ —— 我的留言与客服答复（只读）
+
+    任务书六·5「在线留言反馈，客服受理后给出答复」的 C 端可见半环。
+    归属口径与订单一致 —— 以「登录账号绑定的手机号」匹配留言手机号
+    （复用 profile.phone，不新增鉴权面，也不开放按任意手机号反查）。
+    未绑定手机号时返回空列表并提示先绑定。
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from agent.models import ContactMessage
+
+        profile = get_profile(request.user)
+        phone = (profile.phone or '').strip()
+        if not phone:
+            return Response({
+                "success": True, "phone_bound": False, "count": 0, "messages": [],
+                "hint": "绑定手机号后，即可在个人中心查看该号码下的留言与客服答复",
+            })
+
+        rows = ContactMessage.objects.filter(phone=phone).order_by('-created_at')[:20]
+        return Response({
+            "success": True,
+            "phone_bound": True,
+            "count": len(rows),
+            "messages": [{
+                "id": m.id,
+                "message": m.message,
+                "reply": m.reply or '',
+                "replied_at": (m.replied_at.strftime('%Y-%m-%d %H:%M')
+                               if m.replied_at else None),
+                "created_at": m.created_at.strftime('%Y-%m-%d %H:%M'),
+            } for m in rows],
         })
 
 

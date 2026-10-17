@@ -35,22 +35,32 @@ sys.path.insert(0, BASE)
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
-from django.conf import settings                        # noqa: E402
-from django.contrib.admin.sites import AdminSite        # noqa: E402
-from django.contrib.auth import get_user_model          # noqa: E402
-from django.db import IntegrityError, connection        # noqa: E402
-from django.test import Client                          # noqa: E402
+from django.conf import settings  # noqa: E402
+from django.contrib.admin.sites import AdminSite  # noqa: E402
+from django.contrib.auth import get_user_model  # noqa: E402
+from django.db import IntegrityError, connection  # noqa: E402
+from django.test import Client  # noqa: E402
 
-from agent.admin import ReviewAdmin                     # noqa: E402
-from agent.models import (                              # noqa: E402
-    Inventory, Orders, OrderStatus, Products, Review, Transaction, Wallet,
+from agent.admin import ReviewAdmin  # noqa: E402
+from agent.models import (  # noqa: E402
+    Inventory,
+    Orders,
+    OrderStatus,
+    Products,
+    Review,
+    Transaction,
+    Wallet,
 )
-from agent.reviews import (                             # noqa: E402
-    create_review, mask_name, product_reviews, rating_summary,
-    reviewable_reason, serialize_review,
+from agent.reviews import (  # noqa: E402
+    create_review,
+    mask_name,
+    product_reviews,
+    rating_summary,
+    reviewable_reason,
+    serialize_review,
 )
-from agent.services import transition_order             # noqa: E402
-from agent.tools import query_product                   # noqa: E402
+from agent.services import transition_order  # noqa: E402
+from agent.tools import query_product  # noqa: E402
 from agent.views import _order_actions, _serialize_order  # noqa: E402
 
 PASS, FAIL = [], []

@@ -371,6 +371,11 @@ class ContactMessage(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='提交时间', db_index=True)
     # P1 修复：is_read 加索引（看板未读统计快）
     is_read = models.BooleanField(default=False, verbose_name='是否已读', db_index=True)
+    # 任务书六·5「客服受理后给出答复」：答复内容与答复时间由后台填写留痕。
+    # 答复通过留言时填写的电话/邮箱线下送达，因此不开放 C 端按手机号反查答复的接口
+    # （那会重蹈「知道手机号就能看他人信息」的越权问题）。
+    reply = models.TextField(blank=True, default='', verbose_name='客服答复')
+    replied_at = models.DateTimeField(null=True, blank=True, verbose_name='答复时间')
 
     class Meta:
         db_table = 'contact_messages'

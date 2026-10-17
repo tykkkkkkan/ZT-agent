@@ -8,16 +8,24 @@ agent/views_admin.py — 后台数据看板（运营概览）
 """
 from datetime import datetime, timedelta
 
-from django.db.models import Sum, F, Q, Count
-from django.db.models.functions import Coalesce, TruncDate
 from django.contrib import admin
 from django.contrib.admin.views.decorators import staff_member_required
+from django.db.models import Count, F, Q, Sum
+from django.db.models.functions import Coalesce, TruncDate
 from django.template.response import TemplateResponse
 
 from agent.models import (
-    Orders, ContactMessage, CustomRequest, Inventory, Conversations,
-    Wallet, Transaction, TxType, TxCategory, OrderStatus,
     PAID_ORDER_STATUSES,
+    ContactMessage,
+    Conversations,
+    CustomRequest,
+    Inventory,
+    Orders,
+    OrderStatus,
+    Transaction,
+    TxCategory,
+    TxType,
+    Wallet,
 )
 
 
@@ -138,11 +146,6 @@ def admin_dashboard(request):
     income_month = _safe(
         lambda: float(Transaction.objects.filter(
             tx_type=TxType.INCOME, created_at__date__gte=month_start,
-        ).aggregate(s=Sum("amount"))["s"] or 0)
-    )
-    expense_month = _safe(
-        lambda: float(Transaction.objects.filter(
-            tx_type=TxType.EXPENSE, created_at__date__gte=month_start,
         ).aggregate(s=Sum("amount"))["s"] or 0)
     )
     income_today = _safe(

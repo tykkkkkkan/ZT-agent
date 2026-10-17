@@ -57,7 +57,8 @@ class ChromaStore:
         ids = res.get("ids", [[]])[0]
         distances = res.get("distances", [[]])[0]
         results: List[Tuple[int, float]] = []
-        for id_str, dist in zip(ids, distances):
+        # ids 与 distances 由 Chroma 成对返回，长度必然一致
+        for id_str, dist in zip(ids, distances, strict=False):
             sim = 1.0 - float(dist)  # 余弦距离 → 相似度
             if sim > 0:
                 results.append((int(id_str), sim))

@@ -30,7 +30,7 @@ import os
 
 from django.db.models import Q
 
-from agent.models import OrderStatus, PaymentStatus, Products, Inventory, Orders
+from agent.models import Inventory, Orders, OrderStatus, PaymentStatus, Products
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,6 @@ def _remember_product(product) -> None:
 
 
 # ──────────────────────────────────────────────────────────────
-# ──────────────────────────────────────────────────────────────
 # 本轮对话「被工具查过」的订单 → 前端订单名片卡
 # ──────────────────────────────────────────────────────────────
 # 与商品名片同理用 ContextVar：多线程下模块级容器会把 A 客户的订单
@@ -120,12 +119,14 @@ def _remember_order(order) -> None:
         if any(item["order_no"] == order.order_no for item in bucket):
             return
         from agent.order_presenter import order_card
+
         bucket.append(order_card(order))
     except Exception:
         # 名片登记失败不影响问答主流程
         logger.exception("登记订单名片失败（order=%s）", getattr(order, "order_no", None))
 
 
+# ──────────────────────────────────────────────────────────────
 # 当前登录用户 → 工具侧可见（工具函数拿不到 request）
 # ──────────────────────────────────────────────────────────────
 # 视图层在调用 agent_stream 之前注入；`query_my_orders` 依赖它按归属规则
@@ -153,7 +154,7 @@ def _buyability(product, inv=None) -> dict:
     inv 仅为兼容调用方已有实例；库存与协调覆盖统一从 load_context 取，
     保证与前台 /api/products/ 读的是同一份数据。
     """
-    from agent.purchase_guard import load_context, evaluate
+    from agent.purchase_guard import evaluate, load_context
 
     inv_map, coord_map = load_context([product.id])
     return evaluate(product, inv_map.get(product.id), coord_map.get(product.id))
@@ -418,20 +419,50 @@ def get_order_status(order_no: str) -> str:
 # 按手机号查询订单（含发货情况）
 # ──────────────────────────────────────────────────────────────
 def query_orders_by_phone(phone: str) -> str:
-    """按手机号查询该号码名下的所有订单与发货状态。
+    """按手机号查询该客户**自己**的订单与发货状态（需登录，且只能查本人绑定的号码）。
 
     隐私保护：结果只返回订单号/商品/数量/金额/状态/时间，
     不返回客户姓名与完整手机号（与 query_orders 视图的脱敏口径一致）。
+
+    归属校验：与网页端 `/api/orders/query/` **同一口径**（复用 me_helpers.my_orders_q）。
+    改造前这里只按 `phone=手机号` 裸查，任何未登录的人知道一个手机号就能拿到
+    他人订单的订单号、商品、金额与物流单号 —— 属越权。现在：
+      · 未登录 → 拒绝并引导登录（或改用 get_order_status 按订单号查）；
+      · 已登录但未绑定手机号 → 引导先绑定；
+      · 手机号不是本人绑定的 → 拒绝，且不透露该号码是否存在订单。
 
     条数口径修正：原实现用 `len(截断后的列表)` 当"共 N 笔"，
     订单超过 20 笔时会谎报数量 —— 现在分开报「共 X 笔」与「本次列出 Y 笔」。
     """
     phone = (phone or "").strip()
-    if not phone:
-        return "请提供要查询的手机号。"
+
+    user = get_current_user()
+    if user is None:
+        return (
+            "为保护客户隐私，按手机号查订单需要先登录。\n"
+            "请引导客户登录后使用「我的订单」；也可以请客户提供订单号，"
+            "我用 get_order_status 帮他查。"
+        )
+
+    from agent.me_helpers import get_profile, my_orders_q
+
+    my_phone = (get_profile(user).phone or "").strip()
+    if not my_phone:
+        return (
+            "该客户账号还没有绑定手机号，无法按手机号查订单。\n"
+            "请引导客户到「个人中心」绑定下单时使用的手机号；"
+            "也可以请客户提供订单号，我用 get_order_status 直接查。"
+        )
+    if phone and phone != my_phone:
+        masked_own = my_phone[:3] + "****" + my_phone[-4:] if len(my_phone) >= 7 else my_phone
+        return (
+            f"只能查询当前账号绑定的手机号（{masked_own}）名下的订单，不能查询他人订单。\n"
+            "若客户要查另一个号码，请引导他到「个人中心」更换绑定手机号。"
+        )
+    phone = my_phone            # 客户未报号码时，默认查自己绑定的号码
 
     try:
-        qs = Orders.objects.filter(phone=phone).order_by("-created_at")
+        qs = Orders.objects.filter(my_orders_q(user)).order_by("-created_at", "-id")
         total = qs.count()
         orders = list(qs[:20])
     except Exception as e:
@@ -652,8 +683,9 @@ def search_knowledge(query: str) -> str:
         # 阈值随 RAG 后端自适应：
         # - tfidf：召回+BM25 混合分数尺度较大（实测"今天天气"误命中"春季钓法"约 1.29 分），用 1.5 过滤噪声
         # - embedding：语义余弦相似度仅 0~1，须用低阈值（0.2），否则永远过滤为空 → 知识库检索失效
+        # - hybrid：RRF 融合分仅与排名相关（top1 约 0.03 量级），无法用绝对阈值，故 0（不过滤）
         backend = os.getenv("RAG_BACKEND", "tfidf").strip().lower()
-        min_score = 0.2 if backend == "embedding" else 1.5
+        min_score = {"embedding": 0.2, "hybrid": 0.0}.get(backend, 1.5)
         hits = rag.retrieve(query, top_k=3, min_score=min_score)
     except Exception as e:
         return f"知识库检索出错：{e}"
@@ -735,7 +767,7 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "query_orders_by_phone",
-            "description": "按顾客下单时的手机号查询其名下所有订单，返回每笔订单的订单号、商品、数量、金额、订单状态（未发货/已发货/已完成/退货申请中/已取消/已退货）、物流信息与售后进展。当顾客想查自己的订单或发货情况但只记得手机号、不记得订单号时，优先用这个工具。若订单较多，返回里会同时说明总笔数与本次列出的笔数，回答时请用总笔数",
+            "description": "按顾客**本人绑定的手机号**查询其名下订单，返回订单号、商品、数量、金额、状态、物流与售后进展。**前提：顾客已登录，且该手机号就是账号绑定的号码**——未登录、未绑定号码或填了别人的号码都会被拒绝（出于隐私保护，与网页端查订单页同一口径）。被拒绝时**不要重复调用**，改为引导顾客登录/绑定手机号，或请顾客提供订单号改用 get_order_status。若订单较多，返回里会同时说明总笔数与本次列出的笔数，回答时请用总笔数",
             "parameters": {
                 "type": "object",
                 "properties": {

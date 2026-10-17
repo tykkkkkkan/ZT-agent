@@ -24,12 +24,17 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
-from django.contrib.auth import get_user_model          # noqa: E402
-from django.test import Client, override_settings       # noqa: E402
-from django.utils import timezone                       # noqa: E402
+from django.contrib.auth import get_user_model  # noqa: E402
+from django.test import Client, override_settings  # noqa: E402
+from django.utils import timezone  # noqa: E402
 
-from agent.models import (                              # noqa: E402
-    Inventory, Orders, OrderStatus, ProductCoordination, Products, UserProfile,
+from agent.models import (  # noqa: E402
+    Inventory,
+    Orders,
+    OrderStatus,
+    ProductCoordination,
+    Products,
+    UserProfile,
 )
 
 PASS, FAIL = [], []
@@ -298,6 +303,7 @@ def main():
         # ── ⑦ 成交额三处一致（个人中心 / 后台看板 / 统一常量） ──
         print("\n⑦ 成交额口径三处对齐")
         from django.db.models import Sum
+
         from agent.models import PAID_ORDER_STATUSES
 
         canonical = float(
@@ -319,7 +325,6 @@ def main():
               f"{mine.get('stats', {}).get('total_amount')} vs {user_canonical}")
 
         c_dash = Client()
-        settings_ok = True
         try:
             from django.test import override_settings as _ovs
             with _ovs(ALLOWED_HOSTS=["testserver"]):
@@ -336,7 +341,6 @@ def main():
                       f"¥{all_orders:,.0f}" not in h,
                       f"全部订单口径 ¥{all_orders:,.0f} 不应出现")
         except Exception as e:  # noqa: BLE001
-            settings_ok = False
             check("后台看板可访问", False, f"{type(e).__name__}: {e}")
 
     print("\n" + "=" * 64)

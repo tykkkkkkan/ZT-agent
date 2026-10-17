@@ -15,10 +15,11 @@
     tfidf        TF-IDF 稀疏向量 + 纯余弦召回（关闭 BM25 重排）
     tfidf+bm25   TF-IDF 稀疏向量 + 余弦召回 + BM25 重排（`rag.py` 代码默认，w=0.5）
     semantic     BAAI/bge-m3 语义向量 + Chroma 余弦（项目 `.env` 的实际配置）
+    hybrid       TF-IDF+BM25 与 BGE-M3 双路并行召回 + RRF 融合（`RAG_BACKEND=hybrid`）
 
 用法
     python scripts/eval_rag.py                     # TF-IDF 两组（零依赖、瞬时）
-    python scripts/eval_rag.py --with-semantic     # 追加语义组（需 EMBEDDING_API_KEY + 网络）
+    python scripts/eval_rag.py --with-semantic     # 追加语义组与 hybrid 融合组（需 EMBEDDING_API_KEY + 网络）
     python scripts/eval_rag.py --sweep             # 附 BM25 重排权重敏感性扫描
     python scripts/eval_rag.py --out docs/rag_eval_results.json
     python scripts/eval_rag.py --build-chart docs/rag_eval_chart.png
@@ -40,9 +41,9 @@ try:                                   # 读取 .env（EMBEDDING_API_KEY 等）
 except ImportError:
     pass
 
-import agent.rag as _rag                                  # noqa: E402
-from agent.rag import RAGEngine                            # noqa: E402
-from agent.knowledge_data import KNOWLEDGE_BASE            # noqa: E402
+import agent.rag as _rag  # noqa: E402
+from agent.knowledge_data import KNOWLEDGE_BASE  # noqa: E402
+from agent.rag import RAGEngine  # noqa: E402
 
 DOC_K = 5          # 评估取前 k 个不同条目
 K_ALL = 500        # 单次检索取回全部候选，再按条目去重
@@ -110,15 +111,19 @@ def build_docs():
 
 def make_engine(arm: str) -> RAGEngine:
     """按实验组构造引擎。"""
-    if arm == "semantic":
+    if arm in ("semantic", "hybrid"):
         from agent.embeddings.openai_embedder import OpenaiEmbedder
         from agent.vectorstores.chroma_store import ChromaStore
         # 用临时目录，避免污染项目 chroma_data/
         tmp = tempfile.mkdtemp(prefix="zt_rag_eval_")
-        engine = RAGEngine(
+        semantic = RAGEngine(
             embedder=OpenaiEmbedder(),
             store_factory=lambda: ChromaStore(collection_name="zt_eval", persist_dir=tmp),
         )
+        if arm == "hybrid":
+            engine = _rag.HybridRAGEngine(semantic_engine=semantic)
+        else:
+            engine = semantic
     else:
         engine = RAGEngine()
     engine.ingest(build_docs())
@@ -299,7 +304,16 @@ def main():
             _print_table(results)
         except Exception as ex:
             print("  语义组失败：%s: %s" % (type(ex).__name__, ex))
-            print("  （不影响前两组结果；请检查 EMBEDDING_API_KEY 与网络）")
+            print("  （不影响其他组结果；请检查 EMBEDDING_API_KEY 与网络）")
+
+        print("\n[实验组] hybrid 双路融合（TF-IDF+BM25 × BGE-M3 并行召回 + RRF 融合）")
+        try:
+            r = evaluate(make_engine("hybrid"), "hybrid 双路融合", verbose=True)
+            results.append(r)
+            _print_table(results)
+        except Exception as ex:
+            print("  hybrid 组失败：%s: %s" % (type(ex).__name__, ex))
+            print("  （不影响其他组结果；请检查 EMBEDDING_API_KEY 与网络）")
 
     payload = {"knowledge_entries": len(KNOWLEDGE_BASE), "queries": len(QUERIES),
                "doc_level_top_k": DOC_K, "results": results}

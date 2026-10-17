@@ -12,8 +12,10 @@
 import contextvars
 import logging
 import os
+import threading
 import time
 import uuid
+from collections import defaultdict
 
 from django.conf import settings
 from django.core.cache import cache
@@ -130,9 +132,6 @@ class RateLimitMiddleware:
 # 进程内计数器：总请求数 / 错误数 / 慢请求数，配合 /metrics 端点暴露。
 # 多进程（多 worker）部署时需外部聚合（如 Prometheus），此处面向单进程调试/健康观察。
 # ════════════════════════════════════════════════════════════════
-from collections import defaultdict
-import threading
-
 _metrics_lock = threading.Lock()
 _metrics = {
     "total": 0,

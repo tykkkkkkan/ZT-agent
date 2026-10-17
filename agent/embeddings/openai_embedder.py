@@ -4,7 +4,7 @@
 - 实现与 TfidfEmbedder 相同的接口（fit / transform / cosine），
   上层 RAGEngine 无需改动即可切换到语义向量。
 - 通过环境变量配置：
-    EMBEDDING_MODEL     默认 text-embedding-3-small（OpenAI 兼容均可，如 BAAI/bge-m3）
+    EMBEDDING_MODEL     默认 BAAI/bge-m3（任务书点名模型；任何 OpenAI 兼容模型均可覆盖）
     EMBEDDING_BASE_URL  默认 https://api.openai.com/v1（硅基流动/阿里云等兼容端点可覆盖）
     EMBEDDING_API_KEY   embedding 服务的 key
 - 带内存缓存：同一文本只调用一次 API（ingest + 检索可复用）。
@@ -27,7 +27,7 @@ class OpenaiEmbedder:
         base_url: Optional[str] = None,
         api_key: Optional[str] = None,
     ) -> None:
-        self.model = model or os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+        self.model = model or os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
         self.base_url = base_url or os.getenv("EMBEDDING_BASE_URL", "https://api.openai.com/v1")
         self.api_key = api_key or os.getenv("EMBEDDING_API_KEY", "")
         self._cache: Dict[str, List[float]] = {}
@@ -65,7 +65,9 @@ class OpenaiEmbedder:
             na = math.sqrt(sum(v * v for v in a.values()))
             nb = math.sqrt(sum(v * v for v in b.values()))
         else:
-            dot = sum(x * y for x, y in zip(a, b))
+            # strict=False：同一模型产出的向量维度必然一致；此处显式声明沿用
+            # 「按较短序列对齐」的既有行为，避免改变运行语义
+            dot = sum(x * y for x, y in zip(a, b, strict=False))
             na = math.sqrt(sum(x * x for x in a))
             nb = math.sqrt(sum(x * x for x in b))
         if na == 0 or nb == 0:

@@ -32,10 +32,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
-from django.contrib.auth import get_user_model                 # noqa: E402
-from django.test import Client, override_settings              # noqa: E402
+from django.contrib.auth import get_user_model  # noqa: E402
+from django.test import Client, override_settings  # noqa: E402
 
-from agent.models import Orders, OrderStatus, UserProfile      # noqa: E402
+from agent.models import Orders, OrderStatus, UserProfile  # noqa: E402
 
 PASS, FAIL = [], []
 

@@ -25,14 +25,18 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
-from django.contrib.auth import get_user_model                # noqa: E402
-from django.test import Client, override_settings             # noqa: E402
-from django.urls import reverse                               # noqa: E402
+from django.contrib.auth import get_user_model  # noqa: E402
+from django.test import Client, override_settings  # noqa: E402
+from django.urls import reverse  # noqa: E402
 
-from agent.models import (                                    # noqa: E402
-    Inventory, Orders, OrderStatus, ProductCoordination, Products,
+from agent.models import (  # noqa: E402
+    Inventory,
+    Orders,
+    OrderStatus,
+    ProductCoordination,
+    Products,
 )
-from agent.purchase_guard import evaluate                     # noqa: E402
+from agent.purchase_guard import evaluate  # noqa: E402
 from agent.services import adjust_inventory_stock, auto_resume_stockout_pause  # noqa: E402
 
 PASS, FAIL = [], []

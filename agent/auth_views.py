@@ -15,12 +15,11 @@ from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
-
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status, views
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-from drf_spectacular.utils import extend_schema, inline_serializer
 
 User = get_user_model()
 

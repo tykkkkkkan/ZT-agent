@@ -110,8 +110,8 @@ class Command(BaseCommand):
         if not apply:
             self.stdout.write('')
             self.stdout.write(self.style.NOTICE(
-                f'预演结束，未改动任何数据。确认无误后执行：\n'
-                f'  python manage.py fix_order_owner --apply'
+                '预演结束，未改动任何数据。确认无误后执行：\n'
+                '  python manage.py fix_order_owner --apply'
             ))
             return
 

@@ -23,10 +23,10 @@ from datetime import datetime
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django.db.models import Sum, Q
+from django.db.models import Q, Sum
 from django.utils import timezone
 
-from agent.models import Orders, Transaction, Wallet, TxType, TxCategory, OrderStatus
+from agent.models import Orders, OrderStatus, Transaction, TxCategory, TxType, Wallet
 from agent.services import _record_wallet_tx
 
 
