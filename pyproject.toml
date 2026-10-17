@@ -1,0 +1,42 @@
+# ZT-agent 工程工具配置（ruff / pytest）
+#
+# 说明：本文件只承载「开发工具」配置，不作为打包元数据使用。
+# 运行时依赖的版本一律以 requirements.txt 为准，此处不重复声明，避免两处版本漂移。
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+exclude = [
+    ".venv", ".git", "__pycache__",
+    "agent/migrations",
+    "staticfiles", "chroma_data", "logs", "outputs",
+    "frontend", "templates", "locale", "design-system",
+]
+
+[tool.ruff.lint]
+# 只启用「正确性 + 可维护性」规则，保证报出来的每条都值得改。
+# 刻意不启用 UP 系列：本仓库既有代码统一使用 typing.Dict/Optional 与 %-格式化对齐表格，
+# 全量现代化改造是一个独立的大 diff 任务，需单独确认后再做（现状约 100+ 处）。
+select = ["E", "F", "W", "I", "B"]
+ignore = [
+    "E501",  # 行宽交给 line-length 控制，长中文注释与 URL 不强制折行
+    "B008",  # Django 惯例：视图函数签名中出现 Query/装饰器调用属正常写法
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 迁移文件由 makemigrations 生成，不参与风格检查
+"agent/migrations/*" = ["E", "F"]
+# 根目录与 scripts 下多为带 __main__ 的独立脚本，导入顺序与未使用导入不作要求
+# （这些脚本按需 import，sentinel 语义优先于风格整洁）
+"test_*.py" = ["E402", "F401"]
+"scripts/*" = ["E402", "F401"]
+"agent/tests.py" = ["F401"]
+# urls.py 必须先执行 load_dotenv() 再导入会读取环境变量的模块，
+# 因此这些导入无法全部置于文件顶部、也无法按字母序排列 —— 属有意为之。
+"config/urls.py" = ["E402", "I001"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q --no-header"

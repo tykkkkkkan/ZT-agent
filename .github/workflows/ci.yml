@@ -32,11 +32,11 @@ jobs:
           python -m compileall -q agent config 2>/dev/null || python -m py_compile $(git ls-files '*.py')
 
       - name: RAG engine unit tests (pure, no DB)
-        run: python test_rag.py
+        run: python tests/test_rag.py
 
       - name: Django system check
         run: python manage.py check
 
       - name: Module smoke tests (best-effort)
-        run: python test_chat.py
+        run: python tests/test_chat.py
         continue-on-error: true

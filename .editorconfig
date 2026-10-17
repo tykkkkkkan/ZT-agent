@@ -1,0 +1,26 @@
+# ZT-agent 编辑器统一配置（VS Code / PyCharm / 其他编辑器均会读取）
+#
+# 目的：让不同工具产出的代码在缩进、字符集、行尾上保持一致，减少无意义的 diff。
+# 注意：本文件只约束「编辑器行为」，不会自动改写已有文件。
+
+root = true
+
+[*]
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+# Python 侧为 4 空格（见下方针对 *.py 的显式声明）
+indent_size = 4
+
+[*.{html,css,js,json,yml,yaml,toml,md}]
+# 前端与配置文件沿用项目现有 2 空格缩进
+indent_size = 2
+
+[*.md]
+# Markdown 行尾双空格表示换行，不做裁剪
+trim_trailing_whitespace = false
+
+[*.{bat,cmd}]
+# Windows 批处理脚本必须保持 CRLF，否则可能无法执行
+end_of_line = crlf

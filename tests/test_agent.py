@@ -49,7 +49,9 @@ if not API_KEY.isascii():
     )
 
 # ===== 2. 读取 system prompt =====
-PROMPT_PATH = os.path.join(os.path.dirname(__file__), "prompts", "system_prompt.md")
+PROMPT_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prompts", "system_prompt.md"
+)
 with open(PROMPT_PATH, "r", encoding="utf-8") as f:
     system_prompt = f.read()
 

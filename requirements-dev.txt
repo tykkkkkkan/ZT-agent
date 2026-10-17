@@ -1,0 +1,14 @@
+# 中渔天下 ZT-agent 开发/质量工具依赖
+#
+# 安装：pip install -r requirements-dev.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+# 说明：仅本地开发与 CI 使用，不参与 Docker 构建，也不进入生产镜像。
+#      运行时依赖一律以 requirements.txt 为准，本文件不覆盖其中任何版本号。
+
+# 单元测试框架
+pytest>=8.0
+
+# 代码检查与格式化（配置见 pyproject.toml 的 [tool.ruff]）
+ruff>=0.6
+
+# 覆盖率（可选，需要时再装）
+# pytest-cov>=5.0

@@ -5,6 +5,9 @@
 import os
 import sys
 
+# 本文件在 scripts/ 下，把项目根加进 sys.path 才能 import config / agent
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # 设置 Django settings
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 

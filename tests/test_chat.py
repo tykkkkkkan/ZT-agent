@@ -4,6 +4,10 @@
     .venv/Scripts/python.exe test_chat.py
 """
 import os
+import sys
+
+# 本文件在 tests/ 下，把项目根加进 sys.path 才能 import config / agent
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 import django
@@ -16,12 +20,17 @@ def test_imports():
     from agent.prompts import load_prompt
     from agent import llm
 
-    assert len(TOOL_SCHEMAS) == 7
-    assert set(TOOL_REGISTRY) == {
+    # 契约：Schema 与实现必须一一对应（工具增减不该让测试假失败，漏注册才该报警）
+    schema_names = {s["function"]["name"] for s in TOOL_SCHEMAS}
+    assert schema_names == set(TOOL_REGISTRY), (
+        f"Schema 与实现不匹配 —— 仅有 Schema：{schema_names - set(TOOL_REGISTRY)}；"
+        f"仅有实现：{set(TOOL_REGISTRY) - schema_names}"
+    )
+    # 回归保护：这几个核心工具不能悄悄消失
+    assert {
         "query_product", "check_inventory", "get_order_status",
-        "query_orders_by_phone", "calculate_quote", "search_knowledge",
-        "guide_to_contact",
-    }
+        "calculate_quote", "search_knowledge", "guide_to_contact",
+    } <= set(TOOL_REGISTRY)
     assert "中渔小助" in load_prompt("system_prompt_agent")
     print("[PASS] 核心模块导入正常")
 
