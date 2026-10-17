@@ -108,15 +108,17 @@
                 </div>
                 <div class="relative hidden lg:block">
                     <div class="absolute -top-4 -right-4 w-full h-full bg-brand-200 rounded-2xl"></div>
-                    <img src="assets/images/order-warehouse.png"
-                         alt="仓储打包发货"
-                         class="relative w-full h-80 object-cover rounded-2xl shadow-2xl" fetchpriority="high" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
+                    <div class="relative media-ratio media-ratio--wide shadow-2xl">
+                        <img src="assets/images/order-warehouse.webp"
+                             alt="仓储打包发货"
+                             class="w-full h-full object-cover" fetchpriority="high" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
+                    </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <section class="py-12 lg:py-16">
+    <section class="section-lake py-12 lg:py-16">
         <div class="max-w-5xl mx-auto px-6">
             <div class="grid lg:grid-cols-5 gap-8">
                 <!-- 左侧：下单说明 -->
@@ -167,7 +169,7 @@
                 <!-- 右侧：表单 / 成功卡 -->
                 <div class="lg:col-span-3">
                     <!-- 提交前的表单 -->
-                    <div v-if="!submitted" class="bg-white rounded-2xl border border-brand-100 shadow-lg shadow-brand-500/5 p-6 lg:p-8">
+                    <div v-if="!submitted" class="card-float bg-white rounded-2xl shadow-lg shadow-brand-500/5 p-6 lg:p-8">
                         <h2 class="text-xl font-bold text-ink-900 mb-1">填写订单信息</h2>
                         <p class="text-sm text-ink-500 mb-6">* 必填项</p>
 
@@ -336,7 +338,7 @@
                     </div>
 
                     <!-- 提交后的成功卡片 -->
-                    <div v-else class="card-enter bg-white rounded-2xl border-2 border-brand-200 shadow-2xl shadow-brand-500/10 p-8 text-center">
+                    <div v-else class="card-enter card-float bg-white rounded-2xl shadow-2xl shadow-brand-500/10 p-8 text-center">
                         <div class="w-16 h-16 mx-auto bg-gradient-to-br from-brand-500 to-lake-600 rounded-2xl flex items-center justify-center text-3xl mb-5 shadow-lg shadow-brand-500/30">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>
                         </div>

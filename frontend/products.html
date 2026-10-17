@@ -4,22 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>产品中心 - 中渔天下</title>
-    <meta name="description" content="浏览中渔天下全系钓鱼饵料产品，查看规格、适用鱼种与批发价格，支持在线咨询与批量订货。">
-    <meta property="og:type" content="website">
-    <meta property="og:site_name" content="中渔天下">
-    <meta property="og:title" content="产品中心 - 中渔天下">
-    <meta property="og:description" content="浏览中渔天下全系钓鱼饵料产品，查看规格、适用鱼种与批发价格，支持在线咨询与批量订货。">
-    <meta property="og:locale" content="zh_CN">
-    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- 字体加载：Noto Sans SC(正文)/Noto Serif SC(标题) 用「可变字体区间」写法 ——
-         同一分片文件即可覆盖 400-900 全部字重，比逐字重列举少约 2/3 的 CSS，字体下载量不变。
-         preload 提前以高优先级发起字体 CSS 请求，缩短首屏文字等待（LCP）。 -->
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap">
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/theme.css">
-    <link rel="stylesheet" href="assets/tailwind.build.css">
+    <script src="assets/vendor/tailwindcdn.js"></script>
+    <script src="assets/tailwind-config.js"></script>
     
 <script src="auth.js"></script>
 </head>
@@ -121,9 +111,9 @@
                 </div>
                 <div class="relative hidden lg:block">
                     <div class="absolute -top-4 -right-4 w-full h-full bg-brand-200 rounded-2xl"></div>
-                    <img src="assets/images/products-hero.png"
+                    <img src="assets/images/products-hero.webp"
                          alt="产品陈列"
-                         class="relative w-full h-80 object-cover rounded-2xl shadow-2xl" fetchpriority="high" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
+                         class="relative w-full h-80 object-cover rounded-2xl shadow-2xl" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
                 </div>
             </div>
         </div>
@@ -189,13 +179,22 @@
                 <!-- 渲染的是**筛选后**的列表；主推角标取 p.is_main（加载时按原始顺序标记），
                      否则"筛完只剩一条"时它会被误标成主推。 -->
                 <div v-for="p in filteredProducts" :key="p.id"
-                     class="product-card bg-white rounded-2xl border border-stone-200 overflow-hidden">
-                    <div class="relative h-56 overflow-hidden bg-gradient-to-br from-stone-50 to-brand-50/40 flex items-center justify-center">
-                        <img :src="productImage(p.name)"
+                     class="product-card card-float bg-white overflow-hidden">
+                    <!-- rounded-none：图容器紧贴卡片顶部，若自带圆角会在卡片的圆角外侧露出白边，
+                         交给卡片自身的 overflow-hidden 统一裁剪 -->
+                    <div class="relative media-ratio media-ratio--contain rounded-none">
+                        <!-- 有实拍图才渲染 img；无图或加载失败时落到「设计化占位」版式，
+                             避免同一张通用占位图在产品列表里反复出现（廉价感的主要来源）。 -->
+                        <img v-if="hasProductImage(p.name) && !p.imgFailed"
+                             :src="productImage(p.name)"
                              :alt="p.name"
-                             class="w-full h-full object-contain p-4"
+                             class="w-full h-full"
                              loading="lazy"
                              @error="onImgError($event, p)">
+                        <div v-else class="media-placeholder">
+                            <span class="ph-name">{{ p.name }}</span>
+                            <span class="ph-meta">{{ p.category || '中渔天下' }}</span>
+                        </div>
                         <div v-if="p.is_main" class="absolute top-3 left-3 px-2.5 py-1 bg-sunset-700 text-white text-xs font-semibold rounded-full shadow z-10">主推</div>
                         <!-- 库存/可售状态：直接取后端统一判定，与下单页、后台一致 -->
                         <div v-if="p.in_stock" class="absolute top-3 right-3 px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded-full z-10">
@@ -367,7 +366,7 @@
             </div>
         </div>
         <div class="mt-12 pt-8 border-t border-slate-800 text-center text-sm text-stone-500">
-            © 2026 中渔天下 · 专注好饵料，助你连竿爆护 <span class="text-stone-600 mx-1">·</span><a href="/admin/" target="_blank" class="text-stone-400 hover:text-white transition-colors underline underline-offset-2">管理员后台</a>
+            © 2026 中渔天下 · 专注好饵料，助你连竿爆护 <span class="text-stone-600 mx-1">·</span><a href="/admin/" target="_blank" class="text-stone-500 hover:text-stone-300 transition-colors">管理员后台</a>
         </div>
     </div>
 </footer>
@@ -383,28 +382,35 @@
 
     // 产品图本地映射（按产品名返回本地包装图）
     const PRODUCT_IMAGES = {
-        '红虫颗粒': 'assets/images/product-hongchong.png',
-        '九一八': 'assets/images/product-jiuyiba.png',
-        '螺鲤3号': 'assets/images/product-luoli.png',
-        '蓝鲫X5': 'assets/images/product-lanji.png',
-        '速攻2号': 'assets/images/product-sugong.png',
+        '红虫颗粒': 'assets/images/product-hongchong.webp',
+        '九一八': 'assets/images/product-jiuyiba.webp',
+        '螺鲤3号': 'assets/images/product-luoli.webp',
+        '蓝鲫X5': 'assets/images/product-lanji.webp',
+        '速攻2号': 'assets/images/product-sugong.webp',
     };
     const FALLBACK_IMG = 'assets/images/fallback.svg';
 
-    // 为任意产品名返回对应图（未知产品 → 通用饵料袋）
-    function productImage(name) {
-        if (!name) return FALLBACK_IMG;
-        // 精确匹配
+    // 名字 → 图片的唯一匹配出口：精确匹配优先，其次模糊包含。
+    // 返回空串表示"没有对应实拍图"，由调用方决定是走通用图还是设计化占位。
+    function matchProductImage(name) {
+        if (!name) return '';
         if (PRODUCT_IMAGES[name]) return PRODUCT_IMAGES[name];
-        // 模糊匹配
         for (const key of Object.keys(PRODUCT_IMAGES)) {
             if (name.includes(key)) return PRODUCT_IMAGES[key];
         }
-        // 通用产品图
-        return FALLBACK_IMG;
+        return '';
     }
+    function productImage(name) {
+        return matchProductImage(name) || FALLBACK_IMG;
+    }
+    // 供模板判断该走 <img> 还是设计化占位
+    function hasProductImage(name) {
+        return !!matchProductImage(name);
+    }
+    // 加载失败：标记该产品改走占位版式（比统一换成同一张通用图更体面）
     function onImgError(e, p) {
-        e.target.src = FALLBACK_IMG;
+        if (p) p.imgFailed = true;
+        else e.target.src = FALLBACK_IMG;
     }
 
     const fishSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg>';
@@ -567,7 +573,8 @@
             }
 
             return {
-                products, loading, error, loadProducts, productImage, onImgError,
+                products, loading, error, loadProducts,
+                productImage, hasProductImage, onImgError,
                 // 搜索筛选（任务书二·4）
                 kw, catFilter, fishFilter, filtering, filteredProducts,
                 categoryOptions, fishOptions, clearFilters,

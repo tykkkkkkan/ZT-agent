@@ -4,22 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>注册 - 中渔天下</title>
-    <meta name="description" content="注册中渔天下账号，开启饵料批发、在线下单与定制服务。">
-    <meta property="og:type" content="website">
-    <meta property="og:site_name" content="中渔天下">
-    <meta property="og:title" content="注册 - 中渔天下">
-    <meta property="og:description" content="注册中渔天下账号，开启饵料批发、在线下单与定制服务。">
-    <meta property="og:locale" content="zh_CN">
-    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- 字体加载：Noto Sans SC(正文)/Noto Serif SC(标题) 用「可变字体区间」写法 ——
-         同一分片文件即可覆盖 400-900 全部字重，比逐字重列举少约 2/3 的 CSS，字体下载量不变。
-         preload 提前以高优先级发起字体 CSS 请求，缩短首屏文字等待（LCP）。 -->
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap">
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/theme.css">
-    <link rel="stylesheet" href="assets/tailwind.build.css">
+    <script src="assets/vendor/tailwindcdn.js"></script>
+    <script src="assets/tailwind-config.js"></script>
     <script src="auth.js"></script>
 </head>
 <body class="bg-stone-50 font-sans text-ink-800 antialiased">
@@ -36,9 +26,9 @@
         </div>
     </nav>
 
-    <main id="main" tabindex="-1" class="min-h-[calc(100vh-4rem)] flex items-center justify-center px-6 py-12">
+    <main id="main" tabindex="-1" class="section-lake min-h-[calc(100vh-4rem)] flex items-center justify-center px-6 py-12">
         <div class="w-full max-w-md">
-            <div class="bg-white rounded-2xl border border-brand-100 shadow-xl shadow-brand-500/5 p-8">
+            <div class="card-float bg-white rounded-2xl p-8">
                 <div class="text-center mb-8">
                     <div class="w-14 h-14 mx-auto bg-gradient-to-br from-brand-500 to-lake-600 rounded-2xl flex items-center justify-center text-white mb-4 shadow-lg shadow-brand-500/30">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.8em;height:1.8em" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>

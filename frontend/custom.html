@@ -4,22 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>定制服务 - 中渔天下</title>
-    <meta name="description" content="中渔天下 OEM/ODM 定制服务：按需定制专属饵料配方、包装与规格，为品牌经销商提供从打样到量产的一站式方案。">
-    <meta property="og:type" content="website">
-    <meta property="og:site_name" content="中渔天下">
-    <meta property="og:title" content="定制服务 - 中渔天下">
-    <meta property="og:description" content="中渔天下 OEM/ODM 定制服务：按需定制专属饵料配方、包装与规格，为品牌经销商提供从打样到量产的一站式方案。">
-    <meta property="og:locale" content="zh_CN">
-    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- 字体加载：Noto Sans SC(正文)/Noto Serif SC(标题) 用「可变字体区间」写法 ——
-         同一分片文件即可覆盖 400-900 全部字重，比逐字重列举少约 2/3 的 CSS，字体下载量不变。
-         preload 提前以高优先级发起字体 CSS 请求，缩短首屏文字等待（LCP）。 -->
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap">
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/theme.css">
-    <link rel="stylesheet" href="assets/tailwind.build.css">
+    <script src="assets/vendor/tailwindcdn.js"></script>
+    <script src="assets/tailwind-config.js"></script>
     
 <script src="auth.js"></script>
 </head>
@@ -107,9 +97,11 @@
                 </div>
                 <div class="relative hidden lg:block">
                     <div class="absolute -top-4 -left-4 w-full h-full bg-brand-200 rounded-2xl"></div>
-                    <img src="assets/images/factory-lab.png"
-                         alt="配方研发实验室"
-                         class="relative w-full h-80 object-cover rounded-2xl shadow-2xl" fetchpriority="high" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
+                    <div class="relative media-ratio media-ratio--wide rounded-2xl shadow-2xl">
+                        <img src="assets/images/factory-lab.webp"
+                             alt="配方研发实验室"
+                             class="w-full h-full" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
+                    </div>
                 </div>
             </div>
         </div>
@@ -119,22 +111,22 @@
     <section class="py-8">
         <div class="max-w-7xl mx-auto px-6">
             <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="bg-white border border-brand-100 rounded-2xl p-5 text-center">
+                <div class="card-float bg-white rounded-2xl p-5 text-center">
                     <div class="w-12 h-12 mx-auto bg-gradient-to-br from-brand-500 to-lake-600 text-white rounded-xl flex items-center justify-center text-lg mb-2">1</div>
                     <h4 class="font-bold text-ink-800">提交需求</h4>
                     <p class="text-xs text-ink-500 mt-1">填写下方表单</p>
                 </div>
-                <div class="bg-white border border-brand-100 rounded-2xl p-5 text-center">
+                <div class="card-float bg-white rounded-2xl p-5 text-center">
                     <div class="w-12 h-12 mx-auto bg-gradient-to-br from-brand-500 to-lake-600 text-white rounded-xl flex items-center justify-center text-lg mb-2">2</div>
                     <h4 class="font-bold text-ink-800">方案沟通</h4>
                     <p class="text-xs text-ink-500 mt-1">2 小时内对接</p>
                 </div>
-                <div class="bg-white border border-brand-100 rounded-2xl p-5 text-center">
+                <div class="card-float bg-white rounded-2xl p-5 text-center">
                     <div class="w-12 h-12 mx-auto bg-gradient-to-br from-brand-500 to-lake-600 text-white rounded-xl flex items-center justify-center text-lg mb-2">3</div>
                     <h4 class="font-bold text-ink-800">打样确认</h4>
                     <p class="text-xs text-ink-500 mt-1">小批量试样</p>
                 </div>
-                <div class="bg-white border border-brand-100 rounded-2xl p-5 text-center">
+                <div class="card-float bg-white rounded-2xl p-5 text-center">
                     <div class="w-12 h-12 mx-auto bg-gradient-to-br from-brand-500 to-lake-600 text-white rounded-xl flex items-center justify-center text-lg mb-2">4</div>
                     <h4 class="font-bold text-ink-800">批量交付</h4>
                     <p class="text-xs text-ink-500 mt-1">合同生产发货</p>
@@ -144,9 +136,9 @@
     </section>
 
     <!-- 表单 -->
-    <section class="pb-20">
+    <section class="section-lake pb-20">
         <div class="max-w-2xl mx-auto px-6">
-            <div class="bg-white rounded-2xl border border-brand-100 shadow-lg shadow-brand-500/5 p-6 lg:p-8">
+            <div class="card-float bg-white rounded-2xl p-6 lg:p-8">
                 <h2 class="text-xl font-bold text-ink-900 mb-1">填写您的定制需求</h2>
                 <p class="text-sm text-ink-500 mb-6">* 必填项。我们会严格保密您的配方信息</p>
 
@@ -227,7 +219,7 @@
             </div>
         </div>
         <div class="mt-12 pt-8 border-t border-slate-800 text-center text-sm text-stone-400">
-            © 2026 中渔天下 · 专注好饵料，助你连竿爆护 <span class="text-stone-600 mx-1">·</span><a href="/admin/" target="_blank" class="text-stone-400 hover:text-white transition-colors underline underline-offset-2">管理员后台</a>
+            © 2026 中渔天下 · 专注好饵料，助你连竿爆护 <span class="text-stone-600 mx-1">·</span><a href="/admin/" target="_blank" class="text-stone-500 hover:text-stone-300 transition-colors">管理员后台</a>
         </div>
     </div>
 </footer>

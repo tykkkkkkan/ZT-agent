@@ -6,8 +6,51 @@
  *   - session_id 持久化（localStorage）
  *   - 历史消息恢复：进入页面时从后端 /api/agent/history/<sid>/ 拉取，跳转后不丢消息
  *   - 新对话：一键重置会话
+ *   - 语音输入（assets/voice-input.js）+ 输入框随内容自增高
  */
 const { createApp, ref, nextTick, onMounted } = Vue;
+
+// ══════════════════════════════════════════════════════════════
+// ZYAutoGrow —— 输入框随内容自增高（页面内聊天与悬浮弹窗共用）
+// ══════════════════════════════════════════════════════════════
+/**
+ * textarea 的高度不能靠 CSS 自适应（内容不会撑开它），只能量 scrollHeight。
+ * 关键是**先归零再量**：不归零的话，高度只会单调增长，永远缩不回去。
+ *
+ * 到上限时加 .is-overflowing → 转内部滚动（CSS 里未到上限时隐藏滚动条），
+ * 这样长语音能完整看到、又不会把整个聊天区挤没。
+ */
+(function () {
+    var MAX = 152;                 // 与 theme.css 的 max-height: 9.5rem 保持一致
+
+    function sync(el) {
+        if (!el) return 0;
+        el.style.height = 'auto';
+        var h = Math.min(el.scrollHeight || 0, MAX);
+        el.style.height = h + 'px';
+        // 归位：内容变短后移除溢出标记，滚动条随之隐藏
+        if (el.scrollHeight > MAX + 1) {
+            el.classList.add('is-overflowing');
+        } else {
+            el.classList.remove('is-overflowing');
+        }
+        return h;
+    }
+
+    /**
+     * 绑定「随内容增高」。用 input 事件而非 keyup：
+     * 语音识别是**直接改 value、不产生按键**，只监听 keyup 会漏掉语音输入。
+     */
+    function bind(el) {
+        if (!el) return function () {};
+        var onInput = function () { sync(el); };
+        el.addEventListener('input', onInput);
+        sync(el);
+        return function unbind() { el.removeEventListener('input', onInput); };
+    }
+
+    window.ZYAutoGrow = { sync: sync, bind: bind, MAX: MAX };
+})();
 
 // ══════════════════════════════════════════════════════════════
 // 顶层纯函数（不依赖组件状态）—— 便于 scripts/verify_order_card.js 直接断言
@@ -169,6 +212,91 @@ createApp({
         const payingOrders = ref({});
         const payErrors = ref({});
 
+        // ========== 语音输入 ==========
+        // 用浏览器原生 Web Speech API（见 assets/voice-input.js）。
+        // 关键约束：**识别结果只回填输入框，不自动发送** —— 这个 Agent 能真实
+        // 下单 / 查单 / 发起退货，语音把商品名听错就自动发出去等于让用户为一次
+        // 误识别背单。所以发送与否永远由用户自己点。
+        const voiceSupported = ref(typeof window.ZYVoice !== 'undefined' && ZYVoice.isSupported());
+        const voiceUnsupportedReason = ref(
+            (typeof window.ZYVoice !== 'undefined' && ZYVoice.unsupportedReason()) || '语音输入不可用'
+        );
+        const voiceListening = ref(false);
+        const voiceNotice = ref('');
+        const voiceNoticeLevel = ref('info');
+        const chatInputEl = ref(null);          // 模板里的 ref，供语音回填
+        let voice = null;                        // 非响应式实例，勿放进 ref
+
+        const toggleVoice = () => {
+            if (!voice) return;
+            voice.toggle();
+        };
+
+        // 模板与生命周期之间用 DOM 兜底拿到输入框（ref 在 onMounted 后才可靠）
+        const voiceGetText = () =>
+            (chatInputEl.value && chatInputEl.value.value) || inputText.value || '';
+        const voiceSetText = (t) => {
+            inputText.value = t;                 // v-model 同步更新
+            if (chatInputEl.value) {
+                chatInputEl.value.value = t;
+                // 语音是逐段追加的（没有按键事件），必须手动重算高度
+                if (window.ZYAutoGrow) window.ZYAutoGrow.sync(chatInputEl.value);
+            }
+        };
+
+        const initVoice = () => {
+            if (typeof window.ZYVoice === 'undefined') {
+                voiceSupported.value = false;
+                voiceUnsupportedReason.value = '语音模块未加载，请刷新页面重试。';
+                return;
+            }
+            voiceSupported.value = ZYVoice.isSupported();
+            voiceUnsupportedReason.value = ZYVoice.unsupportedReason() || '';
+            if (!voiceSupported.value) return;
+
+            voice = ZYVoice.create({
+                lang: 'zh-CN',
+                getText: voiceGetText,
+                setText: voiceSetText,
+                onState: (state) => {
+                    const listening = state === 'listening' || state === 'starting';
+                    voiceListening.value = listening;
+                    if (listening) {
+                        voiceNotice.value = '正在聆听…说完点一下方块停止，确认文字无误后点发送';
+                        voiceNoticeLevel.value = 'info';
+                    } else if (state === 'idle') {
+                        voiceNotice.value = '';
+                    }
+                },
+                onNotice: (msg, level) => {
+                    voiceNotice.value = msg;
+                    voiceNoticeLevel.value = level === 'error' ? 'error' : 'warn';
+                },
+            });
+        };
+        // 进入页面即初始化：麦克风权限在用户点击时才会弹，初始化不触发授权
+        initVoice();
+
+        // ========== 输入框自增高 ==========
+        const syncGrow = () => {
+            if (chatInputEl.value) window.ZYAutoGrow.sync(chatInputEl.value);
+        };
+        // 语音回填后立刻重算高度：识别是一段段追加的，不重算会停留在单行高度
+        /**
+         * Enter 发送 / Shift+Enter 换行。
+         *
+         * ⚠️ **必须判断输入法组字状态**：中文输入法打拼音时按 Enter 是"选词"，
+         * 若直接发消息，用户刚打完"红虫颗粒"就被弹出去了，一个字都发不出去。
+         * 浏览器在组字期间会给出 `isComposing === true`（老浏览器是 keyCode 229）。
+         */
+        const onInputKeydown = (e) => {
+            if (e.key !== 'Enter') return;
+            if (e.isComposing || e.keyCode === 229) return;    // 组字中：不发送
+            if (e.shiftKey) return;                             // Shift+Enter：换行
+            e.preventDefault();
+            sendMessage();
+        };
+
         // 滚动到底部
         const scrollToBottom = () => {
             nextTick(() => {
@@ -265,6 +393,11 @@ createApp({
         onMounted(async () => {
             await loadHistory();
             await showOrderCardFromUrl();
+            // 模板 ref 此时才可用：绑定自增高（语音回填另有单独的重算）
+            await nextTick();
+            if (chatInputEl.value && window.ZYAutoGrow) {
+                window.ZYAutoGrow.bind(chatInputEl.value);
+            }
         });
 
         /**
@@ -301,7 +434,12 @@ createApp({
             // 登录守卫：未登录 / 登录态失效 → 跳登录页并带回跳参数
             if (!window.AUTH || !(await AUTH.ensureLogin('登录后即可与中渔小助对话'))) return;
 
+            // 已发送 → 收麦，避免麦克风一直开着录到 AI 的回答
+            if (voice && voice.isListening) voice.stop();
+
             inputText.value = '';
+            // 发送后归位到单行（下一条从干净状态开始长）
+            if (chatInputEl.value && window.ZYAutoGrow) window.ZYAutoGrow.sync(chatInputEl.value);
 
             messages.value.push({ role: 'user', content: text });
             loading.value = true;
@@ -494,6 +632,16 @@ createApp({
             payOrder,
             payingOrders,
             payErrors,
+            // ── 语音输入 ──
+            voiceSupported,
+            voiceUnsupportedReason,
+            voiceListening,
+            voiceNotice,
+            voiceNoticeLevel,
+            chatInputEl,
+            toggleVoice,
+            syncGrow,
+            onInputKeydown,
         };
     },
 }).mount('#app');

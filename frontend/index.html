@@ -90,7 +90,7 @@
         <!-- ====== Hero 首屏 ====== -->
         <section class="relative overflow-hidden">
             <!-- 背景装饰 -->
-            <div class="absolute inset-0 bg-gradient-to-br from-brand-50 via-paper to-lake-50"></div>
+            <div class="absolute inset-0 bg-gradient-to-br from-lake-50 via-paper to-brand-50"></div>
             <div class="absolute top-20 -right-20 w-96 h-96 bg-brand-200/30 rounded-full blur-3xl"></div>
             <div class="absolute -bottom-20 -left-20 w-80 h-80 bg-lake-200/30 rounded-full blur-3xl"></div>
 
@@ -129,7 +129,7 @@
                     <div class="lg:col-span-1">
                         <div class="relative">
                             <div class="absolute -top-4 -left-4 w-full h-full bg-brand-200 rounded-2xl translate-x-2 translate-y-2"></div>
-                            <img src="assets/images/index-lake.png"
+                            <img src="assets/images/index-lake.webp"
                                  alt="钓鱼实景"
                                  class="relative w-full h-72 lg:h-80 object-cover rounded-2xl shadow-2xl" fetchpriority="high" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
                             <div class="absolute -bottom-4 -right-4 bg-white rounded-xl shadow-xl px-4 py-3 flex items-center gap-3">
@@ -214,14 +214,14 @@
             </div>
         </section>
 
-        <!-- ====== 工厂简介（左图右文） ====== -->
-        <section class="py-20 lg:py-28 bg-stone-100">
+        <!-- ====== 工厂简介（左图右文）—— 湖青分区，作为页面"呼吸带" ====== -->
+        <section class="section-lake py-20 lg:py-28">
             <div class="max-w-7xl mx-auto px-6">
                 <div class="grid lg:grid-cols-2 gap-12 items-center">
                     <!-- 左图 -->
                     <div class="relative">
                         <div class="absolute -top-4 -left-4 w-full h-full bg-brand-200 rounded-2xl"></div>
-                        <img src="assets/images/factory-workshop.png"
+                        <img src="assets/images/factory-workshop.webp"
                              alt="工厂车间"
                              class="relative w-full h-72 lg:h-96 object-cover rounded-2xl shadow-xl" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
                     </div>
@@ -537,23 +537,62 @@
                                 </template>
                             </div>
 
-                            <!-- 输入区 -->
-                            <div class="px-5 py-4 bg-white border-t border-brand-100 flex gap-3">
-                                <input
-                                    v-model="inputText"
-                                    class="chat-input flex-1 px-4 py-3 bg-brand-50/50 border border-brand-100 rounded-xl text-sm focus:outline-none transition"
-                                    type="text"
-                                    placeholder="想问点什么？比如「红虫颗粒还有货吗」..."
-                                    :disabled="loading"
-                                    @keydown.enter="sendMessage"
-                                >
-                                <button
-                                    class="px-6 py-3 bg-gradient-to-r from-brand-600 to-lake-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-brand-500/30 hover:-translate-y-0.5 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                                    :disabled="loading"
-                                    @click="sendMessage"
-                                >
-                                    {{ loading ? '思考中...' : '发送' }}
-                                </button>
+                            <!-- 输入区（支持语音输入：点麦克风说话，识别结果回填输入框后由用户确认发送）
+                                     文本框随内容自动增高，长语音不必横向拖动） -->
+                            <div class="px-5 py-4 bg-white border-t border-brand-100">
+                                <div class="flex gap-3 items-end">
+                                    <textarea
+                                        ref="chatInputEl"
+                                        v-model="inputText"
+                                        class="zy-grow chat-input flex-1 px-4 py-3 bg-brand-50/50 border border-brand-100 rounded-xl text-sm focus:outline-none transition"
+                                        :class="{ 'zy-voice-active': voiceListening }"
+                                        rows="1"
+                                        placeholder="想说点什么？点右侧麦克风语音输入，或直接打字"
+                                        :disabled="loading"
+                                        @input="syncGrow"
+                                        @keydown="onInputKeydown"
+                                    ></textarea>
+                                    <button
+                                        id="micBtnMain"
+                                        class="zy-mic"
+                                        type="button"
+                                        :class="{ 'is-listening': voiceListening }"
+                                        :disabled="loading || !voiceSupported"
+                                        :title="voiceSupported ? (voiceListening ? '停止录音' : '语音输入') : (voiceUnsupportedReason || '语音输入不可用')"
+                                        :aria-label="voiceListening ? '停止录音' : '开始语音输入'"
+                                        :aria-pressed="voiceListening ? 'true' : 'false'"
+                                        @click="toggleVoice"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.25em;height:1.25em" aria-hidden="true" v-show="!voiceListening">
+                                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                            <path d="M12 19v4"/>
+                                        </svg>
+                                        <svg viewBox="0 0 24 24" fill="currentColor" style="width:0.8em;height:0.8em" aria-hidden="true" v-show="voiceListening">
+                                            <rect x="6" y="6" width="12" height="12" rx="2"/>
+                                        </svg>
+                                    </button>
+                                    <button
+                                        class="px-6 py-3 bg-gradient-to-r from-brand-600 to-lake-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-brand-500/30 hover:-translate-y-0.5 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                        :disabled="loading"
+                                        @click="sendMessage"
+                                    >
+                                        {{ loading ? '思考中...' : '发送' }}
+                                    </button>
+                                </div>
+
+                                <!-- 语音状态提示：正在听 / 权限被拒 / 浏览器不支持，都在这里说清楚 -->
+                                <p v-if="voiceListening" class="mt-2 text-xs text-sunset-600 flex items-center gap-1.5">
+                                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-sunset-500" style="animation: mic-pulse 1.2s ease-in-out infinite"></span>
+                                    正在聆听…说完点一下方块停止，确认文字无误后点发送
+                                </p>
+                                <p v-else-if="voiceNotice" class="zy-voice-hint" :class="{ 'is-info': voiceNoticeLevel === 'info' }">
+                                    {{ voiceNotice }}
+                                </p>
+                                <p v-else-if="!voiceSupported" class="zy-voice-hint">
+                                    {{ voiceUnsupportedReason }}
+                                    <a href="order_query.html" class="underline">或改用文字输入</a>
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -636,14 +675,26 @@
             </div>
         </div>
         <div id="modalMessages" class="water-surface flex-1 overflow-y-auto p-4 space-y-3"></div>
-        <div class="px-4 py-3 bg-white border-t border-brand-100 flex gap-2">
-            <input id="modalInput" class="chat-input flex-1 px-3 py-2.5 bg-brand-50/50 border border-brand-100 rounded-xl text-sm focus:outline-none transition" placeholder="想问点什么？...">
-            <button id="modalSend" class="px-4 py-2.5 bg-gradient-to-r from-brand-600 to-lake-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-brand-500/30 transition">发送</button>
+        <div class="px-4 py-3 bg-white border-t border-brand-100">
+            <div class="flex gap-2 items-end">
+                <textarea id="modalInput" class="zy-grow chat-input flex-1 px-3 py-2.5 bg-brand-50/50 border border-brand-100 rounded-xl text-sm focus:outline-none transition" rows="1" placeholder="想问点什么？也可点麦克风语音输入"></textarea>
+                <button id="micBtnModal" class="zy-mic" type="button" style="width:2.5rem;height:2.5rem"
+                        title="语音输入" aria-label="开始语音输入" aria-pressed="false">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em" aria-hidden="true">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <path d="M12 19v4"/>
+                    </svg>
+                </button>
+                <button id="modalSend" class="px-4 py-2.5 bg-gradient-to-r from-brand-600 to-lake-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-brand-500/30 transition">发送</button>
+            </div>
+            <p id="modalVoiceHint" class="zy-voice-hint" style="display:none"></p>
         </div>
     </div>
 </div>
 
 <!-- Vue 逻辑 -->
+<script src="assets/voice-input.js"></script>
 <script src="app.js"></script>
 <script>
     // ====== 导航栏滚动效果 ======
@@ -813,7 +864,71 @@
 
     // ====== 弹窗发送逻辑 ======
     document.getElementById('modalSend').addEventListener('click', sendModalMessage);
-    document.getElementById('modalInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendModalMessage(); });
+    // Enter 发送 / Shift+Enter 换行；**中文输入法组字中的 Enter 必须放行**
+    // （否则用户刚打完拼音就被当作"发送"，一个字都发不出去）
+    document.getElementById('modalInput').addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return;
+        if (e.isComposing || e.keyCode === 229) return;   // 组字选词中
+        if (e.shiftKey) return;                            // 换行
+        e.preventDefault();
+        sendModalMessage();
+    });
+    // 输入框随内容自增高（长语音不必横向拖动）
+    if (window.ZYAutoGrow) window.ZYAutoGrow.bind(document.getElementById('modalInput'));
+
+    // ====== 弹窗语音输入 ======
+    // 与页面内聊天共用 voice-input.js；识别结果只回填输入框，不自动发送
+    // （本 Agent 能真实下单/查单，误识别不该直接变成一笔业务动作）。
+    (function initModalVoice() {
+        const btn = document.getElementById('micBtnModal');
+        const input = document.getElementById('modalInput');
+        const hint = document.getElementById('modalVoiceHint');
+        if (!btn || !input || !window.ZYVoice) return;
+
+        function showHint(text, level) {
+            if (!text) { hint.style.display = 'none'; hint.textContent = ''; return; }
+            hint.textContent = text;
+            hint.className = 'zy-voice-hint' + (level === 'info' ? ' is-info' : '');
+            hint.style.display = 'block';
+        }
+
+        if (!ZYVoice.isSupported()) {
+            btn.disabled = true;
+            btn.title = ZYVoice.unsupportedReason();
+            showHint(ZYVoice.unsupportedReason());
+            return;
+        }
+
+        const voice = ZYVoice.create({
+            lang: 'zh-CN',
+            getText: () => input.value,
+            setText: (t) => {
+                input.value = t;
+                // 语音是逐段追加的（没有按键事件），必须手动重算高度
+                if (window.ZYAutoGrow) window.ZYAutoGrow.sync(input);
+            },
+            onState: (state) => {
+                const listening = state === 'listening' || state === 'starting';
+                btn.classList.toggle('is-listening', listening);
+                btn.setAttribute('aria-pressed', listening ? 'true' : 'false');
+                btn.setAttribute('aria-label', listening ? '停止录音' : '开始语音输入');
+                input.classList.toggle('zy-voice-active', listening);
+                if (listening) {
+                    showHint('正在聆听…说完点一下方块停止，确认文字无误后点发送', 'info');
+                } else if (state === 'idle') {
+                    showHint('');
+                }
+            },
+            onNotice: (msg, level) => showHint(msg, level),
+        });
+
+        btn.addEventListener('click', () => voice.toggle());
+        // 弹窗关闭时务必停掉麦克风，否则会在后台一直录着
+        document.getElementById('aiModal').addEventListener('click', (e) => {
+            if (e.target && e.target.id === 'aiModal') voice.abort();
+        });
+        window.addEventListener('beforeunload', () => voice.abort());
+    })();
 
     async function sendModalMessage() {
         const input = document.getElementById('modalInput');
@@ -824,6 +939,8 @@
         if (!window.AUTH || !(await AUTH.ensureLogin('登录后即可与中渔小助对话'))) return;
 
         input.value = '';
+        // 发送后归位到单行
+        if (window.ZYAutoGrow) window.ZYAutoGrow.sync(input);
 
         appendBubble('user', text);
         const bubble = appendBubble('ai', '', true);

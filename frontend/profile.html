@@ -103,7 +103,7 @@
     <section class="pb-16">
         <div class="max-w-6xl mx-auto px-6">
             <!-- 账号卡 -->
-            <div id="accountCard" class="bg-white rounded-2xl border border-stone-200 shadow-sm p-6 mb-6">
+            <div id="accountCard" class="card-float bg-white rounded-2xl p-6 mb-6">
                 <div class="flex items-center gap-4">
                     <div class="w-16 h-16 rounded-full bg-gradient-to-br from-brand-500 to-lake-600 text-white flex items-center justify-center text-2xl font-bold shadow-md" id="avatarText">—</div>
                     <div class="min-w-0 flex-1">
@@ -125,23 +125,23 @@
 
             <!-- 订单概览统计 -->
             <div id="statsRow" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-6">
-                <button onclick="setFilter('pending')"   class="stat-card text-left bg-white rounded-2xl border border-stone-200 shadow-sm p-4 hover:border-brand-300 transition">
+                <button onclick="setFilter('pending')"   class="text-left card-float bg-white rounded-2xl p-4 hover:border-brand-300 transition">
                     <div class="text-2xl font-extrabold text-ink-900" data-stat="pending">0</div>
                     <div class="text-xs text-ink-500 mt-1">待发货</div>
                 </button>
-                <button onclick="setFilter('shipped')"   class="stat-card text-left bg-white rounded-2xl border border-stone-200 shadow-sm p-4 hover:border-brand-300 transition">
+                <button onclick="setFilter('shipped')"   class="text-left card-float bg-white rounded-2xl p-4 hover:border-brand-300 transition">
                     <div class="text-2xl font-extrabold text-ink-900" data-stat="shipped">0</div>
                     <div class="text-xs text-ink-500 mt-1">已发货</div>
                 </button>
-                <button onclick="setFilter('completed')" class="stat-card text-left bg-white rounded-2xl border border-stone-200 shadow-sm p-4 hover:border-brand-300 transition">
+                <button onclick="setFilter('completed')" class="text-left card-float bg-white rounded-2xl p-4 hover:border-brand-300 transition">
                     <div class="text-2xl font-extrabold text-ink-900" data-stat="completed">0</div>
                     <div class="text-xs text-ink-500 mt-1">已完成</div>
                 </button>
-                <button onclick="setFilter('returning')" class="stat-card text-left bg-white rounded-2xl border border-stone-200 shadow-sm p-4 hover:border-brand-300 transition">
+                <button onclick="setFilter('returning')" class="text-left card-float bg-white rounded-2xl p-4 hover:border-brand-300 transition">
                     <div class="text-2xl font-extrabold text-ink-900" data-stat="returning">0</div>
                     <div class="text-xs text-ink-500 mt-1">退货中</div>
                 </button>
-                <button onclick="setFilter('closed')"    class="stat-card text-left bg-white rounded-2xl border border-stone-200 shadow-sm p-4 hover:border-brand-300 transition">
+                <button onclick="setFilter('closed')"    class="text-left card-float bg-white rounded-2xl p-4 hover:border-brand-300 transition">
                     <div class="text-2xl font-extrabold text-ink-900" data-stat="closed">0</div>
                     <div class="text-xs text-ink-500 mt-1">已关闭</div>
                 </button>
@@ -150,7 +150,7 @@
             <div class="grid lg:grid-cols-3 gap-6">
                 <!-- 左/主：我的订单 -->
                 <div class="lg:col-span-2">
-                    <div class="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+                    <div class="card-float bg-white rounded-2xl overflow-hidden">
                         <!-- 筛选页签 -->
                         <div class="flex items-center gap-1 px-4 py-3 border-b border-stone-100 overflow-x-auto" id="filterTabs">
                             <button data-key=""          class="filter-tab whitespace-nowrap px-3.5 py-1.5 text-sm font-medium rounded-full transition">全部</button>
@@ -178,9 +178,9 @@
                 <!-- 右：安全与设置 -->
                 <div class="space-y-6">
                     <!-- 绑定手机号 -->
-                    <div class="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
+                    <div class="card-float bg-white rounded-2xl p-6">
                         <h3 class="flex items-center gap-2 text-base font-bold text-ink-900 mb-1">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;color:#1F6B54" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;color:var(--jade)" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
                             绑定手机号
                         </h3>
                         <p class="text-xs text-ink-500 mb-4">
@@ -204,9 +204,9 @@
                     </div>
 
                     <!-- 修改密码 -->
-                    <div class="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
+                    <div class="card-float bg-white rounded-2xl p-6">
                         <h3 class="flex items-center gap-2 text-base font-bold text-ink-900 mb-1">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;color:#1F6B54" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;color:var(--jade)" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                             修改密码
                         </h3>
                         <p class="text-xs text-ink-500 mb-4">修改后当前登录的其它设备会被强制下线。</p>
@@ -235,9 +235,9 @@
                     </div>
 
                     <!-- 账户类型（任务书二·5：身份差异化价格） -->
-                    <div class="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
+                    <div class="card-float bg-white rounded-2xl p-6">
                         <h3 class="flex items-center gap-2 text-base font-bold text-ink-900 mb-1">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;color:#1F6B54" aria-hidden="true"><path d="M20.6 9.5 12 4 3.4 9.5 12 15z"/><path d="M6 11.6V17c0 1.7 2.7 3 6 3s6-1.3 6-3v-5.4"/></svg>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;color:var(--jade)" aria-hidden="true"><path d="M20.6 9.5 12 4 3.4 9.5 12 15z"/><path d="M6 11.6V17c0 1.7 2.7 3 6 3s6-1.3 6-3v-5.4"/></svg>
                             账户类型
                         </h3>
                         <p class="text-xs text-ink-500 mb-4">
@@ -260,23 +260,23 @@
                     </div>
 
                     <!-- 快捷服务 -->
-                    <div class="bg-white rounded-2xl border border-stone-200 shadow-sm p-6">
+                    <div class="card-float bg-white rounded-2xl p-6">
                         <h3 class="text-base font-bold text-ink-900 mb-3">快捷服务</h3>
                         <div class="grid grid-cols-2 gap-3">
                             <a href="order.html" class="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-brand-50 hover:bg-brand-100 transition text-center">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.4em;height:1.4em;color:#1F6B54" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.6 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.4em;height:1.4em;color:var(--jade)" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.6 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>
                                 <span class="text-xs font-medium text-ink-700">立即下单</span>
                             </a>
                             <a href="order_query.html" class="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-lake-50 hover:bg-lake-100 transition text-center">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.4em;height:1.4em;color:#1F6B54" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.4em;height:1.4em;color:var(--jade)" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
                                 <span class="text-xs font-medium text-ink-700">查订单</span>
                             </a>
                             <a href="index.html#ai-section" class="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-sunset-50 hover:bg-sunset-100 transition text-center">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.4em;height:1.4em;color:#B5481C" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 0 0 1 2-2h14a2 0 0 1 2 2z"/></svg>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.4em;height:1.4em;color:var(--alert)" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                                 <span class="text-xs font-medium text-ink-700">咨询 AI</span>
                             </a>
                             <a href="contact.html" class="flex flex-col items-center gap-1.5 p-3 rounded-xl bg-stone-50 hover:bg-stone-100 transition text-center">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.4em;height:1.4em;color:#1F6B54" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.4em;height:1.4em;color:var(--jade)" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
                                 <span class="text-xs font-medium text-ink-700">联系我们</span>
                             </a>
                         </div>
@@ -392,6 +392,18 @@
                 </div>
             </div>
 
+            <!-- 我的留言与客服答复（只读）：展示绑定手机号下提交的留言与客服回复 -->
+            <div class="mt-6 card-float bg-white rounded-2xl overflow-hidden">
+                <div class="px-6 py-4 border-b border-stone-100">
+                    <h3 class="flex items-center gap-2 text-base font-bold text-ink-900">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.1em;height:1.1em;color:var(--jade)" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        我的留言与客服答复
+                    </h3>
+                </div>
+                <div id="messagesList" class="p-6 space-y-4">
+                    <div class="text-center text-ink-400 text-sm py-8">加载中…</div>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -461,23 +473,23 @@
 
     // ── 状态徽标配色（与后台一致） ───────────────────────────
     var STATUS_STYLE = {
-        '未发货':     { bg: '#F4B495', fg: '#7A2E0E', label: '待发货' },
-        '已发货':     { bg: '#DCEDE6', fg: '#134435', label: '已发货' },
-        '已完成':     { bg: '#DCE9FF', fg: '#13407A', label: '已完成' },
-        '退货申请中': { bg: '#FDF0E8', fg: '#7A2E0E', label: '退货申请中' },
-        '已取消':     { bg: '#E2E5E2', fg: '#3A473F', label: '已取消' },
-        '已退货':     { bg: '#F7D9CF', fg: '#7A2E0E', label: '已退货' }
+        '未发货':     { bg: 'var(--status-shipping-bg)', fg: 'var(--status-pending-fg)', label: '待发货' },
+        '已发货':     { bg: 'var(--wave)', fg: 'var(--status-active-fg)', label: '已发货' },
+        '已完成':     { bg: 'var(--status-done-bg)', fg: 'var(--status-done-fg)', label: '已完成' },
+        '退货申请中': { bg: 'var(--status-pending-bg)', fg: 'var(--status-pending-fg)', label: '退货申请中' },
+        '已取消':     { bg: 'var(--status-neutral-bg)', fg: 'var(--ink-soft)', label: '已取消' },
+        '已退货':     { bg: 'var(--status-return-bg)', fg: 'var(--status-pending-fg)', label: '已退货' }
     };
     var RETURN_STYLE = {
-        '待审核': { bg: '#FDF0E8', fg: '#7A2E0E' },
-        '已同意': { bg: '#DCEDE6', fg: '#134435' },
-        '已拒绝': { bg: '#E2E5E2', fg: '#3A473F' }
+        '待审核': { bg: 'var(--status-pending-bg)', fg: 'var(--status-pending-fg)' },
+        '已同意': { bg: 'var(--wave)', fg: 'var(--status-active-fg)' },
+        '已拒绝': { bg: 'var(--status-neutral-bg)', fg: 'var(--ink-soft)' }
     };
     // 支付状态配色（任务书五·1）：未支付用暖色高亮 —— 它是需要用户动作的状态
     var PAY_STYLE = {
-        '未支付': { bg: '#FDF0E8', fg: '#7A2E0E' },
-        '已支付': { bg: '#DCEDE6', fg: '#134435' },
-        '已退款': { bg: '#E2E5E2', fg: '#3A473F' }
+        '未支付': { bg: 'var(--status-pending-bg)', fg: 'var(--status-pending-fg)' },
+        '已支付': { bg: 'var(--wave)', fg: 'var(--status-active-fg)' },
+        '已退款': { bg: 'var(--status-neutral-bg)', fg: 'var(--ink-soft)' }
     };
 
     function esc(s) {
@@ -495,7 +507,7 @@
     function toast(msg, type) {
         var t = document.getElementById('toast');
         t.textContent = msg;
-        t.style.background = type === 'error' ? '#B5481C' : (type === 'success' ? '#1F6B54' : '#15211D');
+        t.style.background = type === 'error' ? 'var(--alert)' : (type === 'success' ? 'var(--jade)' : 'var(--ink)');
         t.classList.remove('hidden');
         clearTimeout(toast._t);
         toast._t = setTimeout(function () { t.classList.add('hidden'); }, 2600);
@@ -629,7 +641,7 @@
         // 商品评价（任务书六·4）：评过就展示我的评分与内容；已完成但不可评时说明原因
         if (o.review) {
             html += '<div class="text-xs mb-2 rounded-lg px-3 py-2 border border-stone-200 bg-stone-50 text-ink-600">'
-                + '我的评价：<b style="letter-spacing:1px;color:#E6A23C">' + esc(o.review.stars) + '</b>'
+                + '我的评价：<b style="letter-spacing:1px;color:var(--rating-on)">' + esc(o.review.stars) + '</b>'
                 + (o.review.content
                     ? ' · ' + esc(o.review.content)
                     : ' · <span class="text-ink-400">未填写内容</span>')
@@ -787,7 +799,7 @@
             var on = i <= reviewState.rating;
             html += '<button type="button" onclick="pickStar(' + i + ')" '
                 + 'class="text-3xl leading-none transition hover:scale-110" '
-                + 'style="color:' + (on ? '#E6A23C' : '#D8D3CB') + '" '
+                + 'style="color:' + (on ? 'var(--rating-on)' : 'var(--rating-off)') + '" '
                 + 'aria-label="' + i + ' 星">★</button>';
         }
         box.innerHTML = html;
@@ -956,6 +968,56 @@
         } catch (err) { toast(err.message, 'error'); }
         return false;
     };
+
+    // ── 我的留言与客服答复（只读） ──────────────────────────
+    // 该接口沿用留言模块自身的 success 字段风格，且为纯只读展示；
+    // 这里只渲染，不提供任何编辑 / 删除 / 回复入口。
+    async function loadMessages() {
+        var box = document.getElementById('messagesList');
+        try {
+            var d = await api('/api/me/contact-messages/');
+            // 未绑定手机号：展示后端的引导文案，而不是给用户看一个空列表
+            if (d.phone_bound === false) {
+                box.innerHTML = '<div class="rounded-xl border border-stone-200 bg-stone-50 px-4 py-6 text-center text-sm text-ink-500">'
+                    + esc(d.hint || '绑定手机号后，即可在个人中心查看该号码下的留言与客服答复') + '</div>';
+                return;
+            }
+            var list = d.messages || [];
+            if (!list.length) {
+                box.innerHTML = '<div class="text-center text-ink-400 text-sm py-8">还没有留言记录</div>';
+                return;
+            }
+            box.innerHTML = list.map(renderMessage).join('');
+        } catch (e) {
+            box.innerHTML = '<div class="text-center text-ink-400 text-sm py-8">加载失败：' + esc(e.message) + '</div>';
+            if (!/登录/.test(e.message)) toast(e.message, 'error');
+        }
+    }
+
+    function renderMessage(m) {
+        var html = '';
+        html += '<div class="border border-stone-200 rounded-xl p-4">';
+        // 我的留言：内容来自用户输入，属于不可信内容，必须先 esc() 转义再插入 DOM
+        html += '<div class="flex items-start gap-2 mb-3">';
+        html += '<span class="shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full" style="background:var(--wave);color:var(--status-active-fg)">我</span>';
+        html += '<div class="min-w-0 flex-1">';
+        html += '<div class="text-sm text-ink-900 whitespace-pre-wrap break-words">' + esc(m.message || '—') + '</div>';
+        html += '<div class="text-xs text-ink-400 mt-1">' + esc(m.created_at || '—') + '</div>';
+        html += '</div></div>';
+        // 客服答复：未答复时给出「处理中」提示，避免答复区空白让用户以为漏掉了
+        html += '<div class="flex items-start gap-2 rounded-lg px-3 py-2.5" style="background:var(--paper-card)">';
+        html += '<span class="shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full" style="background:var(--status-pending-bg);color:var(--status-pending-fg)">客服</span>';
+        html += '<div class="min-w-0 flex-1">';
+        if (m.reply) {
+            html += '<div class="text-sm text-ink-900 whitespace-pre-wrap break-words">' + esc(m.reply) + '</div>';
+            if (m.replied_at) html += '<div class="text-xs text-ink-400 mt-1">' + esc(m.replied_at) + ' 答复</div>';
+        } else {
+            html += '<div class="text-sm" style="color:var(--ink-mute)">客服正在处理中</div>';
+        }
+        html += '</div></div>';
+        html += '</div>';
+        return html;
+    }
 
     // ── 我的收货地址（地址簿）──────────────────────────────
     // 与下单页共用同一套接口：列表 / 新增 / 编辑 / 删除 / 设默认。
@@ -1216,6 +1278,7 @@
         window.setFilter('');            // 默认全部
         await loadAddresses();           // 我的收货地址（地址簿）
         await loadWallet();              // 我的余额（钱包）
+        await loadMessages();            // 留言与客服答复（只读）
         bindAutoRefresh();
 
         // 充值金额快捷档：只填输入框、不直接提交 —— 让用户还能改成别的数

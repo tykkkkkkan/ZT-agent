@@ -35,6 +35,26 @@
     --wave:       #DCEDE6;
     --focus-ring: #1F6B54;
 
+    /* —— 业务状态色（订单 / 售后 / 支付徽标） —— */
+    --status-pending-bg:  #FDF0E8;   /* 待审核 / 退货申请中 / 未支付 背景 */
+    --status-pending-fg:  #7A2E0E;   /* 上述待处理状态的文字 */
+    --status-shipping-bg: var(--fire-300);  /* 未发货 背景（复用 fire 色阶，避免同值重复定义） */
+    --status-active-fg:   #134435;   /* 已发货 / 已同意 / 已支付 文字 */
+    --status-done-bg:     #DCE9FF;   /* 已完成 背景 */
+    --status-done-fg:     #13407A;   /* 已完成 文字 */
+    --status-neutral-bg:  #E2E5E2;   /* 已取消 / 已拒绝 / 已退款 背景 */
+    --status-return-bg:   #F7D9CF;   /* 已退货 背景 */
+
+    /* —— 评分星 / 告警 —— */
+    --rating-on:  #E6A23C;   /* 评分星星（点亮） */
+    --rating-off: #D8D3CB;   /* 评分星星（未点亮） */
+    --alert:      var(--fire-700);   /* 告警 / 失败 toast 与图标（复用 fire 色阶） */
+
+    /* —— 湖青分区（B 方向「现代水生」）：大面积水面色 —— */
+    --surface-lake-top: #F1F7F8;        /* 分区顶部，最浅 */
+    --surface-lake:     #EAF3F5;        /* 分区基底 */
+    --veil-lake:        rgba(44, 124, 140, .12);   /* 湖青薄雾，用于分区与占位底纹 */
+
     /* —— 间距 token（8px 基准） —— */
     --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
     --space-6: 24px; --space-8: 32px; --space-12: 48px; --space-16: 64px;
@@ -365,10 +385,182 @@ body footer a:hover { color: #fff; }
 .chat-messages::-webkit-scrollbar-thumb { background: var(--jade-300) !important; }
 .chat-messages::-webkit-scrollbar-track { background: #EDE6D8 !important; }
 
+/* ============ B「现代水生」：湖青大色块 · 无边框悬浮卡 · 统一媒体比例 ============ */
+
+/* 湖青分区：大面积低饱和水面色，作为页面的"呼吸带"分隔各内容区块。
+   用两个色阶做极浅渐变，避免大面积纯色带来的"贴纸感"。 */
+.section-lake {
+    position: relative;
+    background:
+        radial-gradient(1200px 420px at 50% -10%, var(--veil-lake), transparent 70%),
+        linear-gradient(180deg, var(--surface-lake-top) 0%, var(--surface-lake) 100%);
+    padding-block: 4.5rem;
+}
+
+/* 无边框悬浮卡：去掉描边，只用柔影与悬浮建立层级（高端感来自"少"） */
+.card-float {
+    background: var(--paper-card);
+    border: 0;
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-md);
+    transition: transform .3s cubic-bezier(.22, .61, .36, 1),
+                box-shadow .3s cubic-bezier(.22, .61, .36, 1);
+}
+.card-float:hover { transform: translateY(-6px); box-shadow: var(--shadow-lg); }
+
+/* 统一媒体比例 4:3：比例由容器锁定 → 图片不变形，且先占位再加载（消除布局跳动） */
+.media-ratio {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    border-radius: var(--radius-lg);
+    background: var(--wave);
+}
+.media-ratio > img {
+    display: block;
+    width: 100%; height: 100%;
+    object-fit: cover;
+    /* 统一调色：不同来源的图色调不一，轻微降饱和 + 提对比收敛色差 */
+    filter: saturate(.94) contrast(1.04);
+    transition: transform .45s cubic-bezier(.22, .61, .36, 1);
+}
+.card-float:hover .media-ratio > img { transform: scale(1.04); }
+
+/* 抠底/白底的产品图必须用 contain —— cover 会把产品本体裁掉。
+   比例仍由 .media-ratio 的容器锁定，所以不会变形也不会跳动。 */
+.media-ratio--contain > img { object-fit: contain; padding: var(--space-4); }
+
+/* 编辑类大图用 3:2：与实拍素材（1536×1024）比例完全一致 → 零裁切。
+   ⚠️ 用 aspect-ratio 的容器必须删掉原有的固定高度类（h-72/h-80/h-96），
+   否则 height 会覆盖 aspect-ratio，比例锁定失效。 */
+.media-ratio--wide { aspect-ratio: 3 / 2; }
+
+/* 无实拍图时的**设计化占位**：品牌底纹 + 衬线品名。
+   裸的 fallback 占位图会反复出现同一张，是"廉价感"最直接的来源；
+   这里改成能承载信息的版式（与纸媒产品目录的处理思路一致）。 */
+.media-placeholder {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-4);
+    text-align: center;
+    background:
+        radial-gradient(120% 90% at 50% 0%, var(--veil-lake), transparent 62%),
+        linear-gradient(160deg, var(--wave) 0%, var(--jade-100) 100%);
+    color: var(--jade-700);
+}
+.media-placeholder .ph-name {
+    font-family: var(--font-display);
+    font-size: 1.25rem; line-height: 1.55; letter-spacing: .02em;
+}
+.media-placeholder .ph-meta {
+    font-size: .75rem; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--jade-500);
+}
+
+/* ============================================================
+   语音输入（AI 客服）
+   ------------------------------------------------------------
+   写在 theme.css 而不是 Tailwind：新增 class 无需重跑
+   scripts/build_tailwind.py，避免动那份预编译产物。
+   ============================================================ */
+.zy-mic {
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border: 1px solid var(--line, #e4e0d3);
+    border-radius: 0.75rem;
+    background: #fff;
+    color: var(--jade-600, #1F6B54);
+    cursor: pointer;
+    transition: background .18s ease, border-color .18s ease,
+                color .18s ease, transform .18s ease, box-shadow .18s ease;
+}
+.zy-mic:hover:not(:disabled) {
+    background: var(--jade-50, #eef5f1);
+    border-color: var(--jade-300, #9fc4b4);
+}
+.zy-mic:focus-visible {
+    outline: 2px solid var(--jade-500, #1F6B54);
+    outline-offset: 2px;
+}
+.zy-mic:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+/* 输入框随内容自动增高（长语音/长文本不必横向拖动）
+   ------------------------------------------------------------
+   textarea 默认可被鼠标拖拽改大小，这里关掉，改由 JS 按 scrollHeight 自适应；
+   超过 --zy-grow-max 就转为内部滚动，保证输入区不会把聊天区挤没。 */
+.zy-grow {
+    resize: none;                 /* 高度交给 JS，禁用原生拖拽手柄 */
+    overflow-y: auto;
+    max-height: 9.5rem;           /* 约 5~6 行，超出后内部滚动 */
+    min-height: 2.75rem;          /* 与单行时的高度一致，避免切换时跳动 */
+    line-height: 1.55;
+}
+/* 到达上限时才显示滚动条，平时不打扰 */
+.zy-grow:not(.is-overflowing) {
+    scrollbar-width: none;
+}
+.zy-grow:not(.is-overflowing)::-webkit-scrollbar {
+    display: none;
+}
+.zy-grow.is-overflowing {
+    border-bottom-color: rgba(31, 107, 84, .35);
+}
+
+/* 录音中：底色转警示色 + 呼吸光圈，一眼可见"正在听" */
+.zy-mic.is-listening {
+    background: var(--sunset-500, #B5481C);
+    border-color: var(--sunset-500, #B5481C);
+    color: #fff;
+}
+.zy-mic.is-listening::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 0.9rem;
+    border: 2px solid var(--sunset-500, #B5481C);
+    opacity: .55;
+    animation: mic-pulse 1.4s ease-out infinite;
+}
+@keyframes mic-pulse {
+    0%   { transform: scale(.94); opacity: .55; }
+    70%  { transform: scale(1.18); opacity: 0; }
+    100% { transform: scale(1.18); opacity: 0; }
+}
+/* 识别中的输入框：左侧呼吸条，提示"文字正在被语音填充" */
+.zy-voice-active {
+    border-color: var(--sunset-400, #e2703a) !important;
+    box-shadow: 0 0 0 3px rgba(181, 72, 28, .12);
+}
+/* 降级提示条（浏览器不支持 / 权限被拒） */
+.zy-voice-hint {
+    margin-top: .5rem;
+    padding: .5rem .75rem;
+    border-radius: .5rem;
+    border: 1px solid rgba(181, 72, 28, .22);
+    background: rgba(181, 72, 28, .06);
+    color: var(--sunset-700, #7A2E0E);
+    font-size: .8125rem;
+    line-height: 1.6;
+}
+.zy-voice-hint.is-info {
+    border-color: rgba(31, 107, 84, .22);
+    background: rgba(31, 107, 84, .06);
+    color: var(--jade-700, #134435);
+}
+
 /* ============ 减少动画偏好 ============ */
 @media (prefers-reduced-motion: reduce) {
     .bobber, .fish-swim, .ripple-ring, .wave-flow,
-    .float-up, .card-enter, .bubble-in, .modal-enter, .fab-enter {
+    .float-up, .card-enter, .bubble-in, .modal-enter, .fab-enter,
+    .zy-mic.is-listening::after {
         animation: none !important;
     }
     html { scroll-behavior: auto; }

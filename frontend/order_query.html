@@ -4,22 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>订单查询 - 中渔天下</title>
-    <meta name="description" content="输入下单手机号即可查询中渔天下订单状态、金额与发货进度。">
-    <meta property="og:type" content="website">
-    <meta property="og:site_name" content="中渔天下">
-    <meta property="og:title" content="订单查询 - 中渔天下">
-    <meta property="og:description" content="输入下单手机号即可查询中渔天下订单状态、金额与发货进度。">
-    <meta property="og:locale" content="zh_CN">
-    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <!-- 字体加载：Noto Sans SC(正文)/Noto Serif SC(标题) 用「可变字体区间」写法 ——
-         同一分片文件即可覆盖 400-900 全部字重，比逐字重列举少约 2/3 的 CSS，字体下载量不变。
-         preload 提前以高优先级发起字体 CSS 请求，缩短首屏文字等待（LCP）。 -->
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap">
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400..900&family=Noto+Serif+SC:wght@400..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=Noto+Serif+SC:wght@500;600;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="assets/theme.css">
-    <link rel="stylesheet" href="assets/tailwind.build.css">
+    <script src="assets/vendor/tailwindcdn.js"></script>
+    <script src="assets/tailwind-config.js"></script>
     
 <script src="auth.js"></script>
 </head>
@@ -108,18 +98,20 @@
                 </div>
                 <div class="relative hidden lg:block">
                     <div class="absolute -top-4 -left-4 w-full h-full bg-brand-200 rounded-2xl"></div>
-                    <img src="assets/images/order-query-logistics.png"
-                         alt="物流追踪"
-                         class="relative w-full h-80 object-cover rounded-2xl shadow-2xl" fetchpriority="high" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
+                    <div class="relative media-ratio media-ratio--wide shadow-2xl">
+                        <img src="assets/images/order-query-logistics.webp"
+                             alt="物流追踪"
+                             class="w-full h-full object-cover" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='assets/images/fallback.svg'">
+                    </div>
                 </div>
             </div>
         </div>
     </section>
 
-    <section class="py-12 lg:py-16">
+    <section class="section-lake py-12 lg:py-16">
         <div class="max-w-3xl mx-auto px-6">
             <!-- 查询表单 -->
-            <div class="bg-white rounded-2xl border border-brand-100 shadow-lg shadow-brand-500/5 p-6 lg:p-8">
+            <div class="card-float bg-white rounded-2xl shadow-lg shadow-brand-500/5 p-6 lg:p-8">
                 <h2 class="text-xl font-bold text-ink-900 mb-1">输入下单手机号</h2>
                 <p class="text-sm text-ink-500 mb-5">
                     仅可查询<span class="font-semibold text-ink-700">当前账号绑定的手机号</span>名下的订单，与「我的订单」结果一致
@@ -154,7 +146,7 @@
 
             <!-- 查询结果 -->
             <div v-if="queried" class="mt-8">
-                <div v-if="orders.length === 0" class="bg-white rounded-2xl border border-stone-200 p-8 text-center">
+                <div v-if="orders.length === 0" class="card-float bg-white rounded-2xl p-8 text-center">
                     <div class="text-5xl mb-3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.5 2 12v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-7l-3.5-6.5A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.5z"/></svg></div>
                     <h3 class="text-lg font-bold text-ink-700 mb-1">未查到该手机号的订单</h3>
                     <p class="text-sm text-ink-500">请确认手机号是否为「个人中心」绑定的号码，或
@@ -181,7 +173,7 @@
 
                     <div class="space-y-4">
                         <div v-for="o in orders" :key="o.order_no"
-                             class="order-card card-enter bg-white rounded-2xl border border-brand-100 shadow-sm overflow-hidden">
+                             class="order-card card-enter card-float bg-white rounded-2xl shadow-sm overflow-hidden">
                             <div class="px-5 py-4 border-b border-brand-100 bg-gradient-to-r from-brand-50 to-transparent flex items-center justify-between gap-3">
                                 <div class="min-w-0">
                                     <div class="text-xs text-ink-500">订单号</div>
@@ -309,7 +301,7 @@
             </div>
         </div>
         <div class="mt-12 pt-8 border-t border-slate-800 text-center text-sm text-stone-400">
-            © 2026 中渔天下 · 专注好饵料，助你连竿爆护 <span class="text-stone-600 mx-1">·</span><a href="/admin/" target="_blank" class="text-stone-400 hover:text-white transition-colors underline underline-offset-2">管理员后台</a>
+            © 2026 中渔天下 · 专注好饵料，助你连竿爆护 <span class="text-stone-600 mx-1">·</span><a href="/admin/" target="_blank" class="text-stone-500 hover:text-stone-300 transition-colors">管理员后台</a>
         </div>
     </div>
 </footer>
@@ -365,12 +357,12 @@
             // 改造前这里只有「已发货 / 其他」两色，导致已完成、退货申请中、已取消的订单
             // 在查订单页全都显示成橙色"未发货"样式 —— 同一订单在不同页面看起来状态不同。
             const STATUS_MAP = {
-                '未发货':     { bg: '#F4B495', fg: '#7A2E0E', label: '待发货' },
-                '已发货':     { bg: '#DCEDE6', fg: '#134435', label: '已发货' },
-                '已完成':     { bg: '#DCE9FF', fg: '#13407A', label: '已完成' },
-                '退货申请中': { bg: '#FDF0E8', fg: '#7A2E0E', label: '退货申请中' },
-                '已取消':     { bg: '#E2E5E2', fg: '#3A473F', label: '已取消' },
-                '已退货':     { bg: '#F7D9CF', fg: '#7A2E0E', label: '已退货' }
+                '未发货':     { bg: 'var(--status-shipping-bg)', fg: 'var(--status-pending-fg)', label: '待发货' },
+                '已发货':     { bg: 'var(--wave)', fg: 'var(--status-active-fg)', label: '已发货' },
+                '已完成':     { bg: 'var(--status-done-bg)', fg: 'var(--status-done-fg)', label: '已完成' },
+                '退货申请中': { bg: 'var(--status-pending-bg)', fg: 'var(--status-pending-fg)', label: '退货申请中' },
+                '已取消':     { bg: 'var(--status-neutral-bg)', fg: 'var(--ink-soft)', label: '已取消' },
+                '已退货':     { bg: 'var(--status-return-bg)', fg: 'var(--status-pending-fg)', label: '已退货' }
             };
             function statusStyle(status) {
                 const s = STATUS_MAP[status] || { bg: '#EEE', fg: '#333' };
