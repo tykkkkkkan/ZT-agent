@@ -2,7 +2,7 @@
 
 > 适用版本：V0.1 Demo / V1.0
 > 维护：产品组
-> 说明：本文件作为 AI 客服「中渔小助」的系统提示词，由 test_agent.py 读取注入 system 消息。
+> 说明：本文件作为 AI 客服「中渔小助」的系统提示词，由 `tests/test_agent.py` 读取注入 system 消息。
 
 ---
 

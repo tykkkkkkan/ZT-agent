@@ -39,10 +39,10 @@ flowchart LR
 
 | 层级 | 技术 | 说明 |
 |------|------|------|
-| 前端 | Vue 3 (CDN) + axios | 单页多页面企业官网，AI 客服聊天 |
+| 前端 | Vue 3 (CDN) + Tailwind CSS (Play CDN) + axios | 多页面静态站 + AI 客服聊天；**不引入 npm 与构建链**，Vue 与 Tailwind 均使用 CDN 全局版 |
 | 后端 | Django 5.2 + Django原生视图 | RESTful API，SSE 真流式输出 |
 | AI | DeepSeek API (deepseek-chat) | Function Calling 工具调用 + RAG 检索增强 |
-| RAG | 自研可插拔引擎 + 真实语义向量可切换 | 切块 → 向量化 → 召回 → 重排；默认 TF-IDF，可切 OpenAI 兼容 Embedding + Chroma 向量库（环境变量 `RAG_BACKEND`） |
+| RAG | 自研可插拔引擎，三档后端可选 | 切块 → 向量化 → 召回 → 重排；`RAG_BACKEND` 取 `tfidf`（默认，零依赖）/ `embedding`（BAAI/bge-m3 + Chroma）/ `hybrid`（字面路与语义路并行召回 + RRF 融合，语义路故障自动降级） |
 | 数据库 | MySQL 8.0 + PyMySQL | 产品/库存/订单/对话/留言/钱包流水 |
 | 后台 | Django Admin + Unfold 主题 | 状态可视化、批量动作、知识库在线维护、钱包记账 |
 | 认证 | djangorestframework-simplejwt | 注册/登录/JWT（access+refresh 旋转+黑名单）/当前用户 |
@@ -57,11 +57,15 @@ flowchart LR
 - [x] **产品名片卡片**：对话中查过商品后自动补发 `product_card` 事件，前端渲染名称 / 规格 / 图片 / 价格 / 可用库存卡片，「立即下单」深链到 `order.html?product=<id>` 并预选商品（可购性复用 `purchase_guard`，不可购时按钮置灰并说明原因）
 - [x] **顾问引导式客服（不代客下单）**：AI 先帮顾客明确产品选择（查产品/库存/报价），顾客表达购买或定制意向时调用 `guide_to_contact` 引导，前端自动渲染「定制服务 / 联系我们」按钮卡片收尾，由人工承接交易
 - [x] **在线下单**：消费者通过 `/order.html` 主动下单（产品下拉 + 单价联动 + 总额自动计算，填写收货地址与期望交期），后端自动生成订单号并**预占库存**；Django Admin 可按状态筛选、一键发货/取消/退货
+- [x] **库存预警（后台被动可见）**：可用库存低于预警线时，**后台看板与 Admin 产品/库存列表显示「● 预警 / ● 缺货」标识**，前台由 `purchase_guard` 给出「可下单 / 暂停接单 / 无可售库存」的明确结论
+  > **口径说明**：任务书五·4「缺货时会**收到系统提示**」，本项目按「后台被动可见」口径落地（看板统计 + 列表标识 + 前台可购性结论），**不做邮件/短信/站内信主动推送** —— 单机本地容器化部署形态下没有消息通道，加推送需引入额外依赖与配置，收益不成比例。答辩若被追问，按此口径回答。
 - [x] **模拟支付与订单跟踪**：订单带与状态机**正交**的支付维度（`payment_status` / `paid_at`）。未支付的订单**不可发货**（服务层统一拦截）；下单页与个人中心均可一键「模拟支付」；超过时限未支付用 `manage.py cancel_unpaid_orders --apply` 批量取消并**释放预占库存**。本项目不接真实支付渠道，因此不引入任何需要企业资质的第三方依赖
+  > **口径说明**：任务书表述为「支付完成后订单进入备货流程」。本实现用**正交的支付字段**而非新增「备货中」状态来表达这一步——付款后订单即解锁发货闸门（未支付则服务层拒绝发货），企业随后安排发货。这样避免了订单状态机从 6 态膨胀到 9 态以上、以及出现「已支付且已取消」这类无意义组合。
+- [x] **双路混合检索**：`RAG_BACKEND=hybrid` 时 TF-IDF+BM25 字面路与 BGE-M3 语义路**并行召回**，再用 RRF（倒数排名融合）合并排序；两路分数尺度不可比，故只按排名融合
 - [x] **商品评价**：对「已完成」订单打分（1–5 星）并留言，**一单一评**由数据库唯一约束兜底；商品页展示真实均分与评价条数（点开看评价列表，姓名脱敏）；后台评价管理**只读**（评分不可人工改）。AI 客服查产品时会带上真实口碑，不凭空夸
 - [x] **产品搜索与筛选**：产品页支持**关键词 + 分类 + 适用鱼种**三种查找方式（任务书二·4）。关键词命中名称 / 编码 / 分类 / 鱼种 / 规格 / 描述任一；分类是**真实字段**（后台可维护，不是前端写死的映射）；鱼种按「包含」匹配（`鲫鱼、鲤鱼` 这类多值字段能拆开筛）。纯前端筛选（数据一次取全），带结果计数与「清空条件」；AI 客服的 `query_product` 用同一套检索范围（问「鲫鱼用什么」也能查到）
 - [x] **身份差异化价格**：客户分「个体钓友 / 经销商」，**批发价只在接口层对经销商下发**（非经销商的响应体里根本没有 `wholesale_price` 这个键，抓包也看不到）；经销商未达起订量（10 包）仍走零售价。价格口径统一到 `agent/pricing.py` 唯一出口 —— **产品页展示价、AI 报价、下单落库价三处同源**，不再出现「AI 按批发价报价、客户按零售价结算」。订单单价是下单当时的**快照**，改身份不回溯旧单
-- [x] **RAG 检索增强问答**：企业知识库问答走完整 RAG Pipeline（文档切块 → 向量化存储 → 余弦召回 → BM25 重排），替代原硬编码关键词匹配
+- [x] **RAG 检索增强问答**：企业知识库问答走完整 RAG Pipeline（文档切块 → 向量化存储 → 召回 → 重排），替代原硬编码关键词匹配；检索后端支持 TF-IDF / BGE-M3 语义 / 双路融合三档
 - [x] **真·流式输出**：`stream=True` 边生成边输出，非"先全量再逐字回放"，打字机体验更真实
 - [x] **Prompt 版本管理**：System Prompt 独立到 `prompts/` 目录，`load_prompt(name)` 按版本加载，便于实验与调优
 - [x] **对话历史持久化**：每次对话存入 MySQL `conversations` 表，支持多轮上下文
@@ -76,8 +80,9 @@ flowchart LR
 - [x] **JWT 用户认证**：注册 / 登录 / access+refresh 令牌（旋转 + 黑名单）/ 退出 / 当前用户（`agent/auth_views.py`）
 - [x] **知识库在线维护**：RAG 语料从 DB 构建，后台可直接增删改，编辑后自动失效索引缓存、下次请求重建
 - [x] **真实语义向量（可选）**：`RAG_BACKEND=embedding` 切到 OpenAI 兼容 Embedding（如硅基流动 BAAI/bge-m3）+ Chroma 向量库，无需改动上层代码
+- [x] **双路混合检索（可选）**：`RAG_BACKEND=hybrid` 同时跑 TF-IDF+BM25 字面路与 BGE-M3 语义路，RRF 融合排序（语义路故障自动降级）
 - [x] **Swagger 接口文档**：`/api/schema/swagger-ui/` 自动生成
-- [x] **LlamaIndex 对照 Demo**：`demo_llamaindex.py` 用框架实现同等 RAG，印证「先手写原理再上框架」
+- [x] **LlamaIndex 对照 Demo**：`scripts/demo_llamaindex.py` 用框架实现同等 RAG，印证「先手写原理再上框架」
 
 ---
 
@@ -110,34 +115,83 @@ ZT-agent/
 │   ├── settings.py             # ★ 数据库/AI/CORS/Unfold/JWT/Swagger 配置
 │   ├── urls.py                 # ★ 根路由（前端托管 + Swagger + 管理看板）
 │   └── wsgi.py
-├── demo_llamaindex.py          # LlamaIndex 对照 RAG Demo（自定义 LLM/Embedding 扩展）
-├── Dockerfile                  # 镜像构建（Python 3.12-slim）
-├── docker-compose.yml          # Django + MySQL 一键编排
-├── frontend/                   # Vue 前端（统一 Tailwind 湖青主题）
-│   ├── index.html              # 首页 + AI 客服
-│   ├── products.html           # 产品中心（动态从后端拉产品）
-│   ├── factory.html            # 工厂介绍
-│   ├── custom.html             # 定制服务
-│   ├── order.html              # ★ 在线下单
-│   ├── order_query.html        # ★ 订单查询（按手机号）
-│   ├── contact.html            # 联系我们 + 留言表单
-│   ├── style.css               # 公共样式（旧版，保留兼容）
-│   └── app.js                  # ★ Vue3 逻辑（流式聊天 + session_id）
-├── prompts/
-│   ├── system_prompt.md        # 产品视角 System Prompt（v1，参考文档）
-│   └── system_prompt_agent.md  # ★ Agent 运行时 System Prompt（由 load_prompt 加载）
-├── agent_db.sql                # ★ 数据库初始化脚本（建表 + 初始数据）
-├── PRD.md                      # 产品需求文档
-├── 需求分析.md                  # 需求分析文档
-├── test_rag.py                 # ★ RAG 引擎独立单测（无需 Django/MySQL/API Key）
-├── test_agent.py               # Day2 裸调验证脚本（历史）
-├── start-demo.bat              # ★ 现场演示一键启动（双击即跑；--tunnel 加内网穿透）
-├── scripts/                    # ★ 验收脚本 verify_*.py / verify_*.js（26 个）+ 构建与自检脚本
-├── .env                        # 环境变量（不入库）
-├── .gitignore
+├── agent/                          # Django App —— 业务域 + Agent 内核
+│   ├── models.py                   # ★ Products / Inventory / Orders / Conversations / ContactMessage / Wallet
+│   ├── agent.py                    # ★ ReAct 循环 + Function Calling + 真流式（agent_stream）
+│   ├── tools.py                    # ★ 工具实现 + 工具 Schema（Function Calling 定义）
+│   ├── rag.py                      # ★ RAG 引擎（切块/召回/重排；tfidf / embedding / hybrid 三档）
+│   ├── embeddings/                 # ★ 可插拔 Embedder（OpenAI 兼容端点）
+│   ├── vectorstores/               # ★ 可插拔向量库（ChromaStore）
+│   ├── services.py                 # ★ 订单状态机 + 库存联动 + 钱包记账
+│   ├── purchase_guard.py           # ★ 可购性唯一判定（上架 × 未暂停 × 可用库存>0）
+│   ├── pricing.py                  # ★ 价格唯一出口（展示价 / AI 报价 / 落库价同源）
+│   ├── order_presenter.py          # ★ 订单名片与可执行动作的唯一出口
+│   ├── cashier.py                  # ★ 模拟收银台（二维码 + 局域网可达性诊断）
+│   ├── auth_views.py               # ★ JWT 注册/登录/刷新/退出/当前用户
+│   ├── me_views.py                 # ★ 个人中心（订单/地址/钱包/评价）
+│   ├── admin.py / views_admin.py   # 后台模型注册 + 自定义看板
+│   ├── management/commands/        # ★ lancheck / reconcile_inventory / fix_order_owner / cancel_unpaid_orders ...
+│   ├── static/admin/               # 后台主题（zy-tokens.css 为色值唯一出口）
+│   └── migrations/
+├── config/                         # Django 配置（settings / urls / wsgi / asgi）
+├── frontend/                       # 前端（Vue3 CDN + 预编译 Tailwind，不引入 npm 构建链）
+│   ├── index.html                  # 首页 + AI 客服
+│   ├── products.html               # 产品中心（动态拉取产品）
+│   ├── factory.html / custom.html / contact.html
+│   ├── order.html                  # ★ 在线下单
+│   ├── order_query.html            # ★ 订单查询（按手机号）
+│   ├── profile.html                # 个人中心
+│   ├── pay.html                    # ★ 模拟收银台（扫码 / 支付 / 查单）
+│   ├── pay_confirm.html            # ★ 手机端确认页（扫码后落到这里）
+│   ├── login.html / register.html
+│   ├── app.js                      # ★ Vue3 逻辑（流式聊天 + 自增高输入框）
+│   ├── auth.js                     # ★ 登录态（localStorage / sessionStorage）
+│   └── assets/
+│       ├── theme.css               # ★ 设计变量与组件样式
+│       ├── tailwind.build.css      # ★ 预编译 Tailwind（产物；改 class 须重跑 build_tailwind.py）
+│       ├── tailwind-config.js      # Tailwind 主题扩展（湖青色阶等）
+│       ├── voice-input.js          # ★ 语音输入（Web Speech API）
+│       ├── favicon.svg
+│       └── images/                 # 站点配图（WebP）
+├── scripts/                        # ★ 验收脚本 + 构建、评测、一次性工具
+│   ├── verify_*.py / verify_*.js   # 契约验收（改一处跑一处）
+│   ├── build_tailwind.py           # 预编译 Tailwind（改了 class 必须重跑）
+│   ├── check_page_classes.py       # 查「页面用了但 CSS 里没有」的 class
+│   ├── eval_rag.py                 # RAG 检索效果评测
+│   ├── create_admin.py             # 一次性：建超管
+│   ├── create_staff_bot.py         # 一次性：建员工级客服账号
+│   ├── demo_llamaindex.py          # LlamaIndex 对照 Demo（框架 vs 手写）
+│   └── backup.sh / restore.sh      # 数据库备份与恢复
+├── tests/                          # 单测与冒烟
+│   ├── test_rag.py                 # ★ RAG 引擎单测（纯标准库，CI 跑）
+│   ├── test_chat.py                # ★ Agent 模块冒烟（CI 跑）
+│   ├── test_rag_hybrid.py          # 混合检索单测（pytest）
+│   └── test_agent.py               # Day2 裸调验证（历史，需 API Key）
+├── docs/                           # 技术说明与 RAG 评测产物
+├── prompts/                        # System Prompt 版本（load_prompt 按名加载）
+├── templates/                      # Django Admin 模板覆写
+├── design-system/MASTER.md         # 视觉规范
+├── locale/                         # 国际化词条
 ├── manage.py
-└── README.md                   # 本文件
+├── agent_db.sql                    # ★ 数据库初始化（docker-compose 挂载执行）
+├── Dockerfile                      # 镜像构建（Python 3.12-slim）
+├── docker-compose.yml              # 作者侧：build + image
+├── docker-compose.hub.yml          # 使用者侧：直接拉镜像，无 build
+├── start.bat / stop.bat            # 本机启停
+├── start-demo.bat                  # ★ 双击即跑现场演示（= lancheck --serve）
+├── requirements.txt                # 主依赖
+├── requirements-dev.txt            # 开发依赖（pytest / ruff）
+├── requirements-demo.txt           # LlamaIndex demo 依赖（体积大，单独装）
+├── pyproject.toml                  # ruff / pytest 配置
+├── .editorconfig
+├── .env.example                    # 环境变量模板（.env 本身不入库）
+├── README.md / DEPLOY.md / PRD.md / 需求分析.md
+└── .github/workflows/ci.yml        # CI：compileall + tests/test_rag.py + manage.py check
 ```
+
+> **运行时产物不入库**：`chroma_data/`（Chroma 持久化）、`logs/`（运行日志）、`outputs/`（文档生成产物）、
+> `staticfiles/`（collectstatic 输出）、`.venv/`、`__pycache__/`、`.env`。
+> 所以 **GitHub 上的树会比本地少这几项 —— 这是正常的，不是漏提交**。
 
 ---
 
@@ -145,7 +199,7 @@ ZT-agent/
 
 | 首页 / AI 客服 | 产品中心 | 工厂实力 |
 | --- | --- | --- |
-| ![首页](frontend/assets/images/index-lake.png) | ![产品](frontend/assets/images/products-hero.png) | ![工厂](frontend/assets/images/factory-workshop.png) |
+| ![首页](frontend/assets/images/index-lake.webp) | ![产品](frontend/assets/images/products-hero.webp) | ![工厂](frontend/assets/images/factory-workshop.webp) |
 
 > 更多界面见 `frontend/`（首页 / 产品 / 工厂 / 定制 / 联系 共五个页面），后台看板见 `/admin/dashboard/`。
 
@@ -197,7 +251,7 @@ DB_PASSWORD=123456
 # 数据库迁移（ContactMessage 等新表）
 python manage.py migrate
 
-# 启动 Django（本机自测）
+# 启动 Django
 python manage.py runserver 127.0.0.1:8000
 
 # 浏览器访问
@@ -205,14 +259,17 @@ python manage.py runserver 127.0.0.1:8000
 # 后台：http://127.0.0.1:8000/admin/
 ```
 
-> **要让手机扫码打开收银台，别用上面这条** —— `127.0.0.1` 只接受本机连接，手机连都连不上。
-> 见下一节 [现场演示：手机扫码支付](#现场演示手机扫码支付)。
-
-### ⑤ 运行 RAG 单测
+### ⑤ 运行单测
 
 ```powershell
 # 不依赖数据库 / API Key，验证 RAG 检索与排序
-python test_rag.py
+python tests/test_rag.py
+
+# Agent 模块冒烟（需要 Django 可启动）
+python tests/test_chat.py
+
+# 混合检索单测（TF-IDF 桩引擎，不访问网络）
+python -m pytest tests/ -q
 ```
 
 ### ⑥ 创建管理员（可选）
@@ -262,6 +319,9 @@ docker compose up -d --build
 > `python manage.py migrate && python manage.py runserver`，会**自动建立 simplejwt 的
 > `token_blacklist` 表**（JWT 退出 / 刷新黑名单依赖它）。本地开发若手动 `migrate`，
 > 也请确保执行过该步骤，否则 refresh token 旋转会报 500。
+
+> 本地自测用 `127.0.0.1` 没问题；**要拿手机扫码演示，见下一节
+> [现场演示：手机扫码支付](#现场演示手机扫码支付)**。
 
 ---
 
@@ -336,7 +396,7 @@ python manage.py lancheck --serve --tunnel
 | GET | `/api/agent/history/<session_id>/` | 查询对话历史 |
 | GET | `/api/products/` | 产品列表（产品页 / 下单页下拉框）；含 `category`（产品分类）；**价格字段按登录身份裁剪**（未登录/个体钓友不下发 `wholesale_price`） |
 | POST | `/api/orders/` | 创建订单（下单页提交） |
-| POST | `/api/orders/query/` | 按手机号查询订单（隐私脱敏：仅返回订单号/产品/数量/状态/时间，不返回姓名/电话；带 order_no 时为双重验证查单个） |
+| POST | `/api/orders/query/` | 按手机号查询**本人**订单（**需登录**：只能查账号绑定的手机号，填他人号码返回 403 且不透露该号码是否存在订单；脱敏：不返回姓名/电话；带 order_no 时查单个） |
 | POST | `/api/orders/<order_no>/pay/` | 模拟支付（需登录 + 归属校验；落 `paid_at` 与 `payment_status=已支付`，幂等） |
 | POST | `/api/orders/<order_no>/review/` | 发表商品评价（需登录 + 归属校验；仅「已完成」订单可评，一单一评，评分 1–5 星） |
 | GET | `/api/products/<product_id>/reviews/` | 商品评价列表（**公开**，与产品页同口径；姓名脱敏，`review_count` 为真实总数） |
@@ -379,7 +439,7 @@ data: {"done": true, "session_id": "abc123"}
 | `query_product` | 产品名 / **分类** / **适用鱼种**（如"红虫颗粒"/"薯香饵"/"鲫鱼"） | 分类、规格、适用鱼种、价格（**按登录身份给：钓友只有零售价，经销商多一行批发价与起订量**）、可购状态、**真实评分与评价条数** | `products` 表 + `purchase_guard` + `reviews` + `pricing` |
 | `check_inventory` | 产品名（如"螺鲤3号"） | 总库存 / 已预占 / **可用库存**、是否低于预警线 | `inventory` + `products` 表 |
 | `get_order_status` | 订单号（如"DD20240801"） | 订单状态、商品、金额、**支付状态**、收货地址与期望交期、物流、售后进展 | `orders` 表 |
-| `query_orders_by_phone` | 下单手机号 | 该号码名下全部订单（真实总笔数 + 物流 + 售后） | `orders` 表 |
+| `query_orders_by_phone` | 下单手机号（**须为本人账号绑定的号码，需登录**） | 该号码名下全部订单（真实总笔数 + 物流 + 售后）；未登录或填他人号码一律拒绝 | `orders` 表 + `me_helpers.my_orders_q` |
 | `query_my_orders` | 无（按登录账号） | 当前登录客户自己的最近订单（含支付状态、物流与售后） | `orders` 表 + `me_helpers.my_orders_q` |
 | `calculate_quote` | 商品清单（name + qty） | 单价、小计、合计 + 不可购/超量提醒（单价走 `pricing.price_for`，与下单落库价同源） | `products` 表 + `pricing` |
 | `search_knowledge` | 自然语言问题 | 相关答案片段 + 来源标题 | RAG（企业知识库） |
@@ -466,7 +526,7 @@ data: {"done": true, "session_id": "abc123"}
 | **Day 5** | Agent App + 工具函数 + 真实数据库查询 | `agent/views.py`、`agent/tools.py`、`agent/models.py` |
 | **Day 6** | Vue 企业官网 + 多页面 + 前后端联调 + Admin 注册 | `frontend/`、`agent/admin.py` |
 | **Day 7** | SSE 流式输出 + 对话存库 + 留言系统 + README | 流式改造、`contact_messages` |
-| **Day 8** | RAG 落地 + Function Calling + 真流式 + Prompt 版本化 | `rag.py`、`llm.py`、`agent.py`、`prompts.py`、`test_rag.py` |
+| **Day 8** | RAG 落地 + Function Calling + 真流式 + Prompt 版本化 | `rag.py`、`llm.py`、`agent.py`、`prompts.py`、`tests/test_rag.py` |
 
 ---
 

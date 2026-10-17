@@ -123,7 +123,7 @@ docker compose down -v
 |---|---|---|
 | `DEEPSEEK_API_KEY` | 已填 | AI 对话用的密钥，没有它聊天会报错 |
 | `DB_PASSWORD` | 已填 | MySQL 密码，db 和 web 共用，保持一致 |
-| `RAG_BACKEND` | `embedding` | 走真实向量检索（Chroma + bge-m3）；想零依赖可改成 `tfidf` |
+| `RAG_BACKEND` | `hybrid` | 双路检索（TF-IDF+BM25 × bge-m3 融合）；`embedding` 纯语义、`tfidf` 零依赖 |
 | `EMBEDDING_API_KEY` | 已填 | 向量化模型密钥，embedding 模式必需 |
 | `DEBUG` | `True` | 本地调试用；上线再改成 `False` |
 | `CORS_ALLOWED_ORIGINS` | 含 8000 与 8001 | 前端跨域白名单。**换了 web 端口要同步加进来** |
@@ -224,7 +224,7 @@ listen tcp 0.0.0.0:3306: bind: Only one usage of each socket address (protocol/n
   ```
 - **已做拆包优化**：`llama-index`（会拖入数十个传递依赖）已从主清单移到
   `requirements-demo.txt`，Docker 构建只装主流程依赖，pip 阶段约 **1–3 分钟**。
-  需要跑 `demo_llamaindex.py` 时再单独装：
+  需要跑 `scripts/demo_llamaindex.py` 时再单独装：
   ```powershell
   pip install -r requirements-demo.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
   ```
