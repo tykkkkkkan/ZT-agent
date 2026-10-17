@@ -90,38 +90,16 @@ flowchart LR
 
 ```
 ZT-agent/
-├── agent/                      # Django App
-│   ├── __init__.py
-│   ├── admin.py                # ★ 注册所有模型到 Admin 后台
-│   ├── apps.py
-│   ├── models.py               # ★ Products / Inventory / Orders / Conversations / ContactMessage
-│   ├── rag.py                  # ★ RAG 引擎（切块/向量化/召回/重排，纯标准库）
-│   ├── knowledge_data.py       # ★ 企业知识库语料 + 惰性构建 RAG 引擎
-│   ├── llm.py                  # ★ LLM 客户端封装（chat / chat_stream）
-│   ├── prompts.py              # ★ Prompt 版本管理（load_prompt）
-│   ├── agent.py                # ★ ReAct Agent 循环 + 真流式（agent_stream）
-│   ├── tools.py                # ★ 工具函数 + 工具 Schema（Function Calling 定义）
-│   ├── services.py             # ★ 订单状态机 + 库存联动 + 钱包记账
-│   ├── auth_views.py           # ★ JWT 注册/登录/刷新/退出/当前用户
-│   ├── response.py             # ★ 统一响应构造器（约定 {success,message,data}，前端按 success 判定）
-│   ├── embeddings/             # ★ 可插拔 Embedder（OpenaiEmbedder 语义向量）
-│   ├── vectorstores/           # ★ 可插拔向量库（ChromaStore）
-│   ├── urls.py                 # ★ API 路由
-│   ├── views.py                # ★ 聊天(流式)/联系表单/历史/订单库存 视图
-│   └── migrations/
-├── config/                     # Django 配置
-│   ├── __init__.py             # PyMySQL 注册 MySQLdb
-│   ├── asgi.py
-│   ├── settings.py             # ★ 数据库/AI/CORS/Unfold/JWT/Swagger 配置
-│   ├── urls.py                 # ★ 根路由（前端托管 + Swagger + 管理看板）
-│   └── wsgi.py
 ├── agent/                          # Django App —— 业务域 + Agent 内核
-│   ├── models.py                   # ★ Products / Inventory / Orders / Conversations / ContactMessage / Wallet
 │   ├── agent.py                    # ★ ReAct 循环 + Function Calling + 真流式（agent_stream）
 │   ├── tools.py                    # ★ 工具实现 + 工具 Schema（Function Calling 定义）
-│   ├── rag.py                      # ★ RAG 引擎（切块/召回/重排；tfidf / embedding / hybrid 三档）
+│   ├── llm.py                      # ★ LLM 客户端封装（chat / chat_stream）
+│   ├── prompts.py                  # ★ Prompt 版本管理（load_prompt）
+│   ├── rag.py                      # ★ RAG 引擎（切块 / 召回 / 重排；tfidf / embedding / hybrid 三档）
+│   ├── knowledge_data.py           # ★ 企业知识库语料 + 惰性构建 RAG 引擎
 │   ├── embeddings/                 # ★ 可插拔 Embedder（OpenAI 兼容端点）
 │   ├── vectorstores/               # ★ 可插拔向量库（ChromaStore）
+│   ├── models.py                   # ★ Products / Inventory / Orders / Wallet / UserWallet / Address / Review …
 │   ├── services.py                 # ★ 订单状态机 + 库存联动 + 钱包记账
 │   ├── purchase_guard.py           # ★ 可购性唯一判定（上架 × 未暂停 × 可用库存>0）
 │   ├── pricing.py                  # ★ 价格唯一出口（展示价 / AI 报价 / 落库价同源）
@@ -129,11 +107,21 @@ ZT-agent/
 │   ├── cashier.py                  # ★ 模拟收银台（二维码 + 局域网可达性诊断）
 │   ├── auth_views.py               # ★ JWT 注册/登录/刷新/退出/当前用户
 │   ├── me_views.py                 # ★ 个人中心（订单/地址/钱包/评价）
+│   ├── views.py                    # ★ 聊天(流式) / 联系表单 / 历史 / 订单库存视图
+│   ├── response.py                 # ★ 统一响应构造器（{success,message,data}）
+│   ├── urls.py                     # ★ API 路由
+│   ├── addresses.py / reviews.py / user_wallet.py / coordination.py  # 地址 / 评价 / 钱包 / 跨 Agent 协调
+│   ├── me_helpers.py / safety.py / middleware.py                     # 订单归属 / 安全 / 中间件
 │   ├── admin.py / views_admin.py   # 后台模型注册 + 自定义看板
 │   ├── management/commands/        # ★ lancheck / reconcile_inventory / fix_order_owner / cancel_unpaid_orders ...
 │   ├── static/admin/               # 后台主题（zy-tokens.css 为色值唯一出口）
+│   ├── templatetags/               # 后台模板标签
 │   └── migrations/
-├── config/                         # Django 配置（settings / urls / wsgi / asgi）
+├── config/                         # Django 配置
+│   ├── __init__.py                 # PyMySQL 注册 MySQLdb
+│   ├── settings.py                 # ★ 数据库 / AI / CORS / Unfold / JWT / Swagger 配置
+│   ├── urls.py                     # ★ 根路由（前端托管 + Swagger + 管理看板）
+│   └── wsgi.py / asgi.py
 ├── frontend/                       # 前端（Vue3 CDN + 预编译 Tailwind，不引入 npm 构建链）
 │   ├── index.html                  # 首页 + AI 客服
 │   ├── products.html               # 产品中心（动态拉取产品）
@@ -152,6 +140,7 @@ ZT-agent/
 │       ├── tailwind-config.js      # Tailwind 主题扩展（湖青色阶等）
 │       ├── voice-input.js          # ★ 语音输入（Web Speech API）
 │       ├── favicon.svg
+│       ├── vendor/                 # Vue3 / axios 本地副本（不引入 npm 构建链；tailwindcdn.js 已停用待清）
 │       └── images/                 # 站点配图（WebP）
 ├── scripts/                        # ★ 验收脚本 + 构建、评测、一次性工具
 │   ├── verify_*.py / verify_*.js   # 契约验收（改一处跑一处）
@@ -166,7 +155,7 @@ ZT-agent/
 │   ├── test_rag.py                 # ★ RAG 引擎单测（纯标准库，CI 跑）
 │   ├── test_chat.py                # ★ Agent 模块冒烟（CI 跑）
 │   ├── test_rag_hybrid.py          # 混合检索单测（pytest）
-│   └── test_agent.py               # Day2 裸调验证（历史，需 API Key）
+│   └── test_agent.py               # 早期裸调验证（历史，需 API Key）
 ├── docs/                           # 技术说明与 RAG 评测产物
 ├── prompts/                        # System Prompt 版本（load_prompt 按名加载）
 ├── templates/                      # Django Admin 模板覆写
@@ -186,6 +175,7 @@ ZT-agent/
 ├── .editorconfig
 ├── .env.example                    # 环境变量模板（.env 本身不入库）
 ├── README.md / DEPLOY.md / PRD.md / 需求分析.md
+├── LICENSE                         # 开源协议
 └── .github/workflows/ci.yml        # CI：compileall + tests/test_rag.py + manage.py check
 ```
 
