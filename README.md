@@ -518,15 +518,24 @@ data: {"done": true, "session_id": "abc123"}
 
 ## 开发历程
 
-| 阶段 | 内容 | 交付物 |
-|------|------|--------|
-| **Day 1-2** | 需求分析 + PRD + Agent Prompt 设计验证 | `需求分析.md`、`PRD.md`、`prompts/system_prompt.md` |
-| **Day 3** | MySQL 建表 + Mock 数据 | `agent_db.sql` |
-| **Day 4** | Django 骨架 + MySQL + DeepSeek 接入 + SimpleUI | `config/settings.py`、`.env` |
-| **Day 5** | Agent App + 工具函数 + 真实数据库查询 | `agent/views.py`、`agent/tools.py`、`agent/models.py` |
-| **Day 6** | Vue 企业官网 + 多页面 + 前后端联调 + Admin 注册 | `frontend/`、`agent/admin.py` |
-| **Day 7** | SSE 流式输出 + 对话存库 + 留言系统 + README | 流式改造、`contact_messages` |
-| **Day 8** | RAG 落地 + Function Calling + 真流式 + Prompt 版本化 | `rag.py`、`llm.py`、`agent.py`、`prompts.py`、`tests/test_rag.py` |
+> 这不是按「第几天做什么」排出来的教程式进度。从 2026 年 8 月下旬到现在约两个月、73 次提交，
+> 每一阶段都是先把一件事真正跑通，再在后面的日子里反复回头改它 —— 后一阶段经常会推翻前一阶段的写法。
+
+| 阶段 | 时间 | 主要工作与产出 |
+|------|------|----------------|
+| **① 从需求到能查库的对话** | 8 月下旬 | 需求拆解与 PRD 成稿，Agent 的 System Prompt 先裸调验证再落进工程；MySQL 建表与 Mock 数据；Django 骨架接 DeepSeek；工具函数直查真实业务库，模型不可用时有关键词兜底 —— 先保证「答得出话」；Vue3 聊天页与 CORS 联调，第一次在浏览器里看到字符一个个流出来。产出：`需求分析.md`、`PRD.md`、`agent_db.sql`、`agent/tools.py`、`frontend/` |
+| **② Agent 能力成型** | 8 月底 | 自研 RAG（切块 / TF-IDF / cosine / BM25，纯标准库）；ReAct 循环 + Function Calling；SSE 真流式；Prompt 版本化。同期补上 JWT 登录与 refresh 轮换、订单状态机、库存联动、钱包流水、Unfold 后台。产出：`agent/rag.py`、`agent/agent.py`、`agent/llm.py`、`prompts/` |
+| **③ 从能演示到可交付** | 8 月底 – 9 月初 | 可插拔真实 Embedding + Chroma 向量库；Dockerfile / compose 与镜像分发；Swagger 接口文档；CI、健康检查、备份与安全审核；写了一份 LlamaIndex 对照实现，验证「先手写原理再上框架」。产出：`Dockerfile`、`docker-compose*.yml`、`.github/workflows/ci.yml`、`scripts/demo_llamaindex.py` |
+| **④ 跨 Agent 协同与口径统一** | 9 月中 | 营销 Agent 专用账号与出站通知；商品可购性判定统一到 `purchase_guard`；身份解析改成显式 JWT 优先（此前订单会记到别人名下）；修「后台有货、前台却买不了」的库存死锁与预占泄漏。产出：`agent/coordination.py`、`agent/purchase_guard.py`、`agent/services.py` |
+| **⑤ 业务闭环与体验打磨** | 10 月上半月 | AI 客服里直接出产品 / 订单名片，能在对话内下单并支付；模拟收银台（PC 出码、手机扫码、回调入账）与超时取消；收货地址簿、用户钱包、商品评价、身份差异化价格、产品搜索；Lighthouse 性能与 SEO / 无障碍；后台视觉收敛；现场演示链路（局域网自检 + 内网穿透）。产出：`agent/order_presenter.py`、`agent/cashier.py`、`frontend/pay.html`、`frontend/profile.html`、`agent/management/commands/lancheck.py` |
+| **⑥ 工程收口** | 10 月中 | 散落脚本归位到 `tests/` 与 `scripts/`，补 ruff / pytest / editorconfig；配图 WebP 化、语音输入、输入框自增高；RAG 拆成 tfidf / embedding / hybrid 三档后端；文档与结构树对齐。产出：`pyproject.toml`、`frontend/assets/voice-input.js`、`agent/embeddings/`、`agent/vectorstores/` |
+
+几处「回头改」的记录，说明它确实不是一次写成的：
+
+- RAG 最初只有 TF-IDF 一个字面路，语义检索是后来加的，最终做成双路并行召回 + RRF 融合，并允许语义路故障时自动降级回字面路
+- 身份解析最早 JWT 与 session 混着用，导致下单记到管理员名下、C 端查不到自己的单，之后统一为「显式 JWT 优先于 session」
+- 收银台第一版在 `/pay/<订单号>/` 下用相对路径引资源，样式与登录态全丢，才定下「站内引用一律根绝对路径」这条规矩
+- 配图先 PNG 后迁 WebP；Tailwind 先用 Play CDN，后来预编译成静态 CSS；两块都是为了首屏体积
 
 ---
 
