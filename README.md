@@ -66,6 +66,11 @@ flowchart LR
 - [x] **产品搜索与筛选**：产品页支持**关键词 + 分类 + 适用鱼种**三种查找方式（任务书二·4）。关键词命中名称 / 编码 / 分类 / 鱼种 / 规格 / 描述任一；分类是**真实字段**（后台可维护，不是前端写死的映射）；鱼种按「包含」匹配（`鲫鱼、鲤鱼` 这类多值字段能拆开筛）。纯前端筛选（数据一次取全），带结果计数与「清空条件」；AI 客服的 `query_product` 用同一套检索范围（问「鲫鱼用什么」也能查到）
 - [x] **身份差异化价格**：客户分「个体钓友 / 经销商」，**批发价只在接口层对经销商下发**（非经销商的响应体里根本没有 `wholesale_price` 这个键，抓包也看不到）；经销商未达起订量（10 包）仍走零售价。价格口径统一到 `agent/pricing.py` 唯一出口 —— **产品页展示价、AI 报价、下单落库价三处同源**，不再出现「AI 按批发价报价、客户按零售价结算」。订单单价是下单当时的**快照**，改身份不回溯旧单
 - [x] **RAG 检索增强问答**：企业知识库问答走完整 RAG Pipeline（文档切块 → 向量化存储 → 召回 → 重排），替代原硬编码关键词匹配；检索后端支持 TF-IDF / BGE-M3 语义 / 双路融合三档
+- [x] **引用溯源**：回答不是「我说的」，是「知识库第 3 条说的」。`retrieve_detailed()` 把余弦分 / BM25 分 / 字面路名次 / 语义路名次 / RRF 分逐条透传到前端，回答下方可展开「参考来源 N 条」。混合档的分数是 RRF 融合值（top1 约 0.03 量级），不能当绝对阈值用，故只用于展示排序、不用于过滤
+- [x] **会话级调用链**：每轮对话落一条 `agent_runs`（`timeline` 存 JSON），后台可看 ReAct 瀑布：想了几步、调了哪个工具、每步耗时、prompt/completion token、总时长。落库包在 `try/finally` 里 —— 客户端中途断开、模型异常也照样留档，「没正常说完」恰恰最该排查
+- [x] **回答反馈闭环**：用户点 👍/👎（差评可选原因：答非所问 / 信息不对 / 没查到 / 太啰嗦）→ `message_feedback` 存当时的**一问一答 + 引用来源快照** → 后台列表区分「一条来源都没有（知识库确实缺）」与「命中 N 条却答歪了（条目在、是表述问题）」，两种修法完全不同 → 「补进知识库」用**用户原问**预填标题、正文留空，必须由人写标准答案（把 AI 那句错话复制进去等于把错误固化）
+- [x] **转人工工单**：AI 办不了（售后纠纷 / 投诉 / 支付异常 / 顾客要真人）时调 `handoff_to_human` 建单，工单里带四组快照：最近 12 条对话、本轮工具调用、知识库命中、涉及商品与订单 —— 交接的是**上下文**，不是一张让顾客重述问题的待办。单号 `T20261019-0007` 由自增 pk 生成（并发不撞号、可口头播报）；状态机 open→assigned→replied→resolved→closed，`SupportTicket.apply_transition()` 是唯一出口并顺手维护分配 / 首响 / 解决三个时间戳
+- [x] **知识库检索测试台**：后台输入一句话，同时跑 tfidf / embedding / hybrid 三档，逐条对比召回名次与分数、看「我刚改的这条排第几、输给谁」。阈值随后端自适应（tfidf 1.5 / embedding 0.2 / hybrid 0.0），与 `search_knowledge` 同口径 —— 否则测试台测的和线上跑的不是一回事
 - [x] **真·流式输出**：`stream=True` 边生成边输出，非"先全量再逐字回放"，打字机体验更真实
 - [x] **Prompt 版本管理**：System Prompt 独立到 `prompts/` 目录，`load_prompt(name)` 按版本加载，便于实验与调优
 - [x] **对话历史持久化**：每次对话存入 MySQL `conversations` 表，支持多轮上下文
@@ -99,11 +104,12 @@ ZT-agent/
 │   ├── knowledge_data.py           # ★ 企业知识库语料 + 惰性构建 RAG 引擎
 │   ├── embeddings/                 # ★ 可插拔 Embedder（OpenAI 兼容端点）
 │   ├── vectorstores/               # ★ 可插拔向量库（ChromaStore）
-│   ├── models.py                   # ★ Products / Inventory / Orders / Wallet / UserWallet / Address / Review …
+│   ├── models.py                   # ★ Products / Inventory / Orders / Wallet / UserWallet / Address / Review / AgentRun / MessageFeedback / SupportTicket …
 │   ├── services.py                 # ★ 订单状态机 + 库存联动 + 钱包记账
 │   ├── purchase_guard.py           # ★ 可购性唯一判定（上架 × 未暂停 × 可用库存>0）
 │   ├── pricing.py                  # ★ 价格唯一出口（展示价 / AI 报价 / 落库价同源）
 │   ├── order_presenter.py          # ★ 订单名片与可执行动作的唯一出口
+│   ├── handoff_presenter.py        # ★ 工单对外呈现的唯一出口（受理角色 / 承诺时限 / 安抚话术）
 │   ├── cashier.py                  # ★ 模拟收银台（二维码 + 局域网可达性诊断）
 │   ├── auth_views.py               # ★ JWT 注册/登录/刷新/退出/当前用户
 │   ├── me_views.py                 # ★ 个人中心（订单/地址/钱包/评价）
@@ -500,7 +506,14 @@ data: {"done": true, "session_id": "abc123"}
 ### 客服与用户
 - **用户留言**：来自联系表单的真实留言
 - **对话记录**：AI 对话历史（按 session_id 分组）
+- **对话调用链**：一轮一行（ReAct 步数 / 工具 / token / 耗时），点开是瀑布图，能看清「第几步慢、哪个工具超时」
+- **回答反馈**：👍/👎 清单，顶部 KPI（待优化 / 差评总数 / 近 7 天 / 好评率）可点直落筛选；差评行可一键跳「新建知识库条目」并预填用户原问
+- **转人工工单**：KPI（待受理 / 未完结 / 超时未接 / 我的待办）+ 行内认领（已被别人认领返回 409，不能抢单）；详情页回放整段对话、工具痕迹、知识库命中
 - **定制需求**：来自定制表单的提交
+
+### 智能问答
+- **知识库条目**：RAG 语料在线增删改，保存后自动失效索引缓存
+- **检索测试**：一句话切三档后端对比召回结果（名次 / 分数 / RRF），改完知识先在这里验一遍
 
 ### 认证与权限
 - **用户**：Django Auth 用户管理
@@ -510,7 +523,7 @@ data: {"done": true, "session_id": "abc123"}
 
 ## 开发历程
 
-> 这不是按「第几天做什么」排出来的教程式进度。从 2026 年 8 月下旬到现在约两个月、73 次提交，
+> 这不是按「第几天做什么」排出来的教程式进度。从 2026 年 8 月下旬到现在约两个月、81 次提交，
 > 每一阶段都是先把一件事真正跑通，再在后面的日子里反复回头改它 —— 后一阶段经常会推翻前一阶段的写法。
 
 | 阶段 | 时间 | 主要工作与产出 |
@@ -521,6 +534,7 @@ data: {"done": true, "session_id": "abc123"}
 | **④ 跨 Agent 协同与口径统一** | 9 月中 | 营销 Agent 专用账号与出站通知；商品可购性判定统一到 `purchase_guard`；身份解析改成显式 JWT 优先（此前订单会记到别人名下）；修「后台有货、前台却买不了」的库存死锁与预占泄漏。产出：`agent/coordination.py`、`agent/purchase_guard.py`、`agent/services.py` |
 | **⑤ 业务闭环与体验打磨** | 10 月上半月 | AI 客服里直接出产品 / 订单名片，能在对话内下单并支付；模拟收银台（PC 出码、手机扫码、回调入账）与超时取消；收货地址簿、用户钱包、商品评价、身份差异化价格、产品搜索；Lighthouse 性能与 SEO / 无障碍；后台视觉收敛；现场演示链路（局域网自检 + 内网穿透）。产出：`agent/order_presenter.py`、`agent/cashier.py`、`frontend/pay.html`、`frontend/profile.html`、`agent/management/commands/lancheck.py` |
 | **⑥ 工程收口** | 10 月中 | 散落脚本归位到 `tests/` 与 `scripts/`，补 ruff / pytest / editorconfig；配图 WebP 化、语音输入、输入框自增高；RAG 拆成 tfidf / embedding / hybrid 三档后端；文档与结构树对齐。产出：`pyproject.toml`、`frontend/assets/voice-input.js`、`agent/embeddings/`、`agent/vectorstores/` |
+| **⑦ 可观测与客服闭环** | 10 月下半月 | 对标开源客服系统补齐「回答可信、过程可见、答错能改、办不了能交接」四件事：引用来源透传到前端；每轮对话落调用链（ReAct 瀑布 + token + 工具耗时）；知识库检索测试台三档对比；答案反馈闭环（差评 → 补知识库）；转人工工单（带对话与工具痕迹快照）。产出：`agent/handoff_presenter.py`、`agent/models.py`（`AgentRun` / `MessageFeedback` / `SupportTicket`）、`scripts/verify_citations.py` 等 5 个验收脚本 |
 
 几处「回头改」的记录，说明它确实不是一次写成的：
 
