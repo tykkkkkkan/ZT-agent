@@ -138,6 +138,8 @@ KNOWLEDGE_BASE = [
 ]
 
 _rag_cache = None
+# 按后端名缓存的独立引擎（后台「检索测试」用：同一进程里可比三档，互不干扰）
+_engine_cache: dict = {}
 _seeded = False
 
 
@@ -283,3 +285,58 @@ def invalidate_rag_cache() -> None:
     """使知识库 RAG 索引缓存失效（后台编辑知识库后调用，下次请求自动重建）。"""
     global _rag_cache
     _rag_cache = None
+    # 检索测试台的按后端缓存也要一起清，否则后台会拿旧索引打分
+    _engine_cache.clear()
+
+
+# ──────────────────────────────────────────────────────────────
+# 指定后端的独立引擎（后台「检索测试」）
+# ──────────────────────────────────────────────────────────────
+def build_engine(backend: str) -> Union[RAGEngine, HybridRAGEngine]:
+    """按指定后端构建一个已灌好语料的新引擎（不碰全局缓存）。
+
+    与 `get_knowledge_rag()` 的区别：后者只认环境变量里的当前后端，
+    切一次要重启进程；这里允许后台在同一个进程里把 tfidf / embedding /
+    hybrid 三档都建出来、同一句话并排对比 —— 这才是"看得见的 RAG"。
+    """
+    engine = _build_engine(backend)
+    engine.ingest(_load_docs())
+    return engine
+
+
+def get_engine(backend: str) -> Union[RAGEngine, HybridRAGEngine]:
+    """取（并缓存）指定后端的引擎；首次调用才真正构建索引。
+
+    语义后端的构建要调 Embedding API，一次几百毫秒到几十秒，
+    缓存住才能让后台连续试几句不卡。知识库改动时由
+    `invalidate_rag_cache()` 一并清空。
+
+    🔴 语义路只 embed 一次：hybrid 内部本来就有一个语义子引擎，
+    如果 embedding / hybrid 两档各建一遍，同一批语料会被 embed 两次
+    （实测 22 条各 ~36s，后台点一次「三档对比」要等一分多钟）。
+    这里让两者共用同一个语义引擎实例 —— 切块逻辑相同，Chunk.id 天然对齐，
+    RRF 融合只看 id，共用不影响结果。
+    """
+    backend = (backend or 'tfidf').strip().lower()
+
+    if backend in _engine_cache:
+        return _engine_cache[backend]
+
+    if backend == 'hybrid':
+        # 语义路已经建好 → 只补字面路，不再重复 embed
+        cached_semantic = _engine_cache.get('embedding')
+        if cached_semantic is not None and getattr(cached_semantic, 'chunks', None):
+            engine = HybridRAGEngine(semantic_engine=cached_semantic)
+            engine._lexical.ingest(_load_docs())
+            _engine_cache['hybrid'] = engine
+            return engine
+        engine = _build_engine('hybrid')
+        engine.ingest(_load_docs())
+        _engine_cache['hybrid'] = engine
+        # 反向复用：hybrid 的语义路就是 embedding 档要的东西
+        _engine_cache.setdefault('embedding', engine._semantic)
+        return engine
+
+    engine = build_engine(backend)
+    _engine_cache[backend] = engine
+    return engine

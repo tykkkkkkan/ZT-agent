@@ -14,6 +14,7 @@ agent/admin.py — 注册所有模型到 Django Admin 后台
 import csv
 import json
 import logging
+import os
 import threading
 from datetime import timedelta
 from decimal import Decimal
@@ -24,6 +25,7 @@ from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 from django.db.models import Count, F, Sum
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
+from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
 from django.utils.html import format_html
@@ -1489,8 +1491,126 @@ class KnowledgeChunkAdmin(ZYModelAdmin):
         ('提示', {'fields': (), 'description':
             'keywords 多个词用英文逗号分隔（如：退换,退货,退款）。'
             '保存或删除后索引会自动重建（无需重启进程）；也可在服务器执行 '
-            '`python manage.py rebuild_rag` 手动全量重建。'}),
+            '`python manage.py rebuild_rag` 手动全量重建。<br>'
+            '想知道一句话实际会召回哪几条 → 左侧菜单「检索测试」'}),
     )
+
+    # ══════════════════════════════════════════════════════════
+    # 检索测试台（对齐 FastGPT「知识库单点搜索测试」/ Dify「引用预览」）
+    # ══════════════════════════════════════════════════════════
+    # 为什么值得有：批量指标（eval_rag 的 hit@k / MRR）回答的是"整体好不好"，
+    # 而调知识库时人真正想知道的是"我刚改的这条，到底排第几、输给谁"。
+    # 这里把三路名次与分数直接摆出来，同一句话切后端就能肉眼对比。
+    SEARCH_TEST_BACKENDS = (
+        ('tfidf', 'TF-IDF 字面路（零依赖）'),
+        ('embedding', '语义向量（BGE-M3 + Chroma）'),
+        ('hybrid', '双路混合（RRF 融合）'),
+    )
+    # 默认阈值随后端自适应，与 search_knowledge 保持同一口径 ——
+    # 测试台调出来的分数必须能直接对上线上行为，否则"测着好看、线上召回空"
+    DEFAULT_MIN_SCORE = {'tfidf': 1.5, 'embedding': 0.2, 'hybrid': 0.0}
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path('search-test/', self.admin_site.admin_view(self.search_test_view),
+                 name='agent_knowledgechunk_search_test'),
+        ]
+        return custom + urls
+
+    def _run_search(self, backend: str, query: str, top_k: int, min_score: float) -> dict:
+        """跑一次检索并整理成模板要的形状；任何异常都收进 panel 而不是 500。"""
+        from django.utils import timezone as _tz
+        from agent.knowledge_data import get_engine
+
+        label = dict(self.SEARCH_TEST_BACKENDS).get(backend, backend)
+        panel = {
+            'backend': backend, 'label': label, 'items': [],
+            'error': '', 'elapsed_ms': 0, 'hit_count': 0,
+        }
+        started = _tz.now()
+        try:
+            engine = get_engine(backend)
+            detailed = engine.retrieve_detailed(query, top_k=top_k, min_score=min_score)
+        except Exception as exc:  # noqa: BLE001 - 语义后端缺 key / 网络不可达都属正常情况
+            panel['error'] = f'{type(exc).__name__}: {exc}'
+            return panel
+
+        for hit in detailed:
+            chunk = hit.get('chunk')
+            meta = getattr(chunk, 'meta', {}) or {}
+            routes = hit.get('routes') or {}
+            answer = (meta.get('answer') or getattr(chunk, 'text', '') or '').strip()
+            panel['items'].append({
+                'title': meta.get('title') or '（无标题）',
+                'category': meta.get('category') or '',
+                'score': round(float(hit.get('score') or 0), 4),
+                'rank': routes.get('rank'),
+                'lexical_rank': routes.get('lexical_rank'),
+                'semantic_rank': routes.get('semantic_rank'),
+                'cosine': routes.get('cosine'),
+                'bm25': routes.get('bm25'),
+                'rrf': routes.get('rrf'),
+                'degraded': routes.get('degraded'),
+                'snippet': answer.replace('\n', ' ')[:180],
+            })
+        panel['hit_count'] = len(panel['items'])
+        panel['elapsed_ms'] = int((_tz.now() - started).total_seconds() * 1000)
+        return panel
+
+    def search_test_view(self, request):
+        """知识库检索测试台：一句话 → 召回明细（含三路名次）。"""
+        from agent.models import KnowledgeChunk as _KC
+
+        valid_backends = [b for b, _ in self.SEARCH_TEST_BACKENDS]
+        current = (os.getenv('RAG_BACKEND', 'tfidf') or 'tfidf').strip().lower()
+        if current not in valid_backends:
+            current = 'tfidf'
+
+        query = (request.GET.get('q') or '').strip()
+        backend = (request.GET.get('backend') or current).strip().lower()
+        if backend not in valid_backends:
+            backend = current
+        compare = request.GET.get('compare') == '1'
+
+        try:
+            top_k = max(1, min(10, int(request.GET.get('top_k') or 5)))
+        except (TypeError, ValueError):
+            top_k = 5
+
+        raw_min = (request.GET.get('min_score') or '').strip()
+        if raw_min:
+            try:
+                min_score = max(0.0, float(raw_min))
+            except ValueError:
+                min_score = self.DEFAULT_MIN_SCORE.get(backend, 0.0)
+        else:
+            min_score = self.DEFAULT_MIN_SCORE.get(backend, 0.0)
+
+        panels = []
+        if query:
+            targets = valid_backends if compare else [backend]
+            for b in targets:
+                # 对比模式下每个后端用自己的默认阈值（尺度不同，不能共用一个数）
+                ms = min_score if (not compare and raw_min) else self.DEFAULT_MIN_SCORE.get(b, 0.0)
+                panels.append(self._run_search(b, query, top_k, ms))
+
+        context = {
+            **self.admin_site.each_context(request),
+            'title': '知识库检索测试',
+            'opts': self.model._meta,
+            'q': query,
+            'backend': backend,
+            'compare': compare,
+            'top_k': top_k,
+            'min_score_raw': raw_min,
+            'min_score': min_score,
+            'backends': self.SEARCH_TEST_BACKENDS,
+            'panels': panels,
+            'chunk_total': _KC.objects.filter(is_active=True).count(),
+            'env_backend': current,
+        }
+        return TemplateResponse(request, 'admin/knowledge_search_test.html', context)
 
 
 # ══════════════════════════════════════════════════════════════

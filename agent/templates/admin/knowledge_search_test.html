@@ -1,0 +1,186 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content_title %}知识库检索测试{% endblock %}
+
+{% block content %}
+<div class="zy-kt">
+  <style>
+    /* 极简奢版：只靠 1px 描边 + 留白分级，色值全部来自 zy-tokens.css */
+    .zy-kt{max-width:1180px;box-sizing:border-box;}
+    .zy-kt *{box-sizing:border-box;}
+
+    .zy-kt .kt-head{display:flex;align-items:baseline;gap:12px;margin:0 0 18px;
+      padding-bottom:14px;border-bottom:1px solid var(--zy-line);}
+    .zy-kt .kt-head h1{font-family:var(--zy-serif);font-size:20px;font-weight:500;
+      margin:0;color:var(--zy-text);letter-spacing:.01em;}
+    .zy-kt .kt-head .sub{font-size:12px;color:var(--zy-text-mute);margin-left:auto;
+      font-variant-numeric:tabular-nums;}
+
+    /* ── 查询表单：一行放完，回车即检索 ── */
+    .zy-kt .kt-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+      margin:0 0 10px;}
+    .zy-kt .kt-form input[type=text]{flex:1 1 320px;min-width:220px;
+      padding:8px 12px;border:1px solid var(--zy-line);border-radius:var(--zy-radius-sm);
+      background:var(--zy-surface);color:var(--zy-text);font-size:14px;}
+    .zy-kt .kt-form input[type=number]{width:76px;padding:7px 8px;
+      border:1px solid var(--zy-line);border-radius:var(--zy-radius-sm);
+      background:var(--zy-surface);color:var(--zy-text);font-size:13px;}
+    .zy-kt .kt-form input[type=text]#id-min{width:96px;flex:0 0 auto;}
+    .zy-kt .kt-form select{padding:7px 8px;border:1px solid var(--zy-line);
+      border-radius:var(--zy-radius-sm);background:var(--zy-surface);
+      color:var(--zy-text);font-size:13px;}
+    .zy-kt .kt-form label.chk{display:inline-flex;align-items:center;gap:5px;
+      font-size:12.5px;color:var(--zy-text-soft);white-space:nowrap;cursor:pointer;}
+    .zy-kt .kt-form button{padding:8px 18px;border:1px solid var(--zy-accent);
+      border-radius:var(--zy-radius-sm);background:var(--zy-accent);
+      color:var(--zy-accent-on);font-size:13px;font-weight:600;cursor:pointer;}
+    .zy-kt .kt-form button:hover{background:var(--zy-accent-strong);
+      border-color:var(--zy-accent-strong);}
+    .zy-kt .kt-form .field{display:inline-flex;align-items:center;gap:5px;
+      font-size:12px;color:var(--zy-text-mute);}
+
+    .zy-kt .kt-hint{margin:0 0 20px;font-size:11.5px;color:var(--zy-text-mute);
+      line-height:1.7;}
+    .zy-kt .kt-hint code{background:var(--zy-surface-2);padding:1px 5px;
+      border-radius:4px;font-size:11px;}
+
+    /* ── 结果面板：单列 / 三档并排 ── */
+    .zy-kt .kt-panels{display:grid;gap:14px;grid-template-columns:1fr;}
+    .zy-kt .kt-panels.is-compare{grid-template-columns:repeat(3,minmax(0,1fr));}
+    @media (max-width:1080px){.zy-kt .kt-panels.is-compare{grid-template-columns:1fr;}}
+
+    .zy-kt .kt-panel{background:var(--zy-surface);border:1px solid var(--zy-line);
+      border-radius:var(--zy-radius);overflow:hidden;}
+    .zy-kt .kt-panel > header{display:flex;align-items:baseline;gap:8px;
+      padding:11px 14px;border-bottom:1px solid var(--zy-line);
+      background:var(--zy-surface-2);}
+    .zy-kt .kt-panel > header h2{font-family:var(--zy-serif);font-size:13px;
+      font-weight:600;margin:0;color:var(--zy-text);}
+    .zy-kt .kt-panel > header .meta{margin-left:auto;font-size:11px;
+      color:var(--zy-text-mute);font-variant-numeric:tabular-nums;}
+
+    .zy-kt .kt-list{list-style:none;margin:0;padding:0;}
+    .zy-kt .kt-list > li{padding:12px 14px;border-top:1px solid var(--zy-line-soft);}
+    .zy-kt .kt-list > li:first-child{border-top:0;}
+
+    .zy-kt .kt-row{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;}
+    .zy-kt .kt-rank{display:inline-flex;align-items:center;justify-content:center;
+      width:20px;height:20px;border-radius:50%;background:var(--zy-accent-soft);
+      color:var(--zy-accent);font-size:11px;font-weight:600;flex:0 0 auto;}
+    .zy-kt .kt-title{font-size:13px;font-weight:600;color:var(--zy-text);}
+    .zy-kt .kt-cat{font-size:10.5px;color:var(--zy-text-mute);
+      border:1px solid var(--zy-line);border-radius:999px;padding:0 7px;}
+    .zy-kt .kt-score{margin-left:auto;font-size:11.5px;color:var(--zy-accent);
+      font-variant-numeric:tabular-nums;white-space:nowrap;}
+    .zy-kt .kt-snippet{margin:6px 0 0;font-size:12px;line-height:1.6;
+      color:var(--zy-text-soft);display:-webkit-box;-webkit-line-clamp:3;
+      -webkit-box-orient:vertical;overflow:hidden;}
+    .zy-kt .kt-routes{margin:6px 0 0;font-size:10.5px;color:var(--zy-text-mute);
+      font-variant-numeric:tabular-nums;}
+    .zy-kt .kt-routes b{font-weight:600;color:var(--zy-text-soft);}
+
+    .zy-kt .kt-err{padding:14px;font-size:12px;line-height:1.6;
+      color:var(--zy-danger);background:var(--zy-danger-bg);}
+    .zy-kt .kt-empty{padding:16px 14px;font-size:12px;color:var(--zy-text-mute);
+      line-height:1.7;}
+    .zy-kt .kt-start{background:var(--zy-surface);border:1px dashed var(--zy-line);
+      border-radius:var(--zy-radius);padding:26px 20px;font-size:12.5px;
+      color:var(--zy-text-mute);line-height:1.9;}
+    .zy-kt .kt-start b{color:var(--zy-text-soft);}
+  </style>
+
+  <div class="kt-head">
+    <h1>知识库检索测试</h1>
+    <span class="sub">共 {{ chunk_total }} 条启用 · 环境后端 {{ env_backend }}</span>
+  </div>
+
+  <form class="kt-form" method="get" action="">
+    <input type="text" name="q" value="{{ q }}" autofocus
+           placeholder="输入一句客户可能会问的话，例如：拆封了还能退货吗">
+    <select name="backend" title="检索后端">
+      {% for value, label in backends %}
+        <option value="{{ value }}" {% if value == backend %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <span class="field">Top
+      <input type="number" name="top_k" min="1" max="10" value="{{ top_k }}">
+    </span>
+    <span class="field">阈值
+      <input type="text" id="id-min" name="min_score" value="{{ min_score_raw }}"
+             placeholder="{{ min_score }}" title="留空则用该后端的默认阈值">
+    </span>
+    <label class="chk">
+      <input type="checkbox" name="compare" value="1" {% if compare %}checked{% endif %}>
+      三档对比
+    </label>
+    <button type="submit">检索</button>
+  </form>
+
+  <p class="kt-hint">
+    阈值留空 = 用该后端默认值（TF-IDF <code>1.5</code> / 语义 <code>0.2</code> / 混合 <code>0</code>），
+    与线上 <code>search_knowledge</code> 同一口径 —— 这里看到的召回，就是客户会看到的召回。
+    「三档对比」会同时用三种后端跑同一句话，每档用各自的默认阈值。
+    <br>
+    <b>语义档首次构建会慢</b>（要调 Embedding API 逐条向量化，几十秒量级），
+    建好后整个进程内复用，后续查询是毫秒级；语义路只会算一次，
+    「语义向量」与「双路混合」共用同一份索引。
+  </p>
+
+  {% if panels %}
+    <div class="kt-panels {% if compare %}is-compare{% endif %}">
+      {% for p in panels %}
+        <section class="kt-panel">
+          <header>
+            <h2>{{ p.label }}</h2>
+            <span class="meta">{{ p.hit_count }} 条 · {{ p.elapsed_ms }} ms</span>
+          </header>
+          {% if p.error %}
+            <div class="kt-err">
+              <b>这一档不可用</b><br>{{ p.error }}<br>
+              语义后端需要 EMBEDDING_API_KEY 与可用的向量库；缺配置时线上会自动降级为 TF-IDF。
+            </div>
+          {% else %}
+            <ol class="kt-list">
+              {% for it in p.items %}
+                <li>
+                  <div class="kt-row">
+                    <span class="kt-rank">{{ it.rank }}</span>
+                    <span class="kt-title">{{ it.title }}</span>
+                    {% if it.category %}<span class="kt-cat">{{ it.category }}</span>{% endif %}
+                    <span class="kt-score">分数 {{ it.score }}</span>
+                  </div>
+                  <p class="kt-snippet">{{ it.snippet }}</p>
+                  <p class="kt-routes">
+                    字面路 <b>{% if it.lexical_rank %}#{{ it.lexical_rank }}{% else %}—{% endif %}</b>
+                    · 语义路 <b>{% if it.semantic_rank %}#{{ it.semantic_rank }}{% else %}—{% endif %}</b>
+                    {% if it.rrf %}&nbsp;· RRF <b>{{ it.rrf }}</b>{% endif %}
+                    {% if it.bm25 %}&nbsp;· BM25 <b>{{ it.bm25 }}</b>{% endif %}
+                    {% if it.cosine %}&nbsp;· 余弦 <b>{{ it.cosine }}</b>{% endif %}
+                    {% if it.degraded %}&nbsp;· <b>语义路降级</b>{% endif %}
+                  </p>
+                </li>
+              {% empty %}
+                <li class="kt-empty">
+                  没有超过阈值的召回。可以调低阈值，或确认知识库里是否真有这个话题 ——
+                  线上的表现会与这里一致（答"我暂时没有记录"）。
+                </li>
+              {% endfor %}
+            </ol>
+          {% endif %}
+        </section>
+      {% endfor %}
+    </div>
+  {% elif q %}
+    <div class="kt-start">没有拿到结果，请检查查询内容。</div>
+  {% else %}
+    <div class="kt-start">
+      <b>怎么用：</b>输入一句话 → 看它召回了哪几条、各自排第几、分数多少。<br>
+      · 调阈值：同一个 query 把阈值从 1.5 调到 1.0，看噪声是怎么进来的<br>
+      · 切后端：同一句话换成「语义向量」，看字面不重合但意思相近的条目能不能被捞出来<br>
+      · 勾「三档对比」：三列并排，谁把不相关的条目排到了前面，一眼可见<br>
+      · 改完知识库回来重测：保存条目后索引会自动重建，无需重启
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

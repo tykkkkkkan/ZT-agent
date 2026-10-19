@@ -254,6 +254,8 @@ UNFOLD = {
                 'title': '智能问答',
                 'items': [
                     {'title': '知识库条目', 'link': '/admin/agent/knowledgechunk/', 'icon': 'menu_book'},
+                    # 检索测试台：一句话看召回明细（三路名次 / 分数 / 阈值），对齐 FastGPT 单点搜索测试
+                    {'title': '检索测试', 'link': '/admin/agent/knowledgechunk/search-test/', 'icon': 'manage_search'},
                 ],
             },
             {
