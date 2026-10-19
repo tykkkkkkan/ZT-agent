@@ -89,3 +89,129 @@
   color: var(--zy-text-mute);
   font-size: 12px;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   对话调用链（trace）—— 后台「这一轮是怎么算出来的」
+   ──────────────────────────────────────────────────────────────
+   阅读顺序：先看六个 KPI（多少钱、多少步），再看瀑布（时间花在哪），
+   最后看引用来源。色值全部来自 zy-tokens.css，深色模式自动跟随。
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── KPI 卡 ── */
+.zy-trace-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 8px;
+  margin: 2px 0 4px;
+}
+.zy-trace-kpi {
+  border: 1px solid var(--zy-line);
+  border-radius: var(--zy-radius-sm);
+  background: var(--zy-surface);
+  padding: 8px 10px;
+}
+.zy-trace-kpi b {
+  display: block;
+  font-size: 18px;
+  line-height: 1.3;
+  color: var(--zy-text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.zy-trace-kpi span {
+  font-size: 11px;
+  color: var(--zy-text-mute);
+}
+.zy-trace-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--zy-text-mute);
+}
+
+/* ── 瀑布图：名称 / 条形 / 度量 三栏 ── */
+.zy-trace {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 4px 0 2px;
+}
+.zy-trace-row {
+  display: grid;
+  grid-template-columns: 140px minmax(80px, 1fr) minmax(180px, auto);
+  gap: 10px;
+  align-items: center;
+}
+.zy-trace-name {
+  font-size: 12px;
+  color: var(--zy-text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.zy-trace-track {
+  height: 14px;
+  border-radius: 999px;
+  background: var(--zy-surface-2);
+  overflow: hidden;
+}
+.zy-trace-bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+/* LLM 段是湖青实色（时间大头），工具段是浅描边色（占比小但要能看见） */
+.zy-trace-bar-llm { background: var(--zy-accent); }
+.zy-trace-bar-tool { background: var(--zy-accent-line); }
+.zy-trace-bar-bad { background: var(--zy-danger-line); }
+.zy-trace-meta {
+  font-size: 11px;
+  color: var(--zy-text-mute);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 状态徽标（低饱和文字 + 细边框，不做实底胶囊）── */
+.zy-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.zy-badge-ok {
+  color: var(--zy-ok);
+  background: var(--zy-ok-bg);
+  border-color: var(--zy-accent-line);
+}
+.zy-badge-warn {
+  color: var(--zy-warn);
+  background: var(--zy-warn-bg);
+  border-color: var(--zy-warn-line);
+}
+.zy-badge-bad {
+  color: var(--zy-danger);
+  background: var(--zy-danger-bg);
+  border-color: var(--zy-danger-line);
+}
+
+/* ── 引用来源列表 ── */
+.zy-trace-sources {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--zy-text-soft);
+}
+.zy-trace-sources li { margin: 3px 0; }
+
+/* 窄屏：度量换到下一行，条形仍占满宽 —— 后台也会有人在手机上翻 */
+@media (max-width: 720px) {
+  .zy-trace-row {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+  .zy-trace-meta { white-space: normal; }
+}

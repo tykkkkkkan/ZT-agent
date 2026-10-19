@@ -13,7 +13,7 @@ agent/llm.py — LLM 客户端统一封装（DeepSeek，OpenAI 兼容接口）
 import logging
 import os
 import time
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Dict, List, Optional
 
 from django.conf import settings
 
@@ -117,19 +117,102 @@ def chat(
     return resp
 
 
-def _logged_stream(stream: Any, started: float) -> Iterator[Any]:
-    """透传 chunk 流，并在结束（含客户端中断）时记录耗时、释放连接。"""
+def _usage_value(usage: Any, field_name: str) -> int:
+    """从 usage 对象/字典里取一个计数字段，取不到返回 0。
+
+    不同兼容端点返回形态不一（OpenAI SDK 对象 / 裸 dict / 直接省略），
+    这里统一收口，避免上层到处写 getattr。
+    """
+    if usage is None:
+        return 0
+    if isinstance(usage, dict):
+        value = usage.get(field_name)
+    else:
+        value = getattr(usage, field_name, None)
     try:
-        for chunk in stream:
-            yield chunk
-    finally:
-        logger.info("llm.chat_stream 结束 耗时=%.0fms", (time.perf_counter() - started) * 1000)
-        close = getattr(stream, "close", None)
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+class ChatStream:
+    """流式响应包装：透传 chunk，同时把 usage 与耗时留在对象上。
+
+    为什么需要它：原来是纯生成器，`for chunk in stream` 结束后什么都不剩，
+    token 用量只在日志里一行文本 —— 想统计"这一轮花了多少"只能去 grep 日志。
+    现在迭代结束后读 `stream.total_tokens` / `duration_ms` 即可。
+
+    为什么不在 llm 层直接写库：llm 不知道 session_id，也不该知道。
+    它只负责"把度量挂出来"，记到哪由 agent 层决定。
+    """
+
+    def __init__(self, stream: Any, started: float, model: str) -> None:
+        self._stream = stream
+        self._started = started
+        self.model = model
+        self.usage: Any = None
+        self.duration_ms: int = 0
+        self.closed = False
+
+    def __iter__(self):
+        try:
+            for chunk in self._stream:
+                # 流式 usage 在最后一个 chunk（choices 为空）里，此处顺手接住
+                usage = getattr(chunk, "usage", None)
+                if usage is not None:
+                    self.usage = usage
+                yield chunk
+        finally:
+            self.duration_ms = int((time.perf_counter() - self._started) * 1000)
+            logger.info(
+                "llm.chat_stream 结束 耗时=%dms prompt_tokens=%d completion_tokens=%d",
+                self.duration_ms, self.prompt_tokens, self.completion_tokens,
+            )
+            self.close()
+
+    def close(self) -> None:
+        """释放连接（提前中断时生成器的 finally 也会调到这里）。"""
+        if self.closed:
+            return
+        self.closed = True
+        close = getattr(self._stream, "close", None)
         if callable(close):
             try:
                 close()
             except Exception as exc:  # noqa: BLE001 - 关闭失败不应影响已产出的内容
                 logger.debug("llm.chat_stream 关闭流失败：%s", exc)
+
+    @property
+    def prompt_tokens(self) -> int:
+        return _usage_value(self.usage, "prompt_tokens")
+
+    @property
+    def completion_tokens(self) -> int:
+        return _usage_value(self.usage, "completion_tokens")
+
+    @property
+    def total_tokens(self) -> int:
+        total = _usage_value(self.usage, "total_tokens")
+        # 部分端点只给 prompt/completion，total 缺省时自己加，避免记成 0
+        return total or (self.prompt_tokens + self.completion_tokens)
+
+
+def _open_stream(kwargs: Dict[str, Any], want_usage: bool):
+    """建立流式连接；首次带 stream_options，端点不认就退回不带。
+
+    为什么要试两次：`stream_options={"include_usage": True}` 是 OpenAI 标准参数，
+    DeepSeek 支持，但本地/第三方兼容实现不一定认。不认得就直接 400，
+    而对话主流程不该因为"想多记一个 token 数"而整体不可用。
+    此时连接尚未产出内容，重试一次是安全的（不会重复输出）。
+    """
+    if want_usage:
+        try:
+            return _client().chat.completions.create(
+                **kwargs, stream_options={"include_usage": True}
+            )
+        except Exception as exc:  # noqa: BLE001 - 参数不被支持 / 网络抖动都退回
+            logger.debug("端点不接受 stream_options，退回不带 usage 统计：%s", exc)
+    return _client().chat.completions.create(**kwargs)
 
 
 def chat_stream(
@@ -140,15 +223,16 @@ def chat_stream(
     model: Optional[str] = None,
     timeout: float = 60,
     max_tokens: Optional[int] = None,
-):
-    """流式对话（stream=True），返回可迭代的 chunk 流。
+) -> ChatStream:
+    """流式对话（stream=True），返回 ChatStream（可直接 for 迭代）。
 
     建立连接阶段失败会退避重试；已开始产出后不再重试（避免重复内容）。
-    token 用量在流式协议下由服务端在末尾返回，若无则只记录耗时。
+    迭代结束后可从返回对象上读到 usage / duration_ms —— 调用链（trace）依赖它。
     """
     _, _, default_model = _config()
+    used_model = model or default_model
     kwargs: Dict[str, Any] = {
-        "model": model or default_model,
+        "model": used_model,
         "messages": messages,
         "temperature": temperature,
         "stream": True,
@@ -159,5 +243,6 @@ def chat_stream(
         kwargs["tools"] = tools
         kwargs["tool_choice"] = tool_choice or "auto"
     started = time.perf_counter()
-    stream = _retry("llm.chat_stream", lambda: _client().chat.completions.create(**kwargs))
-    return _logged_stream(stream, started)
+    want_usage = os.getenv("LLM_STREAM_USAGE", "1").strip().lower() not in ("0", "false", "no")
+    stream = _retry("llm.chat_stream", lambda: _open_stream(kwargs, want_usage))
+    return ChatStream(stream, started, used_model)

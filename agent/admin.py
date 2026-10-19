@@ -15,6 +15,7 @@ import csv
 import json
 import logging
 import threading
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib import admin
@@ -31,6 +32,7 @@ from unfold.admin import ModelAdmin as _UnfoldModelAdmin
 
 from agent.knowledge_data import invalidate_rag_cache
 from agent.models import (
+    AgentRun,
     ContactMessage,
     Conversations,
     CustomRequest,
@@ -1192,6 +1194,202 @@ class ConversationsAdmin(ZYModelAdmin):
     @admin.display(description='内容预览')
     def short_content(self, obj):
         return (obj.content[:80] + '…') if obj.content and len(obj.content) > 80 else obj.content
+
+
+# ══════════════════════════════════════════════════════════════
+# 对话调用链（trace）—— 「慢在哪、贵在哪」的答案在这里
+# ══════════════════════════════════════════════════════════════
+@admin.register(AgentRun)
+class AgentRunAdmin(ZYModelAdmin):
+    """一轮对话一行的执行轨迹：几轮 ReAct、调了谁、各花多久、多少 token。
+
+    设计取向：**只读**。trace 是观测数据的快照，能改就失去"当时到底发生了什么"
+    的意义；要清理用底部 action 按时间清，不在详情页手工编辑。
+    列表按时间倒序 —— 排查时永远先看最近一次。
+    """
+
+    list_display = ('created_at', 'session_link', 'status_badge', 'steps',
+                    'tool_summary', 'token_display', 'duration_display', 'message_preview')
+    list_filter = ('status', 'rag_backend', 'created_at')
+    search_fields = ('session_id', 'user_message')
+    date_hierarchy = 'created_at'
+    list_per_page = 30
+    ordering = ('-created_at',)
+    list_display_links = ('created_at',)
+    actions = ('purge_old_runs',)
+
+    readonly_fields = ('summary_panel', 'timeline_panel', 'sources_panel', 'error',
+                       'session_id', 'user_id', 'user_message', 'answer_chars',
+                       'status', 'steps', 'tool_ms', 'llm_calls', 'llm_ms',
+                       'prompt_tokens', 'completion_tokens', 'total_tokens',
+                       'duration_ms', 'model', 'rag_backend', 'created_at')
+
+    fieldsets = (
+        ('这一轮问的什么', {
+            'fields': ('session_id', 'user_id', 'user_message', 'created_at'),
+        }),
+        ('总览', {'fields': ('summary_panel',)}),
+        ('调用链瀑布', {
+            'fields': ('timeline_panel',),
+            'description': '每一段是一次 LLM 调用或一次工具执行，长度按耗时占比绘制；'
+                           '同一轮里工具串行执行，所以顺序即真实顺序。',
+        }),
+        ('引用来源', {'fields': ('sources_panel',)}),
+        ('异常', {'fields': ('error',)}),
+    )
+
+    # ── 权限：只读 ─────────────────────────────────────────────
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        # 允许打开详情（否则点不进去），但不允许改字段（全部 readonly）
+        return False if obj is None else True
+
+    def has_delete_permission(self, request, obj=None):
+        return True
+
+    # ── 列表列 ─────────────────────────────────────────────────
+    @admin.display(description='会话', ordering='session_id')
+    def session_link(self, obj):
+        """点会话号 → 跳到对话记录里这个 session 的全部消息（追问上下文就在这里）。"""
+        if not obj.session_id:
+            return '—'
+        url = reverse('admin:agent_conversations_changelist') + f'?q={obj.session_id}'
+        return format_html(
+            '<a href="{}" title="查看该会话的全部消息">{}</a>',
+            url, obj.session_id[:8],
+        )
+
+    @admin.display(description='结果', ordering='status')
+    def status_badge(self, obj):
+        # 状态色遵循后台约定：湖青=正常 / 暖褐=需要留意 / 红=出错
+        cls = {
+            AgentRun.RunStatus.OK: 'zy-badge zy-badge-ok',
+            AgentRun.RunStatus.EMPTY: 'zy-badge zy-badge-warn',
+            AgentRun.RunStatus.MAX_STEPS: 'zy-badge zy-badge-warn',
+            AgentRun.RunStatus.ERROR: 'zy-badge zy-badge-bad',
+        }.get(obj.status, 'zy-badge zy-badge-warn')
+        return format_html('<span class="{}">{}</span>', cls, obj.get_status_display())
+
+    @admin.display(description='工具调用')
+    def tool_summary(self, obj):
+        names = obj.tool_names
+        if not names:
+            return '—'
+        return mark_safe(' → '.join(names[:4]) + ('…' if len(names) > 4 else ''))
+
+    @admin.display(description='tokens', ordering='total_tokens')
+    def token_display(self, obj):
+        if not obj.total_tokens:
+            return '—'
+        return f'{obj.total_tokens}'
+
+    @admin.display(description='耗时', ordering='duration_ms')
+    def duration_display(self, obj):
+        return f'{obj.duration_ms} ms'
+
+    @admin.display(description='用户输入')
+    def message_preview(self, obj):
+        text = (obj.user_message or '').replace('\n', ' ')
+        return (text[:28] + '…') if len(text) > 28 else text
+
+    # ── 详情面板 ───────────────────────────────────────────────
+    @admin.display(description='这一轮的账')
+    def summary_panel(self, obj):
+        if not obj or not obj.pk:
+            return '—'
+        kpis = [
+            (f'{obj.duration_seconds:.2f}s', '总耗时'),
+            (str(obj.steps), 'ReAct 轮次'),
+            (str(obj.llm_calls), 'LLM 调用'),
+            (str(obj.tool_count), '工具调用'),
+            (str(obj.total_tokens or '—'), 'tokens'),
+            (f'{obj.llm_ms} / {obj.tool_ms}', 'LLM / 工具 (ms)'),
+        ]
+        cells = ''.join(
+            format_html('<div class="zy-trace-kpi"><b>{}</b><span>{}</span></div>', v, k)
+            for v, k in kpis
+        )
+        note = ''
+        if obj.prompt_tokens or obj.completion_tokens:
+            note = format_html(
+                '<p class="zy-trace-note">prompt {} / completion {} · 模型 {}</p>',
+                obj.prompt_tokens, obj.completion_tokens, obj.model or '—',
+            )
+        else:
+            # 端点未返回 usage 时如实说明，不伪装成 0 消耗
+            note = format_html(
+                '<p class="zy-trace-note">该端点未返回 token 用量（模型 {}）</p>',
+                obj.model or '—',
+            )
+        return format_html('<div class="zy-trace-summary">{}</div>{}', mark_safe(cells), note)
+
+    @admin.display(description='调用链')
+    def timeline_panel(self, obj):
+        if not obj or not obj.pk:
+            return '—'
+        steps = obj.timeline if isinstance(obj.timeline, list) else []
+        if not steps:
+            return '这一轮没有产生步骤（可能是安全拦截或直接返回）。'
+        total = max(obj.duration_ms or 1, 1)
+        rows = []
+        for s in steps:
+            if not isinstance(s, dict):
+                continue
+            ms = int(s.get('ms') or 0)
+            # 最小 1.5% 宽：几十毫秒的工具在 2 秒的对话里否则完全看不见
+            width = max(ms / total * 100, 1.5)
+            if s.get('kind') == 'llm':
+                name = f"LLM · 第 {s.get('step')} 轮"
+                bar = 'zy-trace-bar zy-trace-bar-llm'
+                meta = (f"{ms} ms · prompt {s.get('prompt_tokens', 0)} / "
+                        f"completion {s.get('completion_tokens', 0)} tokens")
+            else:
+                ok = s.get('ok', True)
+                name = f"{s.get('name') or '工具'}{'' if ok else '（失败）'}"
+                bar = 'zy-trace-bar zy-trace-bar-tool' if ok else 'zy-trace-bar zy-trace-bar-bad'
+                meta = f"{ms} ms · 返回 {s.get('result_chars', 0)} 字"
+                args = s.get('args')
+                if isinstance(args, dict) and args:
+                    shown = ', '.join(f'{k}={v}' for k, v in list(args.items())[:2])
+                    meta += f' · {shown}'
+            rows.append(format_html(
+                '<div class="zy-trace-row">'
+                '<div class="zy-trace-name" title="{}">{}</div>'
+                '<div class="zy-trace-track"><span class="{}" style="width:{}"></span></div>'
+                '<div class="zy-trace-meta">{}</div>'
+                '</div>',
+                name, name, bar,
+                # format_html 的占位符不能带格式规格（{:.2f} 会对 SafeString 调 format 报错），
+                # 所以先在普通字符串里算好再传进去
+                f'{width:.2f}%',
+                meta,
+            ))
+        return format_html('<div class="zy-trace">{}</div>', mark_safe(''.join(rows)))
+
+    @admin.display(description='引用来源')
+    def sources_panel(self, obj):
+        if not obj or not obj.pk:
+            return '—'
+        sources = obj.sources if isinstance(obj.sources, list) else []
+        if not sources:
+            return '这一轮没有检索知识库（或未命中）。'
+        rows = ''.join(
+            format_html(
+                '<li><b>{}</b> <span class="zy-trace-note">相关度 {}</span></li>',
+                s.get('title') or '—', s.get('score'),
+            )
+            for s in sources if isinstance(s, dict)
+        )
+        return format_html('<ul class="zy-trace-sources">{}</ul>', mark_safe(rows))
+
+    # ── 清理 ───────────────────────────────────────────────────
+    @admin.action(description='清理 30 天前的调用链')
+    def purge_old_runs(self, request, queryset):
+        cutoff = timezone.now() - timedelta(days=30)
+        deleted, _ = AgentRun.objects.filter(created_at__lt=cutoff).delete()
+        self.message_user(request, f'已清理 {deleted} 条 30 天前的调用链。')
 
 
 # ══════════════════════════════════════════════════════════════

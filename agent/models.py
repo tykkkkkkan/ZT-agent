@@ -362,6 +362,95 @@ class Conversations(models.Model):
         return f"[{self.session_id[:8]}] {self.role}: {self.content[:30]}"
 
 
+class AgentRun(models.Model):
+    """一轮对话的执行轨迹（trace）—— 对齐 Dify LLMOps 应用日志 / Langfuse trace。
+
+    一行 = 用户点一次「发送」。回答本身进 `conversations`（那是给人读的历史），
+    这里记的是「这一轮是怎么算出来的」：几轮 ReAct、调了谁、各花多久、多少 token、
+    为什么结束。分开两表的原因：对话历史是业务数据（要长期保留、要给用户看），
+    trace 是可观测数据（量大、只看最近、可定期清理）。
+
+    为什么值得做：面试官问「慢在哪、贵在哪」，翻日志文件没有说服力；
+    这里能直接展开一次真实对话的瀑布图。
+    """
+
+    class RunStatus(models.TextChoices):
+        OK = 'ok', '正常结束'
+        EMPTY = 'empty', '空回复兜底'
+        MAX_STEPS = 'max_steps', '达到步数上限'
+        ERROR = 'error', '调用异常'
+
+    session_id = models.CharField(max_length=64, db_index=True, verbose_name='会话ID')
+    # 不建外键：会话可能来自未登录用户，且历史会话的用户可能被删除，
+    # trace 不能因为用户注销就一起消失（那正是最需要排查的时段）。
+    user_id = models.IntegerField(null=True, blank=True, db_index=True, verbose_name='用户ID')
+
+    user_message = models.TextField(default='', verbose_name='用户输入')
+    answer_chars = models.IntegerField(default=0, verbose_name='回答字数')
+
+    status = models.CharField(
+        max_length=16, choices=RunStatus.choices, default=RunStatus.OK,
+        db_index=True, verbose_name='结束原因',
+    )
+    error = models.TextField(blank=True, default='', verbose_name='异常摘要')
+
+    steps = models.IntegerField(default=0, verbose_name='ReAct 轮次')
+    # 时间线：唯一真相源，后台瀑布图直接遍历这一条数组。
+    #   [{"kind": "llm",  "step": 1, "ms": 1200, "prompt_tokens": 800, "completion_tokens": 60},
+    #    {"kind": "tool", "step": 1, "name": "search_knowledge", "args": {...},
+    #     "ms": 12, "result_chars": 345}, ...]
+    # 不拆成两张关联表：trace 是"看一眼就走"的数据，拆表只会多两次 JOIN。
+    timeline = models.JSONField(default=list, blank=True, verbose_name='步骤时间线')
+    tool_ms = models.IntegerField(default=0, verbose_name='工具总耗时(ms)')
+
+    llm_calls = models.IntegerField(default=0, verbose_name='LLM 调用次数')
+    llm_ms = models.IntegerField(default=0, verbose_name='LLM 总耗时(ms)')
+    prompt_tokens = models.IntegerField(default=0, verbose_name='prompt tokens')
+    completion_tokens = models.IntegerField(default=0, verbose_name='completion tokens')
+    total_tokens = models.IntegerField(default=0, verbose_name='总 tokens')
+
+    duration_ms = models.IntegerField(default=0, verbose_name='总耗时(ms)')
+    model = models.CharField(max_length=64, blank=True, default='', verbose_name='模型')
+    rag_backend = models.CharField(max_length=16, blank=True, default='', verbose_name='检索后端')
+    sources = models.JSONField(default=list, blank=True, verbose_name='引用来源')
+
+    created_at = models.DateTimeField(default=timezone.now, db_index=True, verbose_name='发生时间')
+
+    class Meta:
+        db_table = 'agent_runs'
+        verbose_name = '对话调用链'
+        verbose_name_plural = '对话调用链'
+        ordering = ('-created_at',)
+        indexes = [
+            models.Index(fields=['session_id', '-created_at'], name='idx_run_session_created'),
+            models.Index(fields=['status', '-created_at'], name='idx_run_status_created'),
+        ]
+
+    def __str__(self):
+        return f"[{self.session_id[:8]}] {self.duration_ms}ms · {self.steps} 步 · {self.status}"
+
+    # ── 展示用派生量（后台列表/详情直接读，不在模板里算） ──────────
+    @property
+    def tool_calls(self) -> list:
+        """本轮的工具调用（从 timeline 派生，按调用顺序）。"""
+        if not isinstance(self.timeline, list):
+            return []
+        return [s for s in self.timeline if isinstance(s, dict) and s.get('kind') == 'tool']
+
+    @property
+    def tool_names(self) -> list:
+        """本轮调过的工具名（含重复 —— 同一工具调两次本身就是信息）。"""
+        return [c.get('name', '') for c in self.tool_calls]
+
+    @property
+    def tool_count(self) -> int:
+        return len(self.tool_names)
+
+    @property
+    def duration_seconds(self) -> float:
+        return round((self.duration_ms or 0) / 1000, 2)
+
+
 class ContactMessage(models.Model):
     """用户留言模型 — 前端联系表单提交的数据"""
     name = models.CharField(max_length=50, verbose_name='姓名')

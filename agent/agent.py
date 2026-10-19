@@ -22,7 +22,9 @@ agent/agent.py — ReAct 式 Agent 循环 + 真·流式输出
 """
 import json
 import logging
+import os
 import re
+import time
 
 from django.utils import timezone
 
@@ -130,6 +132,139 @@ def _parse_tool_args(raw: str) -> dict:
     return args if isinstance(args, dict) else {}
 
 
+def _record_llm(trace: dict, step: int, stream) -> None:
+    """把一次 LLM 调用的耗时与 token 记进轨迹。
+
+    `stream` 可能是 None（连接建立就失败），此时不记 —— 但调用次数在外面已经 +1，
+    这样"调了 3 次、成功 2 次"能被看出来。
+    """
+    if stream is None:
+        return
+    ms = int(getattr(stream, "duration_ms", 0) or 0)
+    prompt_tokens = int(getattr(stream, "prompt_tokens", 0) or 0)
+    completion_tokens = int(getattr(stream, "completion_tokens", 0) or 0)
+    total_tokens = int(getattr(stream, "total_tokens", 0) or 0)
+    trace["llm_ms"] += ms
+    trace["prompt_tokens"] += prompt_tokens
+    trace["completion_tokens"] += completion_tokens
+    trace["total_tokens"] += total_tokens
+    trace["timeline"].append({
+        "kind": "llm",
+        "step": step + 1,
+        "ms": ms,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "model": getattr(stream, "model", "") or trace.get("model", ""),
+    })
+
+
+def _tool_result_ok(name: str, result) -> bool:
+    """判断工具是否真的执行成功。
+
+    `call_tool` 把异常吞成一段中文返回，模型能读、但不算"成功"——
+    trace 里需要区分"查到了"和"查崩了"，否则慢/错就无法从数据里看出来。
+    """
+    if not isinstance(result, str):
+        return True
+    return not (result.startswith(f"工具 {name} ") or result.startswith("未知工具"))
+
+
+# ══════════════════════════════════════════════════════════════
+# 调用链（trace）—— 一轮对话跑完记一行，后台可展开看瀑布
+# ══════════════════════════════════════════════════════════════
+# 为什么单独记：`conversations` 存的是"说了什么"（业务数据，长期保留），
+# trace 存的是"怎么算出来的"（可观测数据，只看最近）。混在一张表里
+# 会让对话历史被 token / 耗时这类噪音字段污染，且历史查询要跟着变慢。
+_PHONE_RE = re.compile(r"1[3-9]\d{9}")
+
+
+def _mask_value(value):
+    """参数脱敏：手机号中间的 4 位打码。
+
+    trace 会长期保留并按 session 聚合，参数里的手机号不该以明文沉淀在
+    可观测数据里（订单/个人中心已经有明文，那里才是它该在的地方）。
+    """
+    if isinstance(value, str):
+        return _PHONE_RE.sub(lambda m: m.group()[:3] + "****" + m.group()[-4:], value)
+    if isinstance(value, dict):
+        return {k: _mask_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_mask_value(v) for v in value]
+    return value
+
+
+def _new_trace(session_id: str, user_message: str) -> dict:
+    """初始化本轮轨迹（纯内存对象，结束时一次性落库）。"""
+    user_id = None
+    try:
+        from agent.tools import get_current_user
+        user = get_current_user()
+        user_id = getattr(user, "id", None) or getattr(user, "pk", None)
+    except Exception:
+        pass  # 未登录 / 工具层未加载都正常，trace 不该因为身份缺失而失败
+
+    return {
+        "session_id": session_id,
+        "user_id": user_id,
+        "user_message": (user_message or "")[:2000],
+        "started_at": time.perf_counter(),
+        "status": "ok",
+        "error": "",
+        "steps": 0,
+        "timeline": [],
+        "llm_calls": 0,
+        "llm_ms": 0,
+        "tool_ms": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "answer_chars": 0,
+        "model": "",
+        "rag_backend": (os.getenv("RAG_BACKEND", "tfidf") or "tfidf").strip().lower(),
+    }
+
+
+def _persist_run(trace: dict) -> None:
+    """把轨迹落库。任何失败只记日志 —— 可观测性绝不能拖垮对话主流程。"""
+    if not trace:
+        return
+    try:
+        from agent.models import AgentRun
+        from agent.tools import get_referenced_sources
+
+        sources = []
+        try:
+            sources = [
+                {"title": s.get("title"), "score": s.get("score"), "backend": s.get("backend")}
+                for s in get_referenced_sources()
+            ]
+        except Exception:
+            sources = []
+
+        AgentRun.objects.create(
+            session_id=trace.get("session_id", ""),
+            user_id=trace.get("user_id"),
+            user_message=trace.get("user_message", ""),
+            answer_chars=trace.get("answer_chars", 0),
+            status=trace.get("status", "ok"),
+            error=(trace.get("error") or "")[:2000],
+            steps=trace.get("steps", 0),
+            timeline=trace.get("timeline", []),
+            tool_ms=trace.get("tool_ms", 0),
+            llm_calls=trace.get("llm_calls", 0),
+            llm_ms=trace.get("llm_ms", 0),
+            prompt_tokens=trace.get("prompt_tokens", 0),
+            completion_tokens=trace.get("completion_tokens", 0),
+            total_tokens=trace.get("total_tokens", 0),
+            duration_ms=int((time.perf_counter() - trace["started_at"]) * 1000),
+            model=trace.get("model", ""),
+            rag_backend=trace.get("rag_backend", ""),
+            sources=sources,
+        )
+    except Exception:
+        logger.exception("调用链落库失败（session=%s）", trace.get("session_id"))
+
+
 # ══════════════════════════════════════════════════════════════
 # Agent 循环（生成器）— 真·流式
 # ══════════════════════════════════════════════════════════════
@@ -161,6 +296,8 @@ def _agent_loop(session_id: str, user_message: str):
       - content delta → 逐 chunk yield {"content": cleaned}（真·打字机）
       - tool_calls delta → 仅在内部累积，不 yield（本轮结束后再处理）
 
+    全程埋点进 trace，结束时（含异常与客户端中断）落一行 agent_runs。
+
     :param session_id: 会话 ID（用于加载历史）
     :param user_message: 当前用户输入
     :yield: {"content": str}
@@ -176,6 +313,26 @@ def _agent_loop(session_id: str, user_message: str):
         reset_referenced_orders,
         reset_referenced_products,
     )
+
+    trace = _new_trace(session_id, user_message)
+    try:
+        yield from _react_loop(
+            session_id, user_message, trace,
+            TOOL_SCHEMAS, call_tool,
+            get_referenced_orders, get_referenced_products,
+            reset_referenced_orders, reset_referenced_products,
+        )
+    finally:
+        # 放 finally 而不是各 return 前：客户端中途断开（generator close）、
+        # 异常穿透，都会走到这里，trace 不会因为"没正常说完"而丢失 ——
+        # 而"没正常说完"恰恰是最该排查的情况。
+        _persist_run(trace)
+
+
+def _react_loop(session_id, user_message, trace, TOOL_SCHEMAS, call_tool,
+                get_referenced_orders, get_referenced_products,
+                reset_referenced_orders, reset_referenced_products):
+    """ReAct 主体（拆出来是为了让 `_agent_loop` 的 try/finally 保持单出口）。"""
 
     # 购买/批发/定制/下单意图：用于确定性兜底引导（不依赖 LLM 的 tool_choice 决策）
     purchase_intent = _has_purchase_intent(user_message)
@@ -229,11 +386,15 @@ def _agent_loop(session_id: str, user_message: str):
     for step in range(MAX_TOOL_STEPS):
         tool_calls_map: dict = {}
         raw_content_parts: list = []  # 本轮原始 content（用于 messages 完整性）
+        trace["steps"] = step + 1
+        stream = None
 
         try:
             stream = llm.chat_stream(
                 messages, tools=TOOL_SCHEMAS, tool_choice="auto"
             )
+            trace["llm_calls"] += 1
+            trace["model"] = getattr(stream, "model", "") or trace["model"]
             for chunk in stream:
                 if not chunk.choices:
                     continue
@@ -244,6 +405,7 @@ def _agent_loop(session_id: str, user_message: str):
                     # 逐 chunk 兜底清洗后立即 yield（真·流式打字机）
                     cleaned = _clean_content(dc)
                     if cleaned:
+                        trace["answer_chars"] += len(cleaned)
                         yield {"content": cleaned}
                 for tc in getattr(delta, "tool_calls", None) or []:
                     entry = tool_calls_map.setdefault(
@@ -257,6 +419,8 @@ def _agent_loop(session_id: str, user_message: str):
                         if tc.function.arguments:
                             entry["arguments"] += tc.function.arguments
         except Exception as e:
+            trace["status"] = "error"
+            trace["error"] = f"{type(e).__name__}: {e}"
             # 前几轮工具已查到的商品/订单仍要出名片，别因为本轮报错把整轮成果作废
             for card in _drain_product_cards():
                 yield card
@@ -267,13 +431,18 @@ def _agent_loop(session_id: str, user_message: str):
                 yield {"type": "guide_card"}
             yield {"content": f"⚠️ AI 服务调用失败：{e}"}
             return
+        finally:
+            # 异常分支也要记：否则最该看的那次调用恰好没有耗时与 token
+            _record_llm(trace, step, stream)
 
         tool_calls = [tool_calls_map[i] for i in sorted(tool_calls_map)]
 
         # 无 tool_calls → 本轮就是最终回答，已流式 yield 完，结束
         if not tool_calls:
+            trace["status"] = "ok" if raw_content_parts else "empty"
             if not raw_content_parts and last_tool_result:
                 # 模型空回复时，退回最后工具结果兜底
+                trace["answer_chars"] += len(last_tool_result)
                 yield {"content": last_tool_result}
             # 顺序固定：回答正文 → 产品名片 → 订单名片 → 引导卡
             # （客户先读完介绍，再看到可点的名片与下一步入口）
@@ -303,7 +472,20 @@ def _agent_loop(session_id: str, user_message: str):
         # 逐个执行工具，结果以 role=tool 喂回
         for i, tc in enumerate(tool_calls):
             args = _parse_tool_args(tc["arguments"])
+            tool_started = time.perf_counter()
             result = call_tool(tc["name"], **args)
+            tool_ms = int((time.perf_counter() - tool_started) * 1000)
+            trace["tool_ms"] += tool_ms
+            trace["timeline"].append({
+                "kind": "tool",
+                "step": step + 1,
+                "name": tc["name"],
+                # 参数脱敏：手机号不进可观测数据
+                "args": _mask_value(args),
+                "ms": tool_ms,
+                "result_chars": len(result) if isinstance(result, str) else 0,
+                "ok": _tool_result_ok(tc["name"], result),
+            })
             last_tool_result = result
 
             # 引导转化 → 产出引导卡片事件（前端渲染「定制服务 / 联系我们」按钮）
@@ -318,6 +500,7 @@ def _agent_loop(session_id: str, user_message: str):
             })
 
     # 达到最大轮次仍未收敛 → 用最后工具结果兜底
+    trace["status"] = "max_steps"
     for card in _drain_product_cards():
         yield card
     for card in _drain_order_cards():
@@ -325,4 +508,6 @@ def _agent_loop(session_id: str, user_message: str):
     if purchase_intent and not guide_emitted:
         guide_emitted = True
         yield {"type": "guide_card"}
-    yield {"content": last_tool_result or "抱歉，这个问题比较复杂，建议转人工处理。"}
+    fallback = last_tool_result or "抱歉，这个问题比较复杂，建议转人工处理。"
+    trace["answer_chars"] += len(fallback)
+    yield {"content": fallback}

@@ -171,6 +171,19 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 
+def static_abs(path: str) -> str:
+    """把 static 相对路径拼成根绝对路径（供 UNFOLD.STYLES 之类的裸 href 使用）。
+
+    为什么不直接用 `django.templatetags.static.static()`：它内部读 settings.STATIC_URL，
+    而本模块正在被 `Settings.__init__` 导入时 LazySettings 还没赋值 →
+    会触发重新加载配置，递归到死。所以这里只依赖本模块已定义的 STATIC_URL。
+    """
+    base = STATIC_URL
+    if not base.startswith(('http://', 'https://', '/')):
+        base = '/' + base
+    return base.rstrip('/') + '/' + path.lstrip('/')
+
+
 # ════════════════════════════════════════════════════════════════
 # Django Unfold 后台主题（替代 SimpleUI）
 # 设计源：前端「江畔渔火」品牌系统 — 湖青 #1F6B54（主色）/ 渔火橙 #E2703A（强调）
@@ -232,6 +245,8 @@ UNFOLD = {
                 'items': [
                     {'title': '用户留言', 'link': '/admin/agent/contactmessage/', 'icon': 'mail'},
                     {'title': '对话记录', 'link': '/admin/agent/conversations/', 'icon': 'forum'},
+                    # 对话调用链：一轮一行，点开看「几轮 ReAct / 调了谁 / 花了多久」
+                    {'title': '对话调用链', 'link': '/admin/agent/agentrun/', 'icon': 'timeline'},
                     {'title': '定制需求', 'link': '/admin/agent/customrequest/', 'icon': 'playlist_add_check'},
                 ],
             },
@@ -251,8 +266,16 @@ UNFOLD = {
         ],
     },
 
-    # 注入品牌补充样式（渔火橙强调、看板卡片等）
-    'STYLES': ['admin/zy-unfold.css'],
+    # 注入品牌补充样式（渔火橙强调、看板卡片等）。
+    # 🔴 必须用 static() 拼成根绝对路径：UNFOLD.STYLES 会把字符串原样写进 <link href>，
+    # 写成 'admin/zy-unfold.css' 时，在 /admin/agent/conversations/ 下浏览器会解析成
+    # /admin/agent/conversations/admin/zy-unfold.css → 404，整套后台样式静默失效。
+    # 🔴 顺序不能调：zy-tokens.css 定义 --zy-* 变量，zy-unfold.css 引用它们；
+    # 反过来的话变量尚未定义，后台配色会全部回退成浏览器默认值。
+    'STYLES': [
+        static_abs('admin/zy-tokens.css'),
+        static_abs('admin/zy-unfold.css'),
+    ],
 }
 
 
