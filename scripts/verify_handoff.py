@@ -390,6 +390,19 @@ check("详情页有对话快照区", "zy-tk-thread" in html_detail)
 check("快照里能看到顾客原话", "少了两包" in html_detail or "竿稍是断的" in html_detail)
 check("详情页有工具调用区", "工具调用" in html_detail)
 
+# 类名写对了不等于样式能加载：后台曾因 UNFOLD.STYLES 相对路径 404 导致整套
+# 样式静默失效（页面能开、但像没穿衣服）。
+# 这里用 staticfiles finder 定位真实文件（test client 不走 runserver 的静态处理器，
+# 直接 GET /static/... 会 404，那测的是环境不是事实），再读内容确认规则在里面。
+from django.contrib.staticfiles import finders  # noqa: E402
+
+css_path = finders.find("admin/zy-admin-ops.css")
+check("工单页 CSS 能被 staticfiles 定位到（不是只有类名）", bool(css_path), str(css_path))
+if css_path:
+    css_text = open(css_path, encoding="utf-8").read()
+    for cls in (".zy-tk-thread", ".zy-tk-msg", ".zy-badge-mute", ".zy-kpi-warn"):
+        check(f"CSS 里确实定义了 {cls}", cls in css_text)
+
 # 快照里的换行必须渲染成真的换行；把带 <br> 的字符串直接塞进 format_html
 # 会被转义成 &lt;br&gt;，页面上看到的是字面量（这个坑踩过一次）
 multi = SupportTicket.objects.create(
