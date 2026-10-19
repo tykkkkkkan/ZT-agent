@@ -359,12 +359,46 @@
                                             v-if="msg.role === 'ai' || msg.role === 'error'"
                                             class="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-lake-600 text-white flex items-center justify-center text-sm flex-shrink-0 shadow-sm"
                                         ><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg></div>
-                                        <div
-                                            class="max-w-[75%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm"
-                                            :class="msg.role === 'user' ? 'bubble-user rounded-br-sm' : msg.role === 'error' ? 'bubble-error' : 'bubble-ai rounded-bl-sm'"
-                                        >
-                                            {{ msg.content }}
-                                            <span v-if="msg.streaming" class="cursor-blink text-brand-500 font-bold">|</span>
+                                        <div class="max-w-[75%] min-w-0 flex flex-col" :class="msg.role === 'user' ? 'items-end' : 'items-start'">
+                                            <div
+                                                class="px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm"
+                                                :class="msg.role === 'user' ? 'bubble-user rounded-br-sm' : msg.role === 'error' ? 'bubble-error' : 'bubble-ai rounded-bl-sm'"
+                                            >
+                                                {{ msg.content }}
+                                                <span v-if="msg.streaming" class="cursor-blink text-brand-500 font-bold">|</span>
+                                            </div>
+
+                                            <!-- 参考来源：这条回答依据了知识库哪几条（默认收起，点开看原文与相关度） -->
+                                            <div
+                                                v-if="msg.sources && msg.sources.length"
+                                                class="source-panel w-full"
+                                            >
+                                                <button
+                                                    type="button"
+                                                    class="source-toggle"
+                                                    :aria-expanded="msg.sourcesOpen ? 'true' : 'false'"
+                                                    @click="toggleSources(idx)"
+                                                >
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em;flex-shrink:0" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                                                    <span>参考来源 {{ msg.sources.length }} 条</span>
+                                                    <svg class="caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                                                </button>
+                                                <ul v-if="msg.sourcesOpen" class="source-list">
+                                                    <li
+                                                        v-for="(src, si) in msg.sources"
+                                                        :key="'src-' + idx + '-' + si"
+                                                        class="source-item"
+                                                    >
+                                                        <div class="source-head">
+                                                            <span class="source-index">{{ si + 1 }}.</span>
+                                                            <span class="source-title">{{ src.title }}</span>
+                                                            <span class="source-score">相关度 {{ fmtScore(src.score) }}</span>
+                                                        </div>
+                                                        <p class="source-snippet">{{ src.snippet }}</p>
+                                                        <p class="source-routes">{{ sourceRouteLabel(src) }}</p>
+                                                    </li>
+                                                </ul>
+                                            </div>
                                         </div>
                                     </div>
 

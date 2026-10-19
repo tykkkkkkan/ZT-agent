@@ -93,6 +93,39 @@ function suggestFor(cards) {
     return [];
 }
 
+/** 相关度保留三位（tfidf 尺度能到 4+，语义只到 1，统一按数值截断不补零） */
+function fmtScore(v) {
+    const n = Number(v);
+    if (!isFinite(n)) return '—';
+    return n.toFixed(3);
+}
+
+/**
+ * 把来源的「命中路径」翻译成一句人话。
+ * 为什么值得显示：混合检索的说服力全在"这条路排第几"，
+ * 只给一个融合分（0.03 量级）反而让人以为是 bug。
+ */
+function sourceRouteLabel(src) {
+    if (!src || typeof src !== 'object') return '';
+    const backend = src.backend || '';
+    const lex = src.lexical_rank;
+    const sem = src.semantic_rank;
+    if (backend === 'hybrid') {
+        const parts = [];
+        if (lex) parts.push('字面路第 ' + lex);
+        if (sem) parts.push('语义路第 ' + sem);
+        const head = parts.length ? parts.join(' · ') : '单路召回';
+        return head + ' → RRF 融合';
+    }
+    if (backend === 'embedding') {
+        return (sem ? '语义路第 ' + sem : '语义路') + ' · 余弦相似度';
+    }
+    if (backend === 'tfidf') {
+        return (lex ? '字面路第 ' + lex : '字面路') + ' · 余弦 + BM25';
+    }
+    return '';
+}
+
 createApp({
     setup() {
         // ========== session_id 持久化 ==========
@@ -529,6 +562,18 @@ createApp({
                                 continue;
                             }
 
+                            // 引用来源（这条回答依据了知识库哪几条、相关度多少）
+                            // 单独事件而不是塞进正文：来源不是回答内容，
+                            // 混进 content 会被落库、也会被下一轮当成上下文喂回模型。
+                            if (data.type === 'sources' && Array.isArray(data.sources)) {
+                                if (messages.value[aiMsgIdx]) {
+                                    messages.value[aiMsgIdx].sources = data.sources;
+                                    messages.value[aiMsgIdx].sourcesOpen = false;
+                                    forceReactivityUpdate(aiMsgIdx);
+                                }
+                                continue;
+                            }
+
                             // 流结束信号
                             if (data.done) {
                                 if (messages.value[aiMsgIdx]) {
@@ -611,6 +656,18 @@ createApp({
             window.location.href = url;
         };
 
+        /**
+         * 展开 / 收起某条回答的「参考来源」。
+         * 状态挂在消息对象上（sourcesOpen），而不是组件级：同一屏里多条回答
+         * 可以各开各的，互不影响。
+         */
+        const toggleSources = (idx) => {
+            const msg = messages.value[idx];
+            if (!msg || !msg.sources) return;
+            msg.sourcesOpen = !msg.sourcesOpen;
+            forceReactivityUpdate(idx);
+        };
+
         return {
             quickQuestions,
             messages,
@@ -625,6 +682,10 @@ createApp({
             productImage,
             onImgError,
             goOrder,
+            toggleSources,
+            // 引用来源（纯函数，便于 verify_citations.js 直接断言）
+            fmtScore,
+            sourceRouteLabel,
             // 订单名片（纯逻辑取自文件头部的顶层函数，便于单测；模板里按 money(...) 调用）
             orderStatusClass,
             hasAction,

@@ -213,6 +213,77 @@ main:focus { outline: none; }
 }
 .cursor-blink { color: var(--jade) !important; animation: blink .8s step-end infinite; }
 
+/* ============ 引用来源（AI 气泡下方的折叠条） ============
+   设计意图：回答是"说"的，来源是"证"的。默认收起只留一行摘要，
+   不打断阅读；点开才展开原文与相关度——证据要在，但不能挤走答案。
+   全部用 token 取色，深色分支与后台视觉保持同一套语义。 */
+.source-panel {
+    margin-top: .5rem;
+    border: 1px solid var(--jade-100);
+    border-radius: .75rem;
+    background: rgba(251, 248, 241, .82);
+    overflow: hidden;
+}
+.source-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: .375rem;
+    padding: .4rem .65rem;
+    border: 0;
+    background: transparent;
+    color: var(--jade-700);
+    font-size: .75rem;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: background .15s ease;
+}
+.source-toggle:hover { background: rgba(31, 107, 84, .07); }
+.source-toggle:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+}
+.source-toggle .caret { margin-left: auto; transition: transform .2s ease; }
+.source-toggle[aria-expanded="true"] .caret { transform: rotate(180deg); }
+.source-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 .65rem .45rem;
+}
+.source-item { padding: .5rem 0; border-top: 1px dashed rgba(31, 107, 84, .18); }
+.source-item:first-child { border-top: 0; padding-top: .25rem; }
+.source-head {
+    display: flex;
+    align-items: baseline;
+    gap: .375rem;
+    flex-wrap: wrap;
+}
+.source-index {
+    font-size: .6875rem;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+}
+.source-title { font-size: .78rem; font-weight: 600; color: var(--ink); }
+.source-score {
+    margin-left: auto;
+    font-size: .6875rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--jade-700);
+}
+.source-snippet {
+    margin: .25rem 0 0;
+    font-size: .75rem;
+    line-height: 1.55;
+    color: var(--ink-mute);
+}
+.source-routes {
+    margin-top: .25rem;
+    font-size: .6875rem;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+}
+
 /* 聊天消息区：宣纸水面（暖调水波） */
 .water-surface {
     background:

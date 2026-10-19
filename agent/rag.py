@@ -302,16 +302,20 @@ class RAGEngine:
         self._bm25 = BM25([c.tokens for c in new_chunks])
         return len(new_chunks)
 
-    def retrieve(
+    def retrieve_detailed(
         self,
         query: str,
         top_k: int = 3,
         recall_k: Optional[int] = None,
         min_score: float = 0.0,
-    ) -> List[Tuple[Chunk, float]]:
-        """检索入口：召回（余弦 Top-N）+ 重排（BM25），返回 [(Chunk, score)]。
+    ) -> List[dict]:
+        """检索入口（带过程信息）：返回 [{"chunk", "score", "routes"}]。
 
-        min_score：低于该相似度分数的结果被丢弃，用于过滤无关查询的低分噪声
+        routes 记录这一条是怎么被排上来的 —— 余弦分、BM25 分、在本路里的名次。
+        界面要展示「这条来自知识库第几条、凭什么排第一」就必须拿到这些过程量，
+        只返回 (chunk, score) 是看不到的（引用溯源 / 命中测试台都依赖它）。
+
+        min_score：低于该分数的结果被丢弃，用于过滤无关查询的低分噪声
         （默认 0 表示不启用，向后兼容）。调用方可传如 1.5 做阈值过滤。
         """
         if not self.chunks:
@@ -327,21 +331,52 @@ class RAGEngine:
         if self._semantic:
             # 语义向量模式：向量库返回的已是余弦相似度（0~1），直接用它排序。
             # BM25 是字面匹配，与语义尺度不匹配，介入后会用字面噪声主导排序，故此处不用。
-            reranked = [(cos_s, idx) for idx, cos_s in recall]
+            reranked = [(cos_s, idx, cos_s, 0.0) for idx, cos_s in recall]
         else:
             # TF-IDF 模式：余弦召回 + BM25 字面重排（混合打分）
             qtokens = tokenize(query)
-            reranked: List[Tuple[float, int]] = []
+            reranked: List[Tuple[float, int, float, float]] = []
             for idx, cos_s in recall:
                 bm = self._bm25.score(qtokens, idx) if self._bm25 else 0.0
                 final = cos_s + bm * RAG_BM25_WEIGHT
-                reranked.append((final, idx))
+                reranked.append((final, idx, cos_s, bm))
         reranked.sort(key=lambda x: -x[0])
 
-        results = [(self.chunks[idx], s) for s, idx in reranked[:top_k] if s > 0]
-        if min_score > 0:
-            results = [(c, s) for c, s in results if s >= min_score]
-        return results
+        backend = "embedding" if self._semantic else "tfidf"
+        out: List[dict] = []
+        for rank, (final, idx, cos_s, bm) in enumerate(reranked[:top_k], start=1):
+            if final <= 0:
+                continue
+            if min_score > 0 and final < min_score:
+                continue
+            out.append({
+                "chunk": self.chunks[idx],
+                "score": final,
+                "routes": {
+                    "backend": backend,
+                    # 最终名次（1 起）与该名次对应的各路分数
+                    "rank": rank,
+                    "cosine": round(cos_s, 4),
+                    "bm25": round(bm, 4),
+                    "lexical_rank": None if self._semantic else rank,
+                    "semantic_rank": rank if self._semantic else None,
+                },
+            })
+        return out
+
+    def retrieve(
+        self,
+        query: str,
+        top_k: int = 3,
+        recall_k: Optional[int] = None,
+        min_score: float = 0.0,
+    ) -> List[Tuple[Chunk, float]]:
+        """检索入口：返回 [(Chunk, score)]（`retrieve_detailed` 的简化视图）。"""
+        return [
+            (d["chunk"], d["score"])
+            for d in self.retrieve_detailed(query, top_k=top_k,
+                                            recall_k=recall_k, min_score=min_score)
+        ]
 
     def query(self, query: str, top_k: int = 3) -> str:
         """便捷方法：返回检索到的上下文的拼接文本（供工具层直接使用）。"""
@@ -374,6 +409,91 @@ class HybridRAGEngine:
         self._semantic.ingest(documents)
         return n
 
+    def retrieve_detailed(
+        self,
+        query: str,
+        top_k: int = 3,
+        recall_k: Optional[int] = None,
+        min_score: float = 0.0,
+    ) -> List[dict]:
+        """双路并行召回 + RRF 融合，返回带三路名次的明细。
+
+        routes 里同时给出 `lexical_rank` / `semantic_rank` / `rrf`，
+        界面可以直观看到"这一条字面路排第 2、语义路排第 1，融合后排第 1"——
+        这是解释混合检索为什么有效的唯一证据，光看融合分看不出来。
+
+        容错：语义路异常降级为字面路（记日志），单路为空时退回另一路原生排序。
+        """
+        if not self._lexical.chunks:
+            return []
+
+        recall_k = recall_k or max(top_k * 2, 6)
+        lex_hits = self._lexical.retrieve_detailed(query, top_k=recall_k)
+        try:
+            sem_hits = self._semantic.retrieve_detailed(query, top_k=recall_k)
+        except Exception as exc:
+            logger.warning("语义路检索失败，降级为字面路：%s", exc)
+            sem_hits = []
+
+        lex_rank = {d["chunk"].id: i for i, d in enumerate(lex_hits, start=1)}
+        sem_rank = {d["chunk"].id: i for i, d in enumerate(sem_hits, start=1)}
+
+        # 单路为空 → 直接返回另一路（保留其原生分数，便于上层阈值过滤）
+        if not lex_hits or not sem_hits:
+            single = lex_hits or sem_hits
+            degraded = not sem_hits
+            out: List[dict] = []
+            for d in single[:top_k]:
+                routes = dict(d["routes"])
+                routes.update({
+                    "backend": "hybrid",
+                    "lexical_rank": lex_rank.get(d["chunk"].id),
+                    "semantic_rank": sem_rank.get(d["chunk"].id),
+                    "rrf": None,
+                    "degraded": degraded,
+                })
+                out.append({"chunk": d["chunk"], "score": d["score"], "routes": routes})
+            return out
+
+        rrf = reciprocal_rank_fusion(
+            [[d["chunk"].id for d in lex_hits], [d["chunk"].id for d in sem_hits]],
+            self._rrf_k,
+        )
+        id2chunk = {d["chunk"].id: d["chunk"] for d in lex_hits}
+        id2chunk.update({d["chunk"].id: d["chunk"] for d in sem_hits})
+        # 各路原始分（只用于展示，不参与融合）
+        id2scores: Dict[str, Dict[str, float]] = {}
+        for d in lex_hits:
+            id2scores.setdefault(d["chunk"].id, {})["lexical_score"] = round(d["score"], 4)
+        for d in sem_hits:
+            id2scores.setdefault(d["chunk"].id, {})["semantic_score"] = round(d["score"], 4)
+
+        fused = sorted(
+            ((id2chunk[cid], s, cid) for cid, s in rrf.items() if cid in id2chunk),
+            key=lambda x: -x[1],
+        )
+
+        results: List[dict] = []
+        for rank, (chunk, score, cid) in enumerate(fused[:top_k], start=1):
+            if min_score > 0 and score < min_score:
+                continue
+            raw = id2scores.get(cid, {})
+            results.append({
+                "chunk": chunk,
+                "score": score,
+                "routes": {
+                    "backend": "hybrid",
+                    "rank": rank,
+                    "lexical_rank": lex_rank.get(cid),
+                    "semantic_rank": sem_rank.get(cid),
+                    "lexical_score": raw.get("lexical_score"),
+                    "semantic_score": raw.get("semantic_score"),
+                    "rrf": round(score, 5),
+                    "degraded": False,
+                },
+            })
+        return results
+
     def retrieve(
         self,
         query: str,
@@ -381,44 +501,17 @@ class HybridRAGEngine:
         recall_k: Optional[int] = None,
         min_score: float = 0.0,
     ) -> List[Tuple[Chunk, float]]:
-        """双路并行召回 + RRF 融合。
+        """双路并行召回 + RRF 融合（`retrieve_detailed` 的简化视图）。
 
         返回 (Chunk, RRF 融合分)；任一单路为空时退回另一路的原始排序；
         语义路异常时降级为字面路（记日志）。min_score 对 RRF 尺度无意义，
         默认 0 不过滤，调用方无需传阈值。
         """
-        if not self._lexical.chunks:
-            return []
-
-        recall_k = recall_k or max(top_k * 2, 6)
-        lex_hits = self._lexical.retrieve(query, top_k=recall_k)
-        try:
-            sem_hits = self._semantic.retrieve(query, top_k=recall_k)
-        except Exception as exc:
-            logger.warning("语义路检索失败，降级为字面路：%s", exc)
-            sem_hits = []
-
-        # 单路为空 → 直接返回另一路（保留其原生分数，便于上层阈过滤语义）
-        if not lex_hits:
-            return sem_hits[:top_k]
-        if not sem_hits:
-            return lex_hits[:top_k]
-
-        rrf = reciprocal_rank_fusion(
-            [[c.id for c, _ in lex_hits], [c.id for c, _ in sem_hits]], self._rrf_k
-        )
-        id2chunk = {c.id: c for c, _ in lex_hits}
-        id2chunk.update({c.id: c for c, _ in sem_hits})
-        fused = [
-            (id2chunk[cid], s)
-            for cid, s in rrf.items()
-            if cid in id2chunk
+        return [
+            (d["chunk"], d["score"])
+            for d in self.retrieve_detailed(query, top_k=top_k,
+                                            recall_k=recall_k, min_score=min_score)
         ]
-        fused.sort(key=lambda x: -x[1])
-        results = fused[:top_k]
-        if min_score > 0:
-            results = [(c, s) for c, s in results if s >= min_score]
-        return results
 
     def query(self, query: str, top_k: int = 3) -> str:
         """便捷方法：返回检索到的上下文的拼接文本（供工具层直接使用）。"""

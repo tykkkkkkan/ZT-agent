@@ -127,6 +127,65 @@ def _remember_order(order) -> None:
 
 
 # ──────────────────────────────────────────────────────────────
+# 本轮对话「知识库命中了哪几条」→ 前端「参考来源」折叠条
+# ──────────────────────────────────────────────────────────────
+# 引用溯源（对齐 RAGFlow grounded citations / Dify 引用预览）：
+# 检索结果原本只被拼成一段给模型看的文本，用户看不到出处，也就无法判断
+# 这句话是查到的还是编的。这里把 title / 分数 / 命中路径留下来，
+# 由 agent_stream 在回答结束后作为 `sources` 事件推给前端。
+# 同样用 ContextVar：多线程下 A 客户的检索结果不能串到 B 客户的气泡里。
+_referenced_sources = contextvars.ContextVar("referenced_sources", default=None)
+
+# 每条来源在气泡里展示的原文长度（太长会把折叠条撑开，太短看不出是否命中）
+SOURCE_SNIPPET_CHARS = 160
+
+
+def reset_referenced_sources() -> None:
+    """每轮对话开始前清空（由 agent_stream 调用）。"""
+    _referenced_sources.set([])
+
+
+def get_referenced_sources() -> list:
+    """取本轮检索命中的知识库条目（按出现顺序，已按标题+序号去重）。"""
+    return list(_referenced_sources.get() or [])
+
+
+def _remember_source(hit: dict) -> None:
+    """登记一条检索命中，供前端"参考来源"展示。
+
+    hit 来自 `RAGEngine.retrieve_detailed()`：
+        {"chunk": Chunk, "score": float, "routes": {...}}
+    """
+    try:
+        bucket = _referenced_sources.get()
+        if bucket is None:
+            bucket = []
+            _referenced_sources.set(bucket)
+
+        chunk = hit.get("chunk")
+        meta = getattr(chunk, "meta", {}) or {}
+        answer = meta.get("answer") or getattr(chunk, "text", "") or ""
+        title = meta.get("title") or "未命名条目"
+        # 同一条被多轮检索命中时只留第一次（分数最高的那次在前）
+        if any(item["title"] == title for item in bucket):
+            return
+        routes = hit.get("routes") or {}
+        bucket.append({
+            "title": title,
+            "score": round(float(hit.get("score") or 0), 4),
+            "category": meta.get("category") or "",
+            "snippet": answer.strip().replace("\n", " ")[:SOURCE_SNIPPET_CHARS],
+            "backend": routes.get("backend") or "",
+            "rank": routes.get("rank"),
+            "lexical_rank": routes.get("lexical_rank"),
+            "semantic_rank": routes.get("semantic_rank"),
+        })
+    except Exception:
+        # 溯源登记失败不影响问答主流程
+        logger.exception("登记引用来源失败")
+
+
+# ──────────────────────────────────────────────────────────────
 # 当前登录用户 → 工具侧可见（工具函数拿不到 request）
 # ──────────────────────────────────────────────────────────────
 # 视图层在调用 agent_stream 之前注入；`query_my_orders` 依赖它按归属规则
@@ -686,18 +745,24 @@ def search_knowledge(query: str) -> str:
         # - hybrid：RRF 融合分仅与排名相关（top1 约 0.03 量级），无法用绝对阈值，故 0（不过滤）
         backend = os.getenv("RAG_BACKEND", "tfidf").strip().lower()
         min_score = {"embedding": 0.2, "hybrid": 0.0}.get(backend, 1.5)
-        hits = rag.retrieve(query, top_k=3, min_score=min_score)
+        # 用 detailed 版本：除了给模型的文本，还要留下"这条凭什么被选中"的过程信息
+        detailed = rag.retrieve_detailed(query, top_k=3, min_score=min_score)
     except Exception as e:
         return f"知识库检索出错：{e}"
 
-    if not hits:
+    if not detailed:
         return (
             "抱歉，这个问题我暂时没有记录。"
             "您可以告诉我更多细节，或者拨打客服热线 400-xxx-xxxx 咨询。"
         )
 
+    # 引用溯源：把命中条目登记进本轮上下文，回答结束后由 agent_stream 推给前端
+    for hit in detailed:
+        _remember_source(hit)
+
     lines = ["[知识库检索结果]"]
-    for chunk, _score in hits:
+    for hit in detailed:
+        chunk = hit["chunk"]
         answer = chunk.meta.get("answer") or chunk.text
         title = chunk.meta.get("title", "")
         label = f"【{title}】" if title else ""

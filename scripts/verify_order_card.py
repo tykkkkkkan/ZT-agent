@@ -143,10 +143,14 @@ try:
     print("\n[D] SSE 白名单")
     views_src = open(os.path.join(BASE, "agent", "views.py"), encoding="utf-8").read()
     check("views 的结构事件白名单含 order_card", '"order_card"' in views_src)
-    check(
-        "order_card 与 product_card / guide_card 同列放行",
-        '("guide_card", "product_card", "order_card")' in views_src,
-    )
+    # 解析白名单元组而不是硬编码字面量：以后再加结构事件（如 sources）不该假失败，
+    # 但"order_card 被踢出白名单"必须报警 —— 那会让名片静默消失。
+    import re as _re
+    _m = _re.search(r'if ev\.get\("type"\) in \(([^)]*)\):', views_src)
+    _names = _re.findall(r'"(\w+)"', _m.group(1)) if _m else []
+    check("order_card 在结构事件白名单里", "order_card" in _names, str(_names))
+    check("product_card / guide_card 仍在白名单（名片功能未被挤掉）",
+          {"product_card", "guide_card"} <= set(_names), str(_names))
 
     # ── E. 端到端：Agent 真会产出 order_card ────────────────────
     print("\n[E] 端到端（mock LLM 流）")

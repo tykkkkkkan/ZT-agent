@@ -16,6 +16,7 @@ agent/agent.py — ReAct 式 Agent 循环 + 真·流式输出
     {"type": "product_card", "product": {...}}    产品名片（名称/规格/图片/价格/库存，可一键下单）
     {"type": "order_card", "order": {...}}        订单名片（订单号/商品/金额/状态/物流，可去支付）
     {"type": "guide_card"}                        引导转化卡片（去定制服务 / 联系我们）
+    {"type": "sources", "sources": [...]}         引用来源（标题/相关度/命中路径），最后一律补发
 
 历史加载 / 存库也收敛在本模块，视图层只负责 HTTP 与 SSE 格式化。
 """
@@ -133,6 +134,27 @@ def _parse_tool_args(raw: str) -> dict:
 # Agent 循环（生成器）— 真·流式
 # ══════════════════════════════════════════════════════════════
 def agent_stream(session_id: str, user_message: str):
+    """对外统一出口：跑完 ReAct 循环后，补发本轮的知识库引用来源。
+
+    为什么放在最外层而不是循环里：`_agent_loop` 有 4 个 return 分支
+    （正常收尾 / LLM 异常 / 达到步数上限），逐个加发 sources 一定会漏一个。
+    用 `yield from` 包一层，只要循环结束就一定走到这里。
+
+    :yield: 循环产出的各类事件，末尾追加 {"type": "sources", "sources": [...]}
+    """
+    from agent.tools import get_referenced_sources, reset_referenced_sources
+
+    # 每轮清零：上一轮问"春季钓法"的来源不能挂到这一轮"退货政策"的回答下面
+    reset_referenced_sources()
+    yield from _agent_loop(session_id, user_message)
+
+    sources = get_referenced_sources()
+    if sources:
+        # 只发结构化数据，渲染与折叠交互交给前端
+        yield {"type": "sources", "sources": sources}
+
+
+def _agent_loop(session_id: str, user_message: str):
     """ReAct 式 Agent 循环，逐 chunk yield 事件。
 
     每轮直接消费 LLM stream：
@@ -143,6 +165,7 @@ def agent_stream(session_id: str, user_message: str):
     :param user_message: 当前用户输入
     :yield: {"content": str}
             或 {"type": "product_card", "product": {...}}
+            或 {"type": "order_card", "order": {...}}
             或 {"type": "guide_card"}
     """
     from agent.tools import (

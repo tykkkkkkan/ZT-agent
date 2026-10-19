@@ -206,9 +206,10 @@ def chat(request):
         parts = []
         try:
             for ev in agent_stream(session_id, user_message):
-                if ev.get("type") in ("guide_card", "product_card", "order_card"):
+                if ev.get("type") in ("guide_card", "product_card", "order_card", "sources"):
                     # 结构事件：不进 parts（不是回答正文，落库会污染历史）
-                    yield _sse(ev)          # 产品名片 / 订单名片 / 引导转化卡片
+                    # sources = 引用来源，随回答一起展示但不参与后续对话上下文
+                    yield _sse(ev)          # 名片 / 引导卡 / 引用来源
                     continue
                 if "content" in ev:
                     parts.append(ev["content"])
