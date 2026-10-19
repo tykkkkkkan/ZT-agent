@@ -508,6 +508,242 @@ class MessageFeedback(models.Model):
         return f"{icon} {self.question[:24] or self.session_id[:8]}"
 
 
+class SupportTicket(models.Model):
+    """转人工工单 —— AI 解决不了时，把这一轮会话**连上下文一起**交给人工。
+
+    为什么不能沿用「引导用户去留言」（`guide_to_contact` 做的事）：
+    留言等于让顾客把问题**重新描述一遍**，前面跟 AI 说的十几轮全丢了。
+    人工接手时不知道顾客已经说过什么、AI 查过哪些商品/订单、查到哪一步卡住、
+    知识库里有没有相关条目 —— 只能再问一遍，顾客体验最差的就是这个环节。
+
+    所以工单的核心不是「一张待办表」，而是 `transcript` / `tool_trace` /
+    `sources` / `related_orders` 这几组快照：它们让坐席一打开就接得上话。
+
+    状态机对齐 Chatwoot（业界客服工单的通用心智）：
+        open → assigned → replied → resolved → closed
+    任一步都可以直接 closed（顾客自己走了）。`OPEN` 却没人在管 = 最该被
+    盯住的，所以有 `is_overdue` 与后台 `waiting_minutes` 列。
+    """
+
+    class Status(models.TextChoices):
+        OPEN = 'open', '待受理'
+        ASSIGNED = 'assigned', '已分配'
+        REPLIED = 'replied', '已回复'
+        RESOLVED = 'resolved', '已解决'
+        CLOSED = 'closed', '已关闭'
+
+    class Priority(models.TextChoices):
+        LOW = 'low', '低'
+        NORMAL = 'normal', '普通'
+        HIGH = 'high', '高'
+        URGENT = 'urgent', '紧急'
+
+    class Reason(models.TextChoices):
+        UNKNOWN = 'unknown', 'AI 答不上来'
+        USER_REQUEST = 'user_request', '用户要求人工'
+        AFTER_SALE = 'after_sale', '售后纠纷'
+        LOGISTICS = 'logistics', '物流异常'
+        PAYMENT = 'payment', '支付/退款'
+        COMPLAINT = 'complaint', '投诉建议'
+        OTHER = 'other', '其他'
+
+    class Source(models.TextChoices):
+        AGENT = 'agent', 'AI 主动转出'
+        USER = 'user', '用户点按钮'
+        ADMIN = 'admin', '后台手建'
+
+    # 单号在第一次保存后按自增 pk 生成（见 save()），对顾客与坐席都可直接口头播报
+    ticket_no = models.CharField(
+        max_length=24, unique=True, null=True, blank=True, db_index=True,
+        verbose_name='工单号',
+    )
+    session_id = models.CharField(max_length=64, db_index=True, verbose_name='会话ID')
+    user_id = models.IntegerField(null=True, blank=True, db_index=True, verbose_name='用户ID')
+
+    contact_name = models.CharField(max_length=50, blank=True, default='', verbose_name='联系人')
+    contact_phone = models.CharField(max_length=20, blank=True, default='', verbose_name='联系电话')
+
+    question = models.TextField(blank=True, default='', verbose_name='顾客问题')
+    detail = models.TextField(blank=True, default='', verbose_name='AI 补充说明')
+
+    reason = models.CharField(
+        max_length=20, choices=Reason.choices, default=Reason.UNKNOWN,
+        db_index=True, verbose_name='转人工原因',
+    )
+    priority = models.CharField(
+        max_length=10, choices=Priority.choices, default=Priority.NORMAL,
+        db_index=True, verbose_name='优先级',
+    )
+    status = models.CharField(
+        max_length=12, choices=Status.choices, default=Status.OPEN,
+        db_index=True, verbose_name='状态',
+    )
+    source = models.CharField(
+        max_length=10, choices=Source.choices, default=Source.AGENT,
+        verbose_name='来源',
+    )
+
+    # ── 会话快照：坐席接手时「不用再问一遍」的全部依据 ──────────
+    transcript = models.JSONField(
+        default=list, blank=True, verbose_name='对话快照',
+        help_text='转出时最近若干条消息，按时间正序',
+    )
+    tool_trace = models.JSONField(
+        default=list, blank=True, verbose_name='本轮工具调用',
+        help_text='AI 这轮查过什么（工具名 + 参数 + 返回字数）',
+    )
+    sources = models.JSONField(
+        default=list, blank=True, verbose_name='知识库命中',
+        help_text='AI 引用过的知识条目，用于判断「库里有没有」',
+    )
+    related_orders = models.JSONField(
+        default=list, blank=True, verbose_name='涉及订单',
+        help_text='本轮查询过的订单号，坐席可直接接着查',
+    )
+    related_products = models.JSONField(
+        default=list, blank=True, verbose_name='涉及商品',
+        help_text='本轮查询过的商品，避免坐席重新搜索',
+    )
+
+    # ── 处理流转 ────────────────────────────────────────────────
+    assignee = models.ForeignKey(
+        'auth.User', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='zy_support_tickets', verbose_name='受理人',
+    )
+    assigned_at = models.DateTimeField(null=True, blank=True, verbose_name='分配时间')
+    first_reply_at = models.DateTimeField(null=True, blank=True, verbose_name='首次回复时间')
+    resolved_at = models.DateTimeField(null=True, blank=True, verbose_name='解决时间')
+    resolution = models.TextField(blank=True, default='', verbose_name='处理结论')
+
+    created_at = models.DateTimeField(default=timezone.now, db_index=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+
+    class Meta:
+        db_table = 'support_tickets'
+        verbose_name = '转人工工单'
+        verbose_name_plural = '转人工工单'
+        ordering = ('-created_at',)
+        indexes = [
+            models.Index(fields=['status', '-created_at'], name='idx_ticket_status_created'),
+            models.Index(fields=['priority', 'status'], name='idx_ticket_prio_status'),
+            models.Index(fields=['assignee', 'status'], name='idx_ticket_assignee_status'),
+        ]
+
+    # ── 单号 ───────────────────────────────────────────────────
+    def save(self, *args, **kwargs):
+        """首存后按 pk 生成单号：`T20261019-0007`。
+
+        为什么不在 `default=` 里算：并发下「当天第几条」会撞号，
+        而由 pk 拼出来的号天然唯一，不需要重试也不需要加锁。
+        """
+        if self._state.adding and not self.ticket_no:
+            super().save(*args, **kwargs)          # 先拿到自增 pk
+            # 用 now() 而不是 localdate()：本项目 USE_TZ=False，时间本就是本地 naive 值，
+            # localdate() 会对 naive datetime 抛 ValueError（踩过）
+            self.ticket_no = f"T{timezone.now():%Y%m%d}-{self.pk:04d}"
+            super().save(update_fields=['ticket_no'])
+            return
+        super().save(*args, **kwargs)
+
+    # ── 派生属性（后台列表与详情都用，避免各写一套口径）─────────
+    # SLA：越急的单要求越快接，超过就标红。数值是客服行业的常见档位，
+    # 不是为了好看 —— 它让「待受理」列表有了排序依据。
+    SLA_MINUTES = {'urgent': 15, 'high': 30, 'normal': 120, 'low': 480}
+
+    @property
+    def sla_minutes(self) -> int:
+        return self.SLA_MINUTES.get(self.priority, 120)
+
+    @property
+    def waiting_minutes(self) -> int:
+        """从创建到现在过了多少分钟（已解决的按解决时间算，不再增长）。"""
+        end = self.resolved_at or timezone.now()
+        return max(int((end - self.created_at).total_seconds() // 60), 0)
+
+    @property
+    def is_pending(self) -> bool:
+        return self.status in (self.Status.OPEN, self.Status.ASSIGNED)
+
+    @property
+    def is_overdue(self) -> bool:
+        """还没人回复且已超过 SLA —— 后台标红、KPI 计数都用它。"""
+        return self.is_pending and self.first_reply_at is None and self.waiting_minutes > self.sla_minutes
+
+    @property
+    def first_response_minutes(self):
+        """首响时长（分钟）；没回复返回 None —— 0 和「还没响」是两件事。"""
+        if not self.first_reply_at:
+            return None
+        return max(int((self.first_reply_at - self.created_at).total_seconds() // 60), 0)
+
+    @property
+    def transcript_count(self) -> int:
+        return len(self.transcript) if isinstance(self.transcript, list) else 0
+
+    # ── 状态流转 ───────────────────────────────────────────────
+    def apply_transition(self, status=None, assignee=None, resolution=None,
+                         now=None, prev_status=None) -> list:
+        """改状态/受理人/结论，并顺手维护三个时间戳 —— **唯一出口**。
+
+        为什么不在 admin 的 save_model 里逐字段判断：动作按钮（分配给我 / 标记已回复 /
+        已解决 / 关闭）也走这个入口，两处各写一遍必然漂移 —— 后台会出现
+        「状态已回复但 first_reply_at 还是空」，首响统计就此失真。
+
+        `prev_status` 只在「后台表单改状态」时传（那时 obj 已经是新值，
+        自己判断不出旧的），用于识别「已解决 → 重新打开」。
+
+        返回实际变化的字段名列表（供调用方确认写了什么）。
+        """
+        now = now or timezone.now()
+        changed = []
+        S = self.Status
+        target = status if status is not None else self.status
+        before = prev_status if prev_status is not None else self.status
+
+        # 重新打开（已解决/已关闭 → 待受理/已分配/已回复）：清掉解决时间，
+        # 否则工单会「已解决还挂着」，首响时长也被永久定格
+        if before in (S.RESOLVED, S.CLOSED) and target in (S.OPEN, S.ASSIGNED, S.REPLIED):
+            if self.resolved_at is not None:
+                self.resolved_at = None
+                changed.append('resolved_at')
+
+        if target != self.status:
+            self.status = target
+            changed.append('status')
+
+        if assignee is not None and assignee != self.assignee:
+            self.assignee = assignee
+            changed.append('assignee')
+
+        # 有受理人却没分配时间 → 补上。放在「是否变化」之外，
+        # 因为后台表单直接选受理人时 assignee 已经是新值、判断不出变化
+        if self.assignee_id and self.assigned_at is None:
+            self.assigned_at = now
+            changed.append('assigned_at')
+
+        # 只要有人受理/回复过就算「已响」：不要求必须点「标记已回复」，
+        # 否则坐席漏点一下，首响时长就永远算不出来
+        if target in (S.ASSIGNED, S.REPLIED, S.RESOLVED, S.CLOSED) \
+                and self.first_reply_at is None:
+            self.first_reply_at = now
+            changed.append('first_reply_at')
+
+        if resolution is not None and resolution != self.resolution:
+            self.resolution = resolution
+            changed.append('resolution')
+
+        if target in (S.RESOLVED, S.CLOSED) and self.resolved_at is None:
+            self.resolved_at = now
+            changed.append('resolved_at')
+
+        if changed:
+            self.save(update_fields=list(dict.fromkeys(changed)))
+        return changed
+
+    def __str__(self):
+        return f"{self.ticket_no or '(未编号)'} {self.get_status_display()} {self.question[:20]}"
+
+
 class ContactMessage(models.Model):
     """用户留言模型 — 前端联系表单提交的数据"""
     name = models.CharField(max_length=50, verbose_name='姓名')

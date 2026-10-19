@@ -198,6 +198,12 @@ def _mask_value(value):
     return value
 
 
+def _handoff_card_payload(ticket) -> dict:
+    """工单 → 前端卡片字段（统一走 handoff_presenter，别在这里另写一套）。"""
+    from agent.handoff_presenter import ticket_payload
+    return ticket_payload(ticket)
+
+
 def _new_trace(session_id: str, user_message: str) -> dict:
     """初始化本轮轨迹（纯内存对象，结束时一次性落库）。"""
     user_id = None
@@ -313,11 +319,18 @@ def _agent_loop(session_id: str, user_message: str):
     from agent.tools import (
         TOOL_SCHEMAS,
         call_tool,
+        drain_handoff,
         get_referenced_orders,
         get_referenced_products,
+        reset_handoff,
         reset_referenced_orders,
         reset_referenced_products,
+        set_current_session,
     )
+
+    # 转人工工具要靠它才知道「是哪个会话」，否则工单里带不出对话快照
+    set_current_session(session_id)
+    reset_handoff()
 
     trace = _new_trace(session_id, user_message)
     try:
@@ -326,6 +339,7 @@ def _agent_loop(session_id: str, user_message: str):
             TOOL_SCHEMAS, call_tool,
             get_referenced_orders, get_referenced_products,
             reset_referenced_orders, reset_referenced_products,
+            drain_handoff,
         )
     finally:
         # 放 finally 而不是各 return 前：客户端中途断开（generator close）、
@@ -336,12 +350,26 @@ def _agent_loop(session_id: str, user_message: str):
 
 def _react_loop(session_id, user_message, trace, TOOL_SCHEMAS, call_tool,
                 get_referenced_orders, get_referenced_products,
-                reset_referenced_orders, reset_referenced_products):
+                reset_referenced_orders, reset_referenced_products,
+                drain_handoff=lambda: None):
     """ReAct 主体（拆出来是为了让 `_agent_loop` 的 try/finally 保持单出口）。"""
 
     # 购买/批发/定制/下单意图：用于确定性兜底引导（不依赖 LLM 的 tool_choice 决策）
     purchase_intent = _has_purchase_intent(user_message)
     guide_emitted = False
+    handoff_emitted = False
+
+    def _drain_handoff_card() -> list:
+        """转人工工单 → handoff_card 事件（一张工单只发一次）。
+
+        `drain_handoff` 取走后即清空，所以重复调用不会重复发卡片。
+        """
+        nonlocal handoff_emitted
+        ticket = drain_handoff()
+        if not ticket:
+            return []
+        handoff_emitted = True
+        return [{"type": "handoff_card", "ticket": _handoff_card_payload(ticket)}]
 
     # 产品名片：本轮「被工具介绍过」的商品，在回答结束后补发（任务书四·2 产品名片）
     # 每轮开始清空 —— 否则上一轮问过的商品会跟着这一轮再弹一次
@@ -431,7 +459,10 @@ def _react_loop(session_id, user_message, trace, TOOL_SCHEMAS, call_tool,
                 yield card
             for card in _drain_order_cards():
                 yield card
-            if purchase_intent and not guide_emitted:
+            # 工单已经建好了就必须告诉顾客（它已经在库里，不能因为本轮报错就装作没转）
+            for card in _drain_handoff_card():
+                yield card
+            if purchase_intent and not guide_emitted and not handoff_emitted:
                 guide_emitted = True
                 yield {"type": "guide_card"}
             yield {"content": f"⚠️ AI 服务调用失败：{e}"}
@@ -449,13 +480,17 @@ def _react_loop(session_id, user_message, trace, TOOL_SCHEMAS, call_tool,
                 # 模型空回复时，退回最后工具结果兜底
                 trace["answer_chars"] += len(last_tool_result)
                 yield {"content": last_tool_result}
-            # 顺序固定：回答正文 → 产品名片 → 订单名片 → 引导卡
+            # 顺序固定：回答正文 → 产品名片 → 订单名片 → 转人工卡 → 引导卡
             # （客户先读完介绍，再看到可点的名片与下一步入口）
             for card in _drain_product_cards():
                 yield card
             for card in _drain_order_cards():
                 yield card
-            if purchase_intent and not guide_emitted:
+            for card in _drain_handoff_card():
+                yield card
+            # 已经转人工就别再推「去定制服务」：一个让顾客等电话、一个让他去填单，
+            # 两句话同时出现会互相抵消
+            if purchase_intent and not guide_emitted and not handoff_emitted:
                 guide_emitted = True
                 yield {"type": "guide_card"}
             return
@@ -510,7 +545,9 @@ def _react_loop(session_id, user_message, trace, TOOL_SCHEMAS, call_tool,
         yield card
     for card in _drain_order_cards():
         yield card
-    if purchase_intent and not guide_emitted:
+    for card in _drain_handoff_card():
+        yield card
+    if purchase_intent and not guide_emitted and not handoff_emitted:
         guide_emitted = True
         yield {"type": "guide_card"}
     fallback = last_tool_result or "抱歉，这个问题比较复杂，建议转人工处理。"

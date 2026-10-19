@@ -23,13 +23,13 @@ from urllib.parse import urlencode
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
-from django.db.models import Count, F, Sum
+from django.db.models import Count, F, Q, Sum
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils import timezone
-from django.utils.html import format_html
+from django.utils.html import escape, format_html
 from django.utils.safestring import mark_safe
 from unfold.admin import ModelAdmin as _UnfoldModelAdmin
 
@@ -49,6 +49,7 @@ from agent.models import (
     Products,
     ReturnStatus,
     Review,
+    SupportTicket,
     Transaction,
     TxCategory,
     TxType,
@@ -1611,6 +1612,392 @@ class MessageFeedbackAdmin(ZYModelAdmin):
         url = reverse('admin:agent_conversations_changelist') + f'?q={obj.session_id}'
         return format_html(
             '<a href="{}">在对话记录里看这个会话的全部消息 →</a>', url)
+
+
+# ══════════════════════════════════════════════════════════════
+# 转人工工单 —— 「AI 解决不了」之后的那一环
+# ══════════════════════════════════════════════════════════════
+# 这一页的核心不是「待办清单」，而是**上下文交接**：
+# 坐席打开就能看到顾客说过什么、AI 查过哪些商品/订单、知识库命中了没有。
+# 少了这些，转人工就退化成「让顾客重新描述一遍」，那是最差的体验。
+@admin.action(description='🙋 分配给我')
+def claim_tickets(modeladmin, request, queryset):
+    n = 0
+    for ticket in queryset:
+        ticket.apply_transition(assignee=request.user,
+                                status=(SupportTicket.Status.ASSIGNED
+                                        if ticket.status == SupportTicket.Status.OPEN else None))
+        n += 1
+    modeladmin.message_user(request, f'已认领 {n} 张工单。')
+
+
+@admin.action(description='💬 标记为已回复')
+def mark_tickets_replied(modeladmin, request, queryset):
+    n = 0
+    for ticket in queryset:
+        ticket.apply_transition(status=SupportTicket.Status.REPLIED)
+        n += 1
+    modeladmin.message_user(request, f'已把 {n} 张工单标记为已回复。')
+
+
+@admin.action(description='✅ 标记为已解决')
+def resolve_tickets(modeladmin, request, queryset):
+    n = 0
+    for ticket in queryset:
+        ticket.apply_transition(status=SupportTicket.Status.RESOLVED)
+        n += 1
+    modeladmin.message_user(request, f'已解决 {n} 张工单。')
+
+
+@admin.action(description='🔒 关闭（无需处理）')
+def close_tickets(modeladmin, request, queryset):
+    n = 0
+    for ticket in queryset:
+        ticket.apply_transition(status=SupportTicket.Status.CLOSED)
+        n += 1
+    modeladmin.message_user(request, f'已关闭 {n} 张工单。')
+
+
+class TicketStatusFilter(admin.SimpleListFilter):
+    """「未完结」把待受理 + 已分配 + 已回复合成一组 —— 这是坐席每天真正要看的集合。"""
+    title = '处理进度'
+    parameter_name = 'progress'
+
+    def lookups(self, request, modeladmin):
+        return (
+            ('pending', '未完结（待受理/已分配/已回复）'),
+            ('open', '只看待受理'),
+            ('overdue', '超时未接'),
+            ('done', '已结束（已解决/已关闭）'),
+        )
+
+    def queryset(self, request, queryset):
+        v = self.value()
+        S = SupportTicket.Status
+        if v == 'pending':
+            return queryset.filter(status__in=[S.OPEN, S.ASSIGNED, S.REPLIED])
+        if v == 'open':
+            return queryset.filter(status=S.OPEN)
+        if v == 'done':
+            return queryset.filter(status__in=[S.RESOLVED, S.CLOSED])
+        if v == 'overdue':
+            # 超时判定与模型里的 is_overdue 同一口径：还没首响且已过 SLA。
+            # 用 SQL 表达是为了能在列表里筛，而不是取出来再在 Python 里过滤。
+            now = timezone.now()
+            q = Q(first_reply_at__isnull=True,
+                  status__in=[S.OPEN, S.ASSIGNED])
+            overdue_ids = [
+                t.id for t in queryset.filter(q)
+                if t.waiting_minutes > t.sla_minutes
+            ]
+            return queryset.filter(id__in=overdue_ids)
+        return queryset
+
+
+@admin.register(SupportTicket)
+class SupportTicketAdmin(ZYModelAdmin):
+    list_before_template = 'admin/ticket_list_banner.html'
+
+    list_display = ('ticket_no', 'status_badge', 'priority_badge', 'reason_display',
+                    'question_preview', 'waiting_display', 'assignee_display',
+                    'snapshot_summary', 'row_ops')
+    list_filter = (TicketStatusFilter, 'priority', 'reason', 'source', 'assignee', 'created_at')
+    search_fields = ('ticket_no', 'question', 'detail', 'contact_phone',
+                     'contact_name', 'session_id')
+    date_hierarchy = 'created_at'
+    list_per_page = 25
+    ordering = ('-created_at',)
+    list_display_links = ('ticket_no',)
+    actions = (claim_tickets, mark_tickets_replied, resolve_tickets, close_tickets)
+    save_on_top = True
+
+    readonly_fields = ('ticket_no', 'session_id', 'user_id', 'source', 'created_at',
+                       'assigned_at', 'first_reply_at', 'resolved_at',
+                       'conversation_link', 'transcript_panel', 'tool_panel',
+                       'context_panel')
+
+    fieldsets = (
+        ('工单', {
+            'fields': ('ticket_no', 'status', 'priority', 'reason', 'source'),
+        }),
+        ('顾客', {
+            'fields': ('contact_name', 'contact_phone', 'user_id', 'session_id',
+                       'conversation_link'),
+            'description': '电话来自用户绑定的手机号；顾客只报过一次号就不必再问。',
+        }),
+        ('问题', {'fields': ('question', 'detail')}),
+        ('对话快照（转出时的上下文）', {
+            'fields': ('transcript_panel',),
+            'description': '这是顾客与 AI 的原始对话，坐席据此接话 —— '
+                           '不要让顾客重复描述已经说过的内容。',
+        }),
+        ('AI 这轮做了什么', {
+            'fields': ('context_panel', 'tool_panel'),
+            'description': '工具调用与知识库命中一起看，能判断「是查了没有」还是「查到了没用上」。',
+        }),
+        ('处理', {
+            'fields': ('assignee', 'resolution', 'assigned_at',
+                       'first_reply_at', 'resolved_at'),
+            'description': '改状态/受理人时，三个时间戳由系统自动维护'
+                           '（首响时长 = first_reply_at − created_at）。',
+        }),
+    )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('assignee')
+
+    # ── 行内「认领」────────────────────────────────────────────
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path('claim/', self.admin_site.admin_view(self.claim_view),
+                 name='agent_supportticket_claim'),
+        ]
+        return custom + urls
+
+    def claim_view(self, request):
+        """行内一键认领：勾选→底部动作要 3 步，这个只要 1 步。"""
+        if request.method != 'POST':
+            return JsonResponse({'success': False, 'message': '仅支持 POST'}, status=405)
+        pk, err = _post_json_id(request)
+        if err is not None:
+            return err
+        ticket = SupportTicket.objects.filter(pk=pk).first()
+        if ticket is None:
+            return JsonResponse({'success': False, 'message': '工单不存在'}, status=404)
+        if ticket.assignee_id and ticket.assignee_id != request.user.id:
+            return JsonResponse(
+                {'success': False,
+                 'message': f'该工单已由 {ticket.assignee} 认领'}, status=409)
+        ticket.apply_transition(
+            assignee=request.user,
+            status=(SupportTicket.Status.ASSIGNED
+                    if ticket.status == SupportTicket.Status.OPEN else None))
+        return JsonResponse({'success': True, 'value': True,
+                             'message': f'已认领 {ticket.ticket_no}。'})
+
+    # ── 列表页 KPI ─────────────────────────────────────────────
+    def changelist_view(self, request, extra_context=None):
+        extra = dict(extra_context or {})
+        S = SupportTicket.Status
+        base = reverse('admin:agent_supportticket_changelist')
+        pending_qs = SupportTicket.objects.filter(status__in=[S.OPEN, S.ASSIGNED, S.REPLIED])
+        pending = pending_qs.count()
+        open_n = SupportTicket.objects.filter(status=S.OPEN).count()
+        # 超时口径与 is_overdue 一致：未首响 + 过 SLA
+        overdue = sum(1 for t in pending_qs.filter(first_reply_at__isnull=True)
+                      if t.waiting_minutes > t.sla_minutes)
+        mine = pending_qs.filter(assignee=request.user).count()
+        today = SupportTicket.objects.filter(
+            created_at__gte=timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        ).count()
+        # 平均首响：只统计「已响过」的，没响的算 0 会美化数据
+        replied = SupportTicket.objects.filter(first_reply_at__isnull=False)
+        gaps = [t.first_response_minutes for t in replied[:500]
+                if t.first_response_minutes is not None]
+        avg_first = f'{sum(gaps) // len(gaps)} 分' if gaps else '—'
+        extra['ticket_kpi'] = [
+            {'label': '待受理', 'value': open_n, 'tone': 'warn',
+             'url': base + '?progress=open'},
+            {'label': '未完结', 'value': pending, 'tone': 'mute',
+             'url': base + '?progress=pending'},
+            {'label': '超时未接', 'value': overdue, 'tone': 'bad',
+             'url': base + '?progress=overdue'},
+            {'label': '我的待办', 'value': mine, 'tone': 'ok',
+             'url': base + f'?progress=pending&assignee={request.user.id}'},
+            {'label': '今日新增', 'value': today, 'tone': 'mute', 'url': base},
+            {'label': '平均首响', 'value': avg_first, 'tone': 'mute', 'url': base},
+        ]
+        return super().changelist_view(request, extra)
+
+    # ── 列表列 ─────────────────────────────────────────────────
+    @admin.display(description='工单号', ordering='ticket_no')
+    def ticket_no(self, obj):
+        return obj.ticket_no or f'#{obj.pk}'
+
+    @admin.display(description='状态', ordering='status')
+    def status_badge(self, obj):
+        # 状态色沿用后台约定：湖青=进行中 / 暖褐=待处理 / 中性=终态
+        cls = {
+            SupportTicket.Status.OPEN: 'zy-badge zy-badge-warn',
+            SupportTicket.Status.ASSIGNED: 'zy-badge zy-badge-ok',
+            SupportTicket.Status.REPLIED: 'zy-badge zy-badge-ok',
+            SupportTicket.Status.RESOLVED: 'zy-badge zy-badge-mute',
+            SupportTicket.Status.CLOSED: 'zy-badge zy-badge-mute',
+        }.get(obj.status, 'zy-badge zy-badge-warn')
+        return format_html('<span class="{}">{}</span>', cls, obj.get_status_display())
+
+    @admin.display(description='优先级', ordering='priority')
+    def priority_badge(self, obj):
+        cls = {
+            SupportTicket.Priority.URGENT: 'zy-badge zy-badge-bad',
+            SupportTicket.Priority.HIGH: 'zy-badge zy-badge-warn',
+        }.get(obj.priority, 'zy-badge zy-badge-mute')
+        return format_html('<span class="{}">{}</span>', cls, obj.get_priority_display())
+
+    @admin.display(description='原因', ordering='reason')
+    def reason_display(self, obj):
+        return obj.get_reason_display()
+
+    @admin.display(description='顾客问的')
+    def question_preview(self, obj):
+        text = (obj.question or '').replace('\n', ' ').strip()
+        if not text:
+            return '—'
+        return (text[:26] + '…') if len(text) > 26 else text
+
+    @admin.display(description='已等待')
+    def waiting_display(self, obj):
+        minutes = obj.waiting_minutes
+        text = f'{minutes} 分' if minutes < 60 else f'{minutes // 60} 时 {minutes % 60} 分'
+        if obj.is_overdue:
+            return format_html(
+                '<span class="zy-badge zy-badge-bad" title="超过 SLA {} 分钟仍无人回复">'
+                '⏰ {}</span>', obj.sla_minutes, text)
+        return text
+
+    @admin.display(description='受理人')
+    def assignee_display(self, obj):
+        if obj.assignee_id:
+            return str(obj.assignee)
+        return format_html('<span class="zy-trace-note">未分配</span>')
+
+    @admin.display(description='随单上下文')
+    def snapshot_summary(self, obj):
+        """一眼看出这张单交接得全不全。"""
+        parts = [f'对话 {obj.transcript_count}']
+        orders = obj.related_orders if isinstance(obj.related_orders, list) else []
+        products = obj.related_products if isinstance(obj.related_products, list) else []
+        sources = obj.sources if isinstance(obj.sources, list) else []
+        if products:
+            parts.append(f'商品 {len(products)}')
+        if orders:
+            parts.append(f'订单 {len(orders)}')
+        if sources:
+            parts.append(f'知识 {len(sources)}')
+        if not sources and not orders:
+            # 这条最值得注意：AI 什么也没查到就转人工 = 大概率是知识盲区
+            return format_html(
+                '<span title="AI 没查到任何知识/订单就转人工，多半是知识库盲区">'
+                '<span class="zy-badge zy-badge-warn">无据可查</span> {}</span>',
+                ' · '.join(parts))
+        return ' · '.join(parts)
+
+    @admin.display(description='操作')
+    def row_ops(self, obj):
+        if obj.assignee_id:
+            return format_html('<span class="zy-trace-note">—</span>')
+        return format_html(
+            '<button type="button" class="zy-op-btn zy-op-go"'
+            ' data-zy-post="1" data-zy-url="{}" data-zy-id="{}">🙋 认领</button>',
+            reverse('admin:agent_supportticket_claim'), obj.pk)
+
+    # ── 详情面板 ───────────────────────────────────────────────
+    @admin.display(description='完整会话')
+    def conversation_link(self, obj):
+        if not obj or not obj.pk or not obj.session_id:
+            return '—'
+        url = reverse('admin:agent_conversations_changelist') + f'?q={obj.session_id}'
+        return format_html(
+            '<a href="{}">在对话记录里看这个会话的全部消息 →</a>', url)
+
+    @admin.display(description='对话快照')
+    def transcript_panel(self, obj):
+        if not obj or not obj.pk:
+            return '—'
+        rows = obj.transcript if isinstance(obj.transcript, list) else []
+        if not rows:
+            return format_html(
+                '<p class="zy-trace-note">没有对话快照（可能是后台手工建单，'
+                '或该会话消息已被清理）。</p>')
+        html_rows = []
+        for m in rows:
+            if not isinstance(m, dict):
+                continue
+            is_user = m.get('role') == 'user'
+            # 先转义再换行：直接把带 <br> 的字符串当参数传给 format_html 会被
+            # conditional_escape 转成 &lt;br&gt;，页面上出现的是字面量而不是换行
+            body = mark_safe(escape(m.get('content') or '').replace('\n', '<br>'))
+            html_rows.append(format_html(
+                '<div class="zy-tk-msg zy-tk-{}">'
+                '<span class="zy-tk-who">{}</span>'
+                '<div class="zy-tk-text">{}</div>'
+                '<span class="zy-tk-at">{}</span>'
+                '</div>',
+                'user' if is_user else 'ai',
+                '顾客' if is_user else 'AI',
+                body,
+                m.get('at') or '',
+            ))
+        return format_html(
+            '<div class="zy-tk-thread">{}</div>',
+            mark_safe(''.join(str(r) for r in html_rows)))
+
+    @admin.display(description='知识库与关联')
+    def context_panel(self, obj):
+        if not obj or not obj.pk:
+            return '—'
+        sources = obj.sources if isinstance(obj.sources, list) else []
+        orders = obj.related_orders if isinstance(obj.related_orders, list) else []
+        products = obj.related_products if isinstance(obj.related_products, list) else []
+
+        blocks = []
+        if sources:
+            items = ''.join(
+                format_html('<li><b>{}</b> <span class="zy-trace-note">相关度 {}</span></li>',
+                            s.get('title') or '—', s.get('score'))
+                for s in sources if isinstance(s, dict)
+            )
+            blocks.append(format_html(
+                '<p class="zy-tk-label">知识库命中（AI 引用了这些回答）</p>'
+                '<ul class="zy-trace-sources">{}</ul>', mark_safe(items)))
+        else:
+            blocks.append(mark_safe(
+                '<p class="zy-tk-label">知识库命中</p>'
+                '<p class="zy-trace-note">一条都没命中 —— 这类问题大概率应该补进知识库，'
+                '补完可在「检索测试」里验证能召回。</p>'))
+        if products:
+            blocks.append(format_html(
+                '<p class="zy-tk-label">涉及商品</p><p class="zy-tk-chips">{}</p>',
+                mark_safe(''.join(format_html('<span class="zy-tk-chip">{}</span>', p)
+                                  for p in products[:10]))))
+        if orders:
+            blocks.append(format_html(
+                '<p class="zy-tk-label">涉及订单</p><p class="zy-tk-chips">{}</p>',
+                mark_safe(''.join(format_html('<span class="zy-tk-chip">{}</span>', o)
+                                  for o in orders[:10]))))
+        return format_html('<div class="zy-tk-ctx">{}</div>',
+                           mark_safe(''.join(str(b) for b in blocks)))
+
+    @admin.display(description='工具调用')
+    def tool_panel(self, obj):
+        if not obj or not obj.pk:
+            return '—'
+        calls = obj.tool_trace if isinstance(obj.tool_trace, list) else []
+        if not calls:
+            return format_html(
+                '<p class="zy-trace-note">本轮没有调用工具就转人工了 —— '
+                '说明是 AI 直接判断办不了（如投诉、情绪不满）。</p>')
+        rows = ''.join(
+            format_html('<li><b>{}</b> <span class="zy-trace-note">{}</span></li>',
+                        c.get('name') or '—',
+                        ', '.join(f'{k}={v}' for k, v in (c.get('args') or {}).items()) or '无参数')
+            for c in calls if isinstance(c, dict)
+        )
+        return format_html('<ul class="zy-trace-sources">{}</ul>', mark_safe(rows))
+
+    # ── 保存时维护时间戳（与动作按钮同一入口）─────────────────
+    def save_model(self, request, obj, form, change):
+        # 表单保存后 obj 已是新值，自己判断不出「旧状态」，所以先捞一次
+        prev_status = None
+        if change and 'status' in form.changed_data:
+            prev_status = (SupportTicket.objects.filter(pk=obj.pk)
+                           .values_list('status', flat=True).first())
+        super().save_model(request, obj, form, change)
+        if change:
+            # 走 apply_transition 而不是在这里另写判断：与批量动作/行内认领
+            # 完全同一口径，首响时长与解决时间不会因为「从哪改的」而不同
+            obj.apply_transition(prev_status=prev_status)
 
 
 # ══════════════════════════════════════════════════════════════

@@ -711,3 +711,48 @@ body footer a:hover { color: #fff; }
     }
     html { scroll-behavior: auto; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   转人工：输入框上方的兜底入口
+   ══════════════════════════════════════════════════════════════ */
+/* 有意做得「轻」：一句右对齐的小字链接。转人工意味着放弃 AI 这一步，
+   不该和「发送」抢同一个视觉重量，但也不能藏起来找不到。 */
+.handoff-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 8px;
+  min-height: 18px;
+  flex-wrap: wrap;
+}
+.handoff-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  color: var(--ink-mute);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--ink-faint);
+  transition: color .15s ease, text-decoration-color .15s ease;
+}
+.handoff-link:hover:not(:disabled) {
+  color: var(--jade-700);
+  text-decoration-color: var(--jade-700);
+}
+.handoff-link:disabled {
+  color: var(--ink-faint);
+  cursor: not-allowed;
+  text-decoration: none;
+}
+.handoff-link:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.handoff-error {
+  font-size: 12px;
+  color: var(--alert);
+}

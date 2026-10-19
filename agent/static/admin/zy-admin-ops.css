@@ -256,3 +256,83 @@ a.zy-trace-kpi:focus-visible {
   white-space: pre-wrap;      /* 原文里的换行必须留住，否则列表看着像一坨 */
   word-break: break-word;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   转人工工单：KPI 条 + 对话快照 + 上下文
+   ══════════════════════════════════════════════════════════════ */
+/* KPI 配色：与反馈页共用同一套语义色，但选择器合并成一条规则，
+   避免两页各定义一遍、改一处忘一处 */
+.zy-fb-kpi-warn b, .zy-kpi-warn b { color: var(--zy-warn); }
+.zy-fb-kpi-bad b,  .zy-kpi-bad b  { color: var(--zy-danger); }
+.zy-fb-kpi-ok b,   .zy-kpi-ok b   { color: var(--zy-ok); }
+.zy-kpi-bar { margin-bottom: 6px; }
+
+/* 终态徽标：中性色。已解决/已关闭不该再抢注意力（湖青留给进行中） */
+.zy-badge-mute {
+  color: var(--zy-text-mute);
+  background: var(--zy-surface-2);
+  border-color: var(--zy-line);
+}
+
+/* 对话快照：左顾客右 AI，靠对齐与底色区分，不用头像（后台不必那么花） */
+.zy-tk-thread {
+  max-width: 780px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.zy-tk-msg {
+  border: 1px solid var(--zy-line);
+  border-radius: var(--zy-radius-sm);
+  padding: 8px 12px;
+  background: var(--zy-surface);
+}
+.zy-tk-user {
+  /* 顾客说的话是「事实来源」，给一点底色让坐席一眼扫到 */
+  background: var(--zy-accent-soft);
+  border-color: var(--zy-accent-line);
+}
+.zy-tk-who {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--zy-text-mute);
+  margin-bottom: 3px;
+}
+.zy-tk-text {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--zy-text);
+  word-break: break-word;
+}
+.zy-tk-at {
+  display: block;
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--zy-text-mute);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 上下文区块：标签 + 内容 */
+.zy-tk-label {
+  margin: 10px 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--zy-text-soft);
+}
+.zy-tk-label:first-child { margin-top: 0; }
+.zy-tk-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+.zy-tk-chip {
+  display: inline-block;
+  padding: 2px 9px;
+  border: 1px solid var(--zy-line);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--zy-text-soft);
+  background: var(--zy-surface);
+}

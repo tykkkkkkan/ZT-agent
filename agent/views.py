@@ -206,10 +206,12 @@ def chat(request):
         parts = []
         try:
             for ev in agent_stream(session_id, user_message):
-                if ev.get("type") in ("guide_card", "product_card", "order_card", "sources"):
+                if ev.get("type") in ("guide_card", "product_card", "order_card",
+                                      "handoff_card", "sources"):
                     # 结构事件：不进 parts（不是回答正文，落库会污染历史）
                     # sources = 引用来源，随回答一起展示但不参与后续对话上下文
-                    yield _sse(ev)          # 名片 / 引导卡 / 引用来源
+                    # handoff_card = 转人工工单卡（携工单号与承诺时限）
+                    yield _sse(ev)          # 名片 / 引导卡 / 工单卡 / 引用来源
                     continue
                 if "content" in ev:
                     parts.append(ev["content"])
@@ -381,6 +383,87 @@ def feedback(request):
         "message": "感谢反馈，我们会据此优化知识库。" if rating == 1
                    else "已记录，我们会尽快补充或修正相关内容。",
     })
+
+
+# ══════════════════════════════════════════════════════════════
+# 转人工（工单）—— 顾客主动点按钮
+# ══════════════════════════════════════════════════════════════
+@csrf_exempt
+@require_POST
+@login_required
+def handoff(request):
+    """顾客点「转人工」：POST /api/agent/handoff/【需登录】
+
+    请求体：{"session_id": "xxx", "reason": "user_request", "detail": "...", "phone": "..."}
+
+    设计要点：
+    - **复用 `handoff_to_human` 工具**，不另写一套快照逻辑 —— 顾客点按钮和 AI
+      主动转出应当产出完全一样的工单（同样的对话快照 / 工具痕迹 / 涉及订单），
+      两套写法迟早会漂移，坐席看到的上下文就会不一样；
+    - **不重复建单**：本会话已有未完结工单时直接返回那一张（顾客连点两下、
+      或 AI 已经转过一次，都不该多出一张）；
+    - 对话快照从 DB 读，不依赖这一轮 SSE 是否还在跑。
+    """
+    try:
+        body = json.loads(request.body or "{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"success": False, "message": "请求体必须是 JSON"}, status=400)
+
+    session_id = (body.get("session_id") or "").strip()
+    if not session_id:
+        return JsonResponse({"success": False, "message": "缺少 session_id"}, status=400)
+
+    from agent.models import SupportTicket
+    from agent.tools import (
+        drain_handoff, handoff_to_human, reset_handoff,
+        set_current_session, set_current_user,
+    )
+
+    me, _ = _resolve_request_user(request)
+
+    pending = (
+        SupportTicket.objects
+        .filter(session_id=session_id,
+                status__in=[SupportTicket.Status.OPEN, SupportTicket.Status.ASSIGNED])
+        .order_by("-id")
+        .first()
+    )
+    if pending:
+        return JsonResponse({
+            "success": True,
+            "reused": True,
+            "ticket": _ticket_payload(pending),
+            "message": f"您已有一张处理中的工单（{pending.ticket_no}），客服会尽快联系您。",
+        })
+
+    set_current_user(me)
+    set_current_session(session_id)
+    reset_handoff()
+    try:
+        result = handoff_to_human(
+            reason=(body.get("reason") or "user_request"),
+            detail=(body.get("detail") or ""),
+            contact_phone=(body.get("phone") or ""),
+        )
+    except Exception as e:
+        return _server_error(e)
+    ticket = drain_handoff()
+    if ticket is None:
+        # 工具内部已记录异常，这里如实返回，不假装成功
+        return JsonResponse({"success": False, "message": result}, status=500)
+
+    return JsonResponse({
+        "success": True,
+        "reused": False,
+        "ticket": _ticket_payload(ticket),
+        "message": f"已创建工单 {ticket.ticket_no}，客服会尽快联系您。",
+    })
+
+
+def _ticket_payload(ticket) -> dict:
+    """工单对外字段 —— 统一走 `handoff_presenter`，与卡片 / 话术同一口径。"""
+    from agent.handoff_presenter import ticket_payload
+    return ticket_payload(ticket)
 
 
 # ══════════════════════════════════════════════════════════════

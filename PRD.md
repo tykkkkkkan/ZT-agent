@@ -77,6 +77,7 @@
 | `query_my_orders` | 无（按登录账号） | 当前登录客户自己的最近订单（含支付状态） | MySQL `orders` 表 + 统一归属规则 |
 | `search_knowledge` | 自然语言问题 | 答案片段 + 来源引用 | 双路 RAG（TF-IDF+BM25 × BGE-M3 并行召回 + RRF 融合；`RAG_BACKEND` 另支持 `tfidf` / `embedding` 单路） |
 | `guide_to_contact` | 无 | 引导文案（去定制 / 联系我们） | 静态 |
+| `handoff_to_human` | reason（枚举）/ detail / contact_phone | 工单号 + 受理角色 + 承诺时限；最近 12 条对话、工具调用、知识库命中、涉及商品与订单一并存档 | MySQL `support_tickets` 表 + `handoff_presenter` |
 
 **调度逻辑**：AI 根据用户输入判断意图，自动选择一个或多个工具调用，结果汇总后用自然语言回复。多工具场景（如先查库存再算价）由 Agent 串联调用。
 

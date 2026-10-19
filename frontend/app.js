@@ -241,6 +241,11 @@ createApp({
         const pendingProducts = ref([]);
         // 本轮 Agent 查过的订单（订单名片，可直接支付 / 看物流）
         const pendingOrders = ref([]);
+        // 本轮转人工生成的工单（工单卡：工单号 + 受理角色 + 承诺时限）
+        const pendingHandoffs = ref([]);
+        // 手动转人工按钮的提交中状态（防连点重复建单）
+        const handoffSending = ref(false);
+        const handoffError = ref('');
         // 对话内支付：按订单号记录「支付中」与错误信息（卡片按钮据此禁用与提示）
         const payingOrders = ref({});
         const payErrors = ref({});
@@ -390,6 +395,7 @@ createApp({
             messages.value = [loginRequired() ? loginPromptMessage : welcomeMessage];
             pendingProducts.value = [];
             pendingOrders.value = [];
+            pendingHandoffs.value = [];
             scrollToBottom();
         };
 
@@ -491,6 +497,7 @@ createApp({
             pendingGuide.value = false;
             pendingProducts.value = [];
             pendingOrders.value = [];
+            pendingHandoffs.value = [];
 
             try {
                 const sessionId = getSessionId();
@@ -567,6 +574,14 @@ createApp({
                                 continue;
                             }
 
+                            // 转人工工单卡（工单号 / 受理角色 / 承诺时限）
+                            // 单独事件而不是拼进正文：工单号是承诺凭据，
+                            // 混在流式文本里会被打散，也没法做成可复制的结构化卡片
+                            if (data.type === 'handoff_card' && data.ticket) {
+                                pendingHandoffs.value.push(data.ticket);
+                                continue;
+                            }
+
                             // 引用来源（这条回答依据了知识库哪几条、相关度多少）
                             // 单独事件而不是塞进正文：来源不是回答内容，
                             // 混进 content 会被落库、也会被下一轮当成上下文喂回模型。
@@ -617,15 +632,21 @@ createApp({
                 pendingOrders.value.forEach((o) => {
                     trailingCards.push({ role: 'card', cardType: 'order', order: o });
                 });
+                // 转人工工单卡（工单号 / 受理角色 / 承诺时限）
+                pendingHandoffs.value.forEach((t) => {
+                    trailingCards.push({ role: 'card', cardType: 'handoff', ticket: t });
+                });
                 // 引导转化卡片（去定制服务 / 联系我们）
                 // 优先级1：后端发了 guide_card 事件
                 // 优先级2：AI 回复文本含引导词（后端未走工具时的兜底）
+                // 已经转人工就不要再推「去定制/联系我们」：一边让顾客等电话、
+                // 一边让他去填单，两个动作互相抵消
                 let needGuide = pendingGuide.value;
                 if (!needGuide) {
                     const aiText = messages.value[aiMsgIdx] ? (messages.value[aiMsgIdx].content || '') : '';
                     needGuide = /(定制服务|联系我们|提交需求|联系客服)/.test(aiText);
                 }
-                if (needGuide) {
+                if (needGuide && !pendingHandoffs.value.length) {
                     trailingCards.push({ role: 'card', cardType: 'guide' });
                 }
                 if (trailingCards.length) {
@@ -676,6 +697,38 @@ createApp({
             if (!msg || !msg.sources) return;
             msg.sourcesOpen = !msg.sourcesOpen;
             forceReactivityUpdate(idx);
+        };
+
+        // ── 转人工（顾客主动）─────────────────────────────────
+        // 与 AI 侧 handoff_to_human 走同一个后端工具：顾客点按钮和 AI 主动转出
+        // 产出的工单完全一样（同样带对话快照 / 涉及订单），坐席看到的上下文不会
+        // 因为"是谁发起的"而不同。
+        const requestHandoff = async (reason = 'user_request') => {
+            if (handoffSending.value) return;
+            if (!window.AUTH || !(await AUTH.ensureLogin('登录后即可转人工'))) return;
+
+            handoffSending.value = true;
+            handoffError.value = '';
+            try {
+                const resp = await AUTH.authFetch('/api/agent/handoff/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: getSessionId(), reason: reason }),
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok || !data.success || !data.ticket) {
+                    throw new Error(data.message || ('HTTP ' + resp.status));
+                }
+                messages.value.push({
+                    role: 'card', cardType: 'handoff', ticket: data.ticket,
+                });
+                scrollToBottom();
+            } catch (err) {
+                console.error('转人工失败：', err);
+                handoffError.value = '转人工没成功，请稍后再试，或到「联系我们」页留言';
+            } finally {
+                handoffSending.value = false;
+            }
         };
 
         // ── 回答反馈（👍 / 👎）────────────────────────────────
@@ -746,6 +799,10 @@ createApp({
             fbReasons,
             toggleFeedbackReason,
             sendFeedback,
+            // 转人工（工单卡）
+            requestHandoff,
+            handoffSending,
+            handoffError,
             // 引用来源（纯函数，便于 verify_citations.js 直接断言）
             fmtScore,
             sourceRouteLabel,

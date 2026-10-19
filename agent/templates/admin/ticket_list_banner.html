@@ -1,0 +1,20 @@
+{% comment %}
+  转人工工单列表页顶部的 KPI 条。
+  坐席进这一页的真实问题永远是「有几张没人接、有没有超时的」，
+  所以数字本身就是入口：点「超时未接」直接落到筛好的清单。
+{% endcomment %}
+{% if ticket_kpi %}
+<div class="zy-trace-summary zy-kpi-bar">
+  {% for cell in ticket_kpi %}
+    {% if cell.url %}
+      <a class="zy-trace-kpi zy-kpi-{{ cell.tone }}" href="{{ cell.url }}">
+        <b>{{ cell.value }}</b><span>{{ cell.label }}</span>
+      </a>
+    {% else %}
+      <div class="zy-trace-kpi zy-kpi-{{ cell.tone }}">
+        <b>{{ cell.value }}</b><span>{{ cell.label }}</span>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}

@@ -249,6 +249,8 @@ UNFOLD = {
                     {'title': '对话调用链', 'link': '/admin/agent/agentrun/', 'icon': 'timeline'},
                     # 回答反馈：差评即知识盲区清单，可一键跳到「新建知识库条目」
                     {'title': '回答反馈', 'link': '/admin/agent/messagefeedback/', 'icon': 'reviews'},
+                    # 转人工工单：AI 办不了的会话连上下文一起交给坐席
+                    {'title': '转人工工单', 'link': '/admin/agent/supportticket/', 'icon': 'support_agent'},
                     {'title': '定制需求', 'link': '/admin/agent/customrequest/', 'icon': 'playlist_add_check'},
                 ],
             },

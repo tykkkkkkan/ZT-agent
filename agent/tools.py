@@ -205,6 +205,37 @@ def get_current_user():
 
 
 # ──────────────────────────────────────────────────────────────
+# 转人工：会话上下文（session_id + 本轮转出的工单）
+# ──────────────────────────────────────────────────────────────
+# `handoff_to_human` 需要知道「是哪个会话」才能把最近几轮对话一起交给人工；
+# 工单建好后还要把结果传给 agent 层去发 handoff_card 事件 —— 两处都用 ContextVar，
+# 与其它几个上下文变量同一条纪律：多线程下不串号。
+_current_session = contextvars.ContextVar("current_session", default="")
+_last_handoff = contextvars.ContextVar("last_handoff", default=None)
+
+
+def set_current_session(session_id: str) -> None:
+    """由 agent 层在本轮开始前注入当前会话 ID。"""
+    _current_session.set(session_id or "")
+
+
+def get_current_session() -> str:
+    return _current_session.get() or ""
+
+
+def reset_handoff() -> None:
+    """每轮对话开始前清空：否则上一轮的工单会被重复发一次卡片。"""
+    _last_handoff.set(None)
+
+
+def drain_handoff():
+    """取走本轮新建的工单（只返回一次），供 agent 层转成 handoff_card 事件。"""
+    ticket = _last_handoff.get()
+    _last_handoff.set(None)
+    return ticket
+
+
+# ──────────────────────────────────────────────────────────────
 # 共用口径助手（唯一来源：purchase_guard + 统一的售后状态描述）
 # ──────────────────────────────────────────────────────────────
 def _buyability(product, inv=None) -> dict:
@@ -729,6 +760,146 @@ def guide_to_contact() -> str:
 
 
 # ──────────────────────────────────────────────────────────────
+# 转人工（工单）
+# ──────────────────────────────────────────────────────────────
+# 与 guide_to_contact 的分工必须分清，否则模型会乱用一个：
+#   guide_to_contact = 「顾客想买/想定制」→ 引导去填需求单（业务流程正常往下走）
+#   handoff_to_human = 「AI 办不了/顾客不满意/情绪激动」→ 建工单交给人（异常兜底）
+# 两者都会结束本轮，但前者是转化，后者是止损。
+HANDOFF_TRANSCRIPT_MSGS = 12      # 工单里带最近 N 条消息：够看懂前因，又不至于几百行
+HANDOFF_MAX_CHARS = 400           # 单条消息进快照的最长字数
+
+
+def _ticket_transcript(session_id: str, limit: int = HANDOFF_TRANSCRIPT_MSGS) -> list:
+    """取会话最近 N 条消息（时间正序）。
+
+    为什么要从 DB 读而不是用内存里的 messages：工单要能被坐席在**任意时间**
+    打开还原现场，存进 JSON 快照才算数；而且当前这轮 user 消息此时已落库。
+    """
+    if not session_id:
+        return []
+    try:
+        from agent.models import Conversations
+        rows = list(
+            Conversations.objects.filter(session_id=session_id)
+            .order_by("-id")[:limit]
+            .values("role", "content", "created_at")
+        )
+        rows.reverse()                      # 取最近 N 条后翻回正序
+        return [
+            {
+                "role": r["role"],
+                "content": (r["content"] or "")[:HANDOFF_MAX_CHARS],
+                "at": r["created_at"].strftime("%Y-%m-%d %H:%M") if r["created_at"] else "",
+            }
+            for r in rows
+        ]
+    except Exception:
+        logger.exception("工单对话快照读取失败（session=%s）", session_id)
+        return []
+
+
+def handoff_to_human(reason: str = "unknown", detail: str = "", contact_phone: str = "") -> str:
+    """把本轮会话转给人工客服，生成一张带完整上下文的工单。
+
+    调用时机（模型据此自行判断，prompt 里也写了）：
+      - 知识库明确没有、AI 连续查不到答案；
+      - 顾客明确要求「转人工 / 找真人」；
+      - 顾客情绪不满、投诉；
+      - 售后纠纷、物流异常、支付问题等需要人工核实凭证的事。
+
+    工单里会带上：最近若干轮对话、本轮工具调用、知识库命中情况、
+    涉及的商品与订单 —— 目的就是让坐席**不用让顾客重说一遍**。
+    """
+    from agent.models import SupportTicket
+
+    reason = (reason or "unknown").strip().lower()
+    valid_reasons = {c[0] for c in SupportTicket.Reason.choices}
+    if reason not in valid_reasons:
+        reason = "unknown"
+
+    session_id = get_current_session()
+    user = get_current_user()
+    user_id = getattr(user, "id", None)
+
+    # 顾客问题 = 会话里最后一条 user 消息（当前这轮就是触发转人工的那句）
+    question = ""
+    transcript = _ticket_transcript(session_id)
+    for msg in reversed(transcript):
+        if msg.get("role") == "user":
+            question = msg.get("content") or ""
+            break
+
+    # 能用绑定手机号就用，省得坐席再问一次「您的电话是」
+    phone = (contact_phone or "").strip()
+    name = ""
+    if not phone and user_id:
+        try:
+            from agent.models import UserProfile
+            profile = UserProfile.objects.filter(user_id=user_id).first()
+            if profile:
+                phone = (getattr(profile, "phone", "") or "").strip()
+                name = (getattr(profile, "nickname", "") or "").strip()
+        except Exception:
+            logger.exception("工单读取用户资料失败（user=%s）", user_id)
+
+    # 售后 / 投诉默认提优先级：这两类拖不得
+    priority = {
+        "after_sale": SupportTicket.Priority.HIGH,
+        "complaint": SupportTicket.Priority.HIGH,
+        "payment": SupportTicket.Priority.HIGH,
+        "logistics": SupportTicket.Priority.NORMAL,
+    }.get(reason, SupportTicket.Priority.NORMAL)
+
+    try:
+        ticket = SupportTicket.objects.create(
+            session_id=session_id,
+            user_id=user_id,
+            contact_name=name[:50],
+            contact_phone=phone[:20],
+            question=question[:2000],
+            detail=(detail or "")[:1000],
+            reason=reason,
+            priority=priority,
+            status=SupportTicket.Status.OPEN,
+            source=(SupportTicket.Source.USER if reason == "user_request"
+                    else SupportTicket.Source.AGENT),
+            transcript=transcript,
+            # 这一轮 AI 已经查过什么：坐席据此判断「是不是查了也没有」
+            tool_trace=_handoff_tool_hint(),
+            sources=get_referenced_sources(),
+            related_orders=[o.get("order_no") for o in get_referenced_orders() if o.get("order_no")],
+            related_products=[p.get("name") for p in get_referenced_products() if p.get("name")],
+        )
+    except Exception:
+        logger.exception("转人工工单创建失败（session=%s）", session_id)
+        return (
+            "转人工暂时失败，请让顾客稍后重试，或引导其前往【联系我们】页留言并留下电话。"
+        )
+
+    _last_handoff.set(ticket)
+    logger.info("已创建转人工工单 %s（session=%s reason=%s）", ticket.ticket_no, session_id, reason)
+
+    from agent.handoff_presenter import ticket_line
+    return ticket_line(ticket)
+
+
+def _handoff_tool_hint() -> list:
+    """本轮工具调用的精简记录。
+
+    agent 层会在 time_line 里记全量轨迹，但工单是**同步**建的（此刻还不知道
+    后面还会调什么），所以这里只带上「已经发生」的那部分：商品 / 订单引用。
+    轨迹的完整版由 agent 层在落 trace 时补写（见 _persist_run 之后的 handler）。
+    """
+    hints = []
+    for p in get_referenced_products():
+        hints.append({"name": "query_product", "args": {"name": p.get("name")}})
+    for o in get_referenced_orders():
+        hints.append({"name": "get_order_status", "args": {"order_no": o.get("order_no")}})
+    return hints[:8]
+
+
+# ──────────────────────────────────────────────────────────────
 # 知识库问答（RAG 检索增强）
 # ──────────────────────────────────────────────────────────────
 def search_knowledge(query: str) -> str:
@@ -782,6 +953,7 @@ TOOL_REGISTRY = {
     "calculate_quote": calculate_quote,
     "search_knowledge": search_knowledge,
     "guide_to_contact": guide_to_contact,
+    "handoff_to_human": handoff_to_human,
 }
 
 # 标准 JSON Schema，供 LLM Function Calling（tool_choice=auto）使用
@@ -903,6 +1075,39 @@ TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "handoff_to_human",
+            "description": (
+                "转人工：当 AI 确实办不了时才调用 —— 知识库查不到且无法回答、"
+                "顾客明确要求转人工/找真人、顾客表达不满或投诉、"
+                "涉及售后纠纷/物流异常/支付与退款等需要人工核实凭证的事。"
+                "调用后会自动生成工单并把这轮对话上下文一并交给客服，"
+                "顾客不需要再重复描述问题。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "reason": {
+                        "type": "string",
+                        "enum": ["unknown", "user_request", "after_sale",
+                                 "logistics", "payment", "complaint", "other"],
+                        "description": "转人工原因分类",
+                    },
+                    "detail": {
+                        "type": "string",
+                        "description": "一句话说明卡在哪（给人工看的补充，如「顾客说收到的竿稍是断的」）",
+                    },
+                    "contact_phone": {
+                        "type": "string",
+                        "description": "顾客留的电话（顾客主动给出时才填，没有就留空）",
+                    },
+                },
+                "required": ["reason"],
             },
         },
     },

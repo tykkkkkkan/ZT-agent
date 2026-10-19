@@ -53,7 +53,7 @@ flowchart LR
 
 ## 功能特性
 
-- [x] **Agent Function Calling**：基于 OpenAI 兼容 `tools` + `tool_calls` 的标准工具调用（ReAct 循环，最多 3 轮），AI 自动判断意图并调用 `query_product` / `check_inventory` / `get_order_status` / `query_orders_by_phone` / `query_my_orders` / `calculate_quote` / `search_knowledge` / `guide_to_contact` 共 8 个工具
+- [x] **Agent Function Calling**：基于 OpenAI 兼容 `tools` + `tool_calls` 的标准工具调用（ReAct 循环，最多 3 轮），AI 自动判断意图并调用 `query_product` / `check_inventory` / `get_order_status` / `query_orders_by_phone` / `query_my_orders` / `calculate_quote` / `search_knowledge` / `guide_to_contact` / `handoff_to_human` 共 9 个工具
 - [x] **产品名片卡片**：对话中查过商品后自动补发 `product_card` 事件，前端渲染名称 / 规格 / 图片 / 价格 / 可用库存卡片，「立即下单」深链到 `order.html?product=<id>` 并预选商品（可购性复用 `purchase_guard`，不可购时按钮置灰并说明原因）
 - [x] **顾问引导式客服（不代客下单）**：AI 先帮顾客明确产品选择（查产品/库存/报价），顾客表达购买或定制意向时调用 `guide_to_contact` 引导，前端自动渲染「定制服务 / 联系我们」按钮卡片收尾，由人工承接交易
 - [x] **在线下单**：消费者通过 `/order.html` 主动下单（产品下拉 + 单价联动 + 总额自动计算，填写收货地址与期望交期），后端自动生成订单号并**预占库存**；Django Admin 可按状态筛选、一键发货/取消/退货
@@ -434,6 +434,7 @@ data: {"done": true, "session_id": "abc123"}
 | `calculate_quote` | 商品清单（name + qty） | 单价、小计、合计 + 不可购/超量提醒（单价走 `pricing.price_for`，与下单落库价同源） | `products` 表 + `pricing` |
 | `search_knowledge` | 自然语言问题 | 相关答案片段 + 来源标题 | RAG（企业知识库） |
 | `guide_to_contact` | 无 | 引导文案（去定制服务 / 联系我们） | 静态 |
+| `handoff_to_human` | reason（必填，枚举）/ detail / contact_phone | 工单号 + 受理角色 + 承诺时限；同时把最近 12 条对话、本轮工具调用、知识库命中、涉及商品与订单**一并存进工单** | `support_tickets` 表 + `handoff_presenter` |
 
 ### 工作流程（ReAct / Function Calling）
 
@@ -446,6 +447,7 @@ data: {"done": true, "session_id": "abc123"}
 **产品定位**：AI 客服 = 咨询顾问 + 引导转化，**不代客下单**。
 - 顾客咨询产品 → 查产品/库存/报价，帮顾客明确产品选择
 - 顾客表达购买 / 定制意向 → 调用 `guide_to_contact` 引导，前端渲染「📝 定制服务 / 💬 联系我们」按钮卡片收尾
+- **AI 办不了**（答不上来 / 顾客投诉 / 售后与物流纠纷 / 顾客要求真人）→ 调用 `handoff_to_human` 建工单，前端渲染「已转人工」卡片（含工单号与承诺时限），后台可认领、回复、解决
 - 前端兜底：AI 回复文本含引导词（定制服务/联系我们/提交需求/联系客服）时也自动渲染引导卡片
 
 - 工具定义用标准 JSON Schema（`TOOL_SCHEMAS`），与 OpenAI 兼容接口一致。

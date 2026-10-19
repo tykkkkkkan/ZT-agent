@@ -25,6 +25,7 @@
 用法：./.venv/Scripts/python.exe scripts/verify_citations.py
 """
 import os
+import re
 import sys
 import uuid
 
@@ -342,9 +343,15 @@ finally:
 # ══════════════════════════════════════════════════════════════
 print("\n【5】接线：视图 / 前端")
 views_src = open(os.path.join(BASE, "agent", "views.py"), encoding="utf-8").read()
+# 通用解析白名单元组，不写死具体的类名与换行位置：
+# 之前硬编码成单行字面量，加第四个事件（handoff_card）只是换了行就假失败一次。
+_whitelist = re.search(
+    r'ev\.get\("type"\)\s+in\s+\(([^)]*)\)', views_src, re.S)
+_events = set(re.findall(r'"([a-z_]+)"', _whitelist.group(1))) if _whitelist else set()
 check("视图把 sources 当结构事件放行（不进 parts）",
-      '"sources"' in views_src and "guide_card\", \"product_card\", \"order_card\", \"sources" in views_src,
-      "见 agent/views.py event_stream")
+      "sources" in _events, str(sorted(_events)) or "未找到白名单元组")
+check("结构事件白名单仍包含三类名片（别被后续改动挤掉）",
+      {"guide_card", "product_card", "order_card"} <= _events, str(sorted(_events)))
 
 app_js = open(os.path.join(BASE, "frontend", "app.js"), encoding="utf-8").read()
 index_html = open(os.path.join(BASE, "frontend", "index.html"), encoding="utf-8").read()

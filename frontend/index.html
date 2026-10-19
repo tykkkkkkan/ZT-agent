@@ -593,6 +593,44 @@
                                                     <p v-if="payErrors[msg.order.order_no]" class="text-xs text-sunset-600">{{ payErrors[msg.order.order_no] }}</p>
                                                 </div>
                                             </template>
+                                            <!-- 转人工工单卡：工单号是承诺凭据，必须可读可复制 -->
+                                            <template v-else-if="msg.cardType === 'handoff'">
+                                                <!-- 头部用 品牌青 → 渔火橙：右端偏暖，表示"已升级给人工"，
+                                                     与引导卡（青→湖蓝，表示正常转化）区分开。
+                                                     ⚠️ 这里只能用预编译 CSS 里已有的渐变类，
+                                                     写了不存在的类不会报错、只是没样式（check_page_classes 守着） -->
+                                                <div class="px-5 py-3 bg-gradient-to-r from-brand-600 to-sunset-600 text-white flex items-center gap-2">
+                                                    <span class="text-lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg></span>
+                                                    <span class="font-semibold text-sm">已转人工</span>
+                                                    <span class="ml-auto font-mono text-[11px] text-white/85">{{ msg.ticket.ticket_no }}</span>
+                                                </div>
+                                                <div class="px-5 py-4 space-y-3">
+                                                    <p class="text-sm text-ink-700 leading-relaxed">{{ msg.ticket.comfort }}</p>
+                                                    <div class="rounded-lg bg-brand-50 border border-brand-100 px-3 py-2.5 space-y-1">
+                                                        <p class="text-xs text-ink-600">
+                                                            <span class="text-ink-400">工单号</span>
+                                                            <span class="font-mono text-ink-900">{{ msg.ticket.ticket_no }}</span>
+                                                        </p>
+                                                        <p class="text-xs text-ink-600">
+                                                            <span class="text-ink-400">受理</span>
+                                                            {{ msg.ticket.owner }} · 承诺 {{ msg.ticket.sla_minutes }} 分钟内联系
+                                                        </p>
+                                                        <p v-if="!msg.ticket.has_phone" class="text-xs text-sunset-700">
+                                                            账号还没留电话，客服可能联系不上您 —— 建议先到个人中心补一个手机号。
+                                                        </p>
+                                                    </div>
+                                                    <div class="grid grid-cols-2 gap-2">
+                                                        <button
+                                                            @click="goToPage('profile.html')"
+                                                            class="px-2 py-2.5 bg-brand-600 text-white text-xs font-semibold rounded-lg hover:bg-brand-700 transition"
+                                                        >补联系方式</button>
+                                                        <button
+                                                            @click="goToPage('order.html')"
+                                                            class="px-2 py-2.5 bg-white text-ink-700 text-xs font-semibold rounded-lg border border-brand-100 hover:border-brand-400 hover:text-brand-600 transition"
+                                                        >我的订单</button>
+                                                    </div>
+                                                </div>
+                                            </template>
                                         </div>
                                     </div>
 
@@ -618,6 +656,20 @@
                             <!-- 输入区（支持语音输入：点麦克风说话，识别结果回填输入框后由用户确认发送）
                                      文本框随内容自动增高，长语音不必横向拖动） -->
                             <div class="px-5 py-4 bg-white border-t border-brand-100">
+                                <!-- 转人工：AI 答不上来时的兜底出口。
+                                     放输入框上方而不是做成第三个按钮：转人工是「放弃这一步」，
+                                     不该和「发送」抢同一个视觉层级。 -->
+                                <div class="handoff-bar">
+                                    <button
+                                        type="button"
+                                        class="handoff-link"
+                                        :disabled="handoffSending || loading"
+                                        @click="requestHandoff()"
+                                    >
+                                        {{ handoffSending ? '正在转接…' : '没解决？转人工客服 →' }}
+                                    </button>
+                                    <span v-if="handoffError" class="handoff-error">{{ handoffError }}</span>
+                                </div>
                                 <div class="flex gap-3 items-end">
                                     <textarea
                                         ref="chatInputEl"
