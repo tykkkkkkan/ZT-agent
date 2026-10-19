@@ -1,0 +1,21 @@
+{% comment %}
+  回答反馈列表页顶部的 KPI 条。
+  点「待优化」直接落到已筛好的差评清单 —— 运营进这一页的动作永远是
+  「还有多少条没补」，而不是「从头翻一遍」。
+  每个数字都可点，避免用户再手动拼筛选条件。
+{% endcomment %}
+{% if feedback_kpi %}
+<div class="zy-trace-summary zy-fb-kpi">
+  {% for cell in feedback_kpi %}
+    {% if cell.url %}
+      <a class="zy-trace-kpi zy-fb-kpi-{{ cell.tone }}" href="{{ cell.url }}">
+        <b>{{ cell.value }}</b><span>{{ cell.label }}</span>
+      </a>
+    {% else %}
+      <div class="zy-trace-kpi zy-fb-kpi-{{ cell.tone }}">
+        <b>{{ cell.value }}</b><span>{{ cell.label }}</span>
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}

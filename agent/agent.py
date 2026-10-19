@@ -108,16 +108,21 @@ def _load_history(session_id: str, max_msgs: int = HISTORY_MAX_MSGS) -> list:
         return []
 
 
-def _save_conversation(session_id: str, role: str, content: str) -> None:
-    """保存一条对话记录（失败不影响主流程）。"""
+def _save_conversation(session_id: str, role: str, content: str):
+    """保存一条对话记录（失败不影响主流程）。
+
+    返回落库后的对象（失败返回 None）—— 视图层要把 assistant 消息的 id
+    随 `done` 事件发给前端，反馈按钮才能挂到"具体哪一条"上。
+    """
     try:
         from agent.models import Conversations
-        Conversations.objects.create(
+        return Conversations.objects.create(
             session_id=session_id, role=role, content=content, created_at=timezone.now()
         )
     except Exception:
         # 存库失败不阻断对话主流程，但要留下排查线索
         logger.exception("对话记录落库失败（session=%s role=%s）", session_id, role)
+        return None
 
 
 def _parse_tool_args(raw: str) -> dict:

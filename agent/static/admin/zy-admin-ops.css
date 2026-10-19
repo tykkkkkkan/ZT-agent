@@ -215,3 +215,44 @@
   }
   .zy-trace-meta { white-space: normal; }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   回答反馈：列表页 KPI 条 + 详情页一问一答
+   ══════════════════════════════════════════════════════════════ */
+/* KPI 复用 trace 的网格，但每格是 <a>，要清掉链接的默认样式，
+   否则「待优化 5」会带下划线且变蓝，看着像普通链接而不是指标 */
+.zy-fb-kpi a.zy-trace-kpi,
+a.zy-trace-kpi {
+  display: block;
+  text-decoration: none;
+  transition: border-color .15s ease, background .15s ease;
+}
+a.zy-trace-kpi:hover { border-color: var(--zy-accent-line); background: var(--zy-accent-soft); }
+a.zy-trace-kpi:hover b { color: var(--zy-accent); }
+a.zy-trace-kpi:focus-visible {
+  outline: 2px solid var(--zy-accent);
+  outline-offset: 2px;
+}
+/* 只给数字上色，卡片底色不动 —— 首页基线是「1px 描边 + 留白」，不用色块铺面积 */
+.zy-fb-kpi-warn b { color: var(--zy-warn); }
+.zy-fb-kpi-bad b { color: var(--zy-danger); }
+.zy-fb-kpi-ok b { color: var(--zy-ok); }
+
+/* 详情页：用户问（弱化）+ AI 答（正文，保留换行） */
+.zy-fb-qa { max-width: 760px; }
+.zy-fb-q {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--zy-text-mute);
+}
+.zy-fb-a {
+  padding: 10px 12px;
+  border: 1px solid var(--zy-line);
+  border-radius: var(--zy-radius-sm);
+  background: var(--zy-surface);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--zy-text);
+  white-space: pre-wrap;      /* 原文里的换行必须留住，否则列表看着像一坨 */
+  word-break: break-word;
+}

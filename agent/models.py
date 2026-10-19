@@ -451,6 +451,63 @@ class AgentRun(models.Model):
         return round((self.duration_ms or 0) / 1000, 2)
 
 
+class MessageFeedback(models.Model):
+    """用户对某条 AI 回答的反馈（👍/👎）—— 对齐 Chatwoot CSAT / Langfuse score。
+
+    为什么单独一张表而不是给 conversations 加字段：
+    1) conversations 是 `managed = False` 的既有表，加列要手写 DDL 迁移，风险高；
+    2) 一条消息可能被多次评价（同 session 换设备、误点后改），独立表天然支持；
+    3) 运营要看的是"差评清单"，不是"每条消息带一个评分字段"，独立表查起来更直接。
+
+    `sources` 存的是评价发生时那条回答的引用来源 —— 这是区分
+    「知识库没这条」（sources 为空）和「检索到了但答歪了」（sources 有却不相关）
+    的唯一线索，没有它，差评只能靠猜。
+    """
+
+    class Rating(models.IntegerChoices):
+        UP = 1, '有用'
+        DOWN = -1, '没用'
+
+    session_id = models.CharField(max_length=64, db_index=True, verbose_name='会话ID')
+    # 不建外键：conversations 是 managed=False 的既有表，跨表约束会带来迁移麻烦；
+    # 且消息被清理后反馈仍应保留（正是复盘依据）。
+    message_id = models.IntegerField(null=True, blank=True, db_index=True, verbose_name='消息ID')
+    user_id = models.IntegerField(null=True, blank=True, db_index=True, verbose_name='用户ID')
+
+    rating = models.IntegerField(choices=Rating.choices, db_index=True, verbose_name='评价')
+    reason = models.CharField(max_length=200, blank=True, default='', verbose_name='原因标签')
+    comment = models.TextField(blank=True, default='', verbose_name='补充说明')
+
+    question = models.TextField(blank=True, default='', verbose_name='用户提问')
+    answer = models.TextField(blank=True, default='', verbose_name='AI 回答')
+    sources = models.JSONField(default=list, blank=True, verbose_name='当时的引用来源')
+
+    handled = models.BooleanField(default=False, db_index=True, verbose_name='已处理')
+    handled_note = models.TextField(blank=True, default='', verbose_name='处理备注')
+
+    created_at = models.DateTimeField(default=timezone.now, db_index=True, verbose_name='反馈时间')
+
+    class Meta:
+        db_table = 'message_feedback'
+        verbose_name = '回答反馈'
+        verbose_name_plural = '回答反馈'
+        ordering = ('-created_at',)
+        indexes = [
+            models.Index(fields=['rating', 'handled', '-created_at'], name='idx_fb_rating_handled'),
+            models.Index(fields=['session_id', '-created_at'], name='idx_fb_session_created'),
+        ]
+        constraints = [
+            # 同一条消息同一个人只留一条反馈：允许改主意（更新），不允许刷屏（重复插入）
+            models.UniqueConstraint(
+                fields=['message_id', 'user_id'], name='uniq_feedback_message_user',
+            ),
+        ]
+
+    def __str__(self):
+        icon = '👍' if self.rating == self.Rating.UP else '👎'
+        return f"{icon} {self.question[:24] or self.session_id[:8]}"
+
+
 class ContactMessage(models.Model):
     """用户留言模型 — 前端联系表单提交的数据"""
     name = models.CharField(max_length=50, verbose_name='姓名')

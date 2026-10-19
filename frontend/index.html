@@ -399,6 +399,50 @@
                                                     </li>
                                                 </ul>
                                             </div>
+
+                                            <!-- 回答反馈：挂在具体这一条上（messageId 由后端随 done 事件下发） -->
+                                            <div
+                                                v-if="msg.role === 'ai' && !msg.streaming && msg.messageId"
+                                                class="feedback-row"
+                                            >
+                                                <template v-if="!msg.feedback">
+                                                    <button
+                                                        type="button"
+                                                        class="feedback-btn"
+                                                        :disabled="fbSending"
+                                                        @click="sendFeedback(idx, 1)"
+                                                    >
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em" aria-hidden="true"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+                                                        有用
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="feedback-btn"
+                                                        :class="{ 'is-active': fbOpen === idx }"
+                                                        :disabled="fbSending"
+                                                        @click="toggleFeedbackReason(idx)"
+                                                    >
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1em;height:1em" aria-hidden="true"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3z"/><path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>
+                                                        没用
+                                                    </button>
+                                                </template>
+                                                <span v-else class="feedback-done">
+                                                    {{ msg.feedback === 1 ? '已标记为有用，谢谢' : '已记录，我们会据此优化' }}
+                                                </span>
+                                                <span v-if="msg.feedbackError" class="feedback-error">{{ msg.feedbackError }}</span>
+                                            </div>
+
+                                            <!-- 差评原因：点标签即提交，不逼用户打字 -->
+                                            <div v-if="fbOpen === idx" class="feedback-reasons">
+                                                <span class="feedback-ask">哪里不对？</span>
+                                                <button
+                                                    v-for="r in fbReasons"
+                                                    :key="'fb-' + idx + '-' + r"
+                                                    type="button"
+                                                    class="feedback-chip"
+                                                    @click="sendFeedback(idx, -1, r)"
+                                                >{{ r }}</button>
+                                            </div>
                                         </div>
                                     </div>
 

@@ -364,6 +364,11 @@ createApp({
                     messages.value = data.messages.map(m => ({
                         role: m.role === 'assistant' ? 'ai' : 'user',
                         content: (m.content || '').replace(/\*\*/g, ''),
+                        // 历史里的 AI 回答也要能评价：用户常在刷新之后才想给差评，
+                        // 没有 messageId 按钮就永远不出现。
+                        // feedback 带回已评状态，评过的不再重复摆按钮。
+                        messageId: m.role === 'assistant' ? (m.id || null) : null,
+                        feedback: m.role === 'assistant' ? (m.feedback || 0) : 0,
                     }));
                 } else {
                     messages.value = [welcomeMessage];
@@ -578,6 +583,11 @@ createApp({
                             if (data.done) {
                                 if (messages.value[aiMsgIdx]) {
                                     messages.value[aiMsgIdx].streaming = false;
+                                    // 后端的消息 id：👍/👎 要挂到具体这一条上，
+                                    // 没有它运营只知道"有人差评"，不知道哪句答错了
+                                    if (data.message_id) {
+                                        messages.value[aiMsgIdx].messageId = data.message_id;
+                                    }
                                     if (!messages.value[aiMsgIdx].content) {
                                         messages.value[aiMsgIdx].content = '（未收到回复，请重试）';
                                     }
@@ -668,6 +678,53 @@ createApp({
             forceReactivityUpdate(idx);
         };
 
+        // ── 回答反馈（👍 / 👎）────────────────────────────────
+        // 交互取向：👍 一步提交（好评不需要解释）；👎 先问一句"哪里不对"，
+        // 点标签即提交，不逼用户打字 —— 差评的转化率全靠这一步够轻。
+        const FB_REASONS = ['答非所问', '信息不对', '没查到', '太啰嗦'];
+        const fbOpen = ref(null);        // 当前展开原因选择的 aiMsgIdx
+        const fbSending = ref(false);
+        const fbReasons = FB_REASONS;
+
+        const toggleFeedbackReason = (idx) => {
+            fbOpen.value = fbOpen.value === idx ? null : idx;
+        };
+
+        const sendFeedback = async (idx, rating, reason = '') => {
+            const msg = messages.value[idx];
+            if (!msg || !msg.messageId || fbSending.value || msg.feedback) return;
+            if (!window.AUTH || !(await AUTH.ensureLogin('登录后即可反馈'))) return;
+
+            fbSending.value = true;
+            try {
+                const resp = await AUTH.authFetch('/api/agent/feedback/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message_id: msg.messageId,
+                        session_id: getSessionId(),
+                        rating: rating,
+                        reason: reason,
+                        // 把当时展示的来源一起回传：区分"知识库没这条"与"检索到却答歪了"
+                        sources: (msg.sources || []).map((s) => ({
+                            title: s.title, score: s.score,
+                        })),
+                    }),
+                });
+                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                msg.feedback = rating;
+                msg.feedbackError = '';
+                fbOpen.value = null;
+                forceReactivityUpdate(idx);
+            } catch (err) {
+                console.error('反馈提交失败：', err);
+                msg.feedbackError = '反馈没提交上，稍后再试一次';
+                forceReactivityUpdate(idx);
+            } finally {
+                fbSending.value = false;
+            }
+        };
+
         return {
             quickQuestions,
             messages,
@@ -683,6 +740,12 @@ createApp({
             onImgError,
             goOrder,
             toggleSources,
+            // 回答反馈
+            fbOpen,
+            fbSending,
+            fbReasons,
+            toggleFeedbackReason,
+            sendFeedback,
             // 引用来源（纯函数，便于 verify_citations.js 直接断言）
             fmtScore,
             sourceRouteLabel,

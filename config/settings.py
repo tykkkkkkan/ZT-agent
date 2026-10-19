@@ -247,6 +247,8 @@ UNFOLD = {
                     {'title': '对话记录', 'link': '/admin/agent/conversations/', 'icon': 'forum'},
                     # 对话调用链：一轮一行，点开看「几轮 ReAct / 调了谁 / 花了多久」
                     {'title': '对话调用链', 'link': '/admin/agent/agentrun/', 'icon': 'timeline'},
+                    # 回答反馈：差评即知识盲区清单，可一键跳到「新建知识库条目」
+                    {'title': '回答反馈', 'link': '/admin/agent/messagefeedback/', 'icon': 'reviews'},
                     {'title': '定制需求', 'link': '/admin/agent/customrequest/', 'icon': 'playlist_add_check'},
                 ],
             },

@@ -284,6 +284,81 @@ main:focus { outline: none; }
     font-variant-numeric: tabular-nums;
 }
 
+/* ============ 回答反馈（👍/👎） ============
+   取向：这是「用完之后的顺手动作」，不是主 CTA。
+   所以是描边小按钮而不是实底彩色块——不能让它比回答本身更抢眼。 */
+.feedback-row {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-top: .375rem;
+    flex-wrap: wrap;
+}
+.feedback-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    padding: .2rem .55rem;
+    border: 1px solid var(--jade-100);
+    border-radius: 999px;
+    background: rgba(251, 248, 241, .7);
+    color: var(--ink-mute);
+    font-size: .6875rem;
+    line-height: 1.6;
+    cursor: pointer;
+    transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+.feedback-btn:hover:not(:disabled) {
+    color: var(--jade-700);
+    border-color: var(--jade-300);
+    background: rgba(31, 107, 84, .06);
+}
+.feedback-btn.is-active {
+    color: var(--fire-700);
+    border-color: var(--fire-300);
+    background: rgba(226, 112, 58, .08);
+}
+.feedback-btn:disabled { opacity: .55; cursor: default; }
+.feedback-btn:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+.feedback-done { font-size: .6875rem; color: var(--jade-700); }
+.feedback-error { font-size: .6875rem; color: #C73320; }
+
+/* 差评原因：一排小 chip，点一下即提交 */
+.feedback-reasons {
+    display: flex;
+    align-items: center;
+    gap: .375rem;
+    flex-wrap: wrap;
+    margin-top: .375rem;
+    padding: .45rem .6rem;
+    border: 1px dashed var(--jade-100);
+    border-radius: .75rem;
+    background: rgba(251, 248, 241, .6);
+}
+.feedback-ask { font-size: .6875rem; color: var(--ink-mute); }
+.feedback-chip {
+    padding: .15rem .5rem;
+    border: 1px solid var(--jade-100);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--ink-soft);
+    font-size: .6875rem;
+    line-height: 1.7;
+    cursor: pointer;
+    transition: color .15s ease, border-color .15s ease;
+}
+.feedback-chip:hover {
+    color: var(--jade-700);
+    border-color: var(--jade-300);
+}
+.feedback-chip:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
 /* 聊天消息区：宣纸水面（暖调水波） */
 .water-surface {
     background:

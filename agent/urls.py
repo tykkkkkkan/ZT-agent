@@ -15,6 +15,8 @@ urlpatterns = [
     path("contact/", views.contact_submit, name="contact_submit"),
     path("custom/", views.custom_submit, name="custom_submit"),
     path("history/<str:session_id>/", views.history, name="history"),
+    # AI 回答反馈（👍/👎）—— 差评进后台「回答反馈」，可一键补进知识库
+    path("feedback/", views.feedback, name="feedback"),
     # 留言 / 定制管理（P0 补齐：标记已读；P1 补齐：列表/删除）
     path("contact-msgs/", views.contact_messages_list, name="contact_messages_list"),
     path("custom-reqs/", views.custom_requests_list, name="custom_requests_list"),

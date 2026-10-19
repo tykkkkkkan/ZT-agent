@@ -221,8 +221,14 @@ def chat(request):
             yield _sse({"content": "⚠️ 服务开小差了，请稍后重试。"})
 
         # 流结束后落库 AI 回复
-        _save_conversation(session_id, "assistant", "".join(parts))
-        yield _sse({"done": True, "session_id": session_id})
+        saved = _save_conversation(session_id, "assistant", "".join(parts))
+        # 把消息 id 带出去：前端据此把 👍/👎 挂到具体这一条上
+        # （没有 id 就只能评价"这次会话"，运营拿不到是哪一句答错了）
+        yield _sse({
+            "done": True,
+            "session_id": session_id,
+            "message_id": getattr(saved, "id", None),
+        })
 
     response = StreamingHttpResponse(
         event_stream(), content_type="text/event-stream; charset=utf-8"
@@ -239,16 +245,29 @@ def chat(request):
 @require_GET
 @login_required
 def history(request, session_id):
-    """查询对话历史：GET /api/agent/history/<session_id>/【需登录】"""
+    """查询对话历史：GET /api/agent/history/<session_id>/【需登录】
+
+    每条消息带回 `id` 与该消息的已评状态 `feedback`：
+    用户往往刷新之后才想起来「刚才那句不对」，没有 id 就点不了评价；
+    而已经评过的消息不该再摆两个按钮（也顺手堵住了重复刷的入口）。
+    """
     try:
-        from agent.models import Conversations
+        from agent.models import Conversations, MessageFeedback
         records = Conversations.objects.filter(
             session_id=session_id
-        ).order_by("created_at").values("role", "content", "created_at")
+        ).order_by("created_at").values("id", "role", "content", "created_at")
+        records = list(records)
+        # 一次查出本会话的已评记录，避免逐条查（N+1）
+        rated = dict(
+            MessageFeedback.objects.filter(session_id=session_id)
+            .values_list("message_id", "rating")
+        )
         data = [
             {
+                "id": r["id"],
                 "role": r["role"],
                 "content": r["content"],
+                "feedback": rated.get(r["id"], 0),
                 "created_at": r["created_at"].strftime("%Y-%m-%d %H:%M:%S") if r["created_at"] else "",
             }
             for r in records
@@ -256,6 +275,112 @@ def history(request, session_id):
         return JsonResponse({"success": True, "session_id": session_id, "messages": data})
     except Exception as e:
         return _server_error(e)
+
+
+# ══════════════════════════════════════════════════════════════
+# AI 回答反馈（👍 / 👎）—— 把"答得不好"变成可处理的问题
+# ══════════════════════════════════════════════════════════════
+@csrf_exempt
+@require_POST
+@login_required
+def feedback(request):
+    """AI 回答反馈：POST /api/agent/feedback/【需登录】
+
+    请求体：
+        {"message_id": 12, "session_id": "xxx", "rating": 1 | -1,
+         "reason": "答非所问", "comment": "…",
+         "sources": [{"title": "退换货政策", "score": 0.87}]}
+
+    设计要点：
+    - **必须能定位到具体一条 assistant 消息**（message_id + session_id 双校验），
+      否则运营只知道"有人给了差评"，不知道是哪句话答错了；
+    - 同一条消息重复评价走更新而不是新增（允许改主意，不允许刷数据）；
+    - `sources` 由前端回传当时展示的来源：它区分了「知识库没这条」和
+      「检索到了但答歪了」—— 这两种问题的修法完全不同。
+    """
+    try:
+        body = json.loads(request.body or "{}")
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return JsonResponse({"success": False, "message": "请求体必须是 JSON"}, status=400)
+
+    message_id = body.get("message_id")
+    session_id = (body.get("session_id") or "").strip()
+    try:
+        rating = int(body.get("rating"))
+    except (TypeError, ValueError):
+        return JsonResponse({"success": False, "message": "rating 必须是 1 或 -1"}, status=400)
+    if rating not in (1, -1):
+        return JsonResponse({"success": False, "message": "rating 必须是 1 或 -1"}, status=400)
+
+    if not message_id or not session_id:
+        return JsonResponse(
+            {"success": False, "message": "缺少 message_id / session_id"}, status=400)
+
+    from agent.models import Conversations, MessageFeedback
+
+    # 双校验：这条消息既要存在、是 AI 回答，又必须属于客户端声明的这个会话
+    msg = Conversations.objects.filter(
+        id=message_id, session_id=session_id, role="assistant",
+    ).first()
+    if not msg:
+        return JsonResponse(
+            {"success": False, "message": "找不到这条回答（可能已被清理）"}, status=404)
+
+    user, _ = _resolve_request_user(request)
+    user_id = getattr(user, "id", None)
+
+    # 这一问一答一起留档：只有回答没有提问，复盘时看不懂"它为什么答成这样"
+    question = (
+        Conversations.objects
+        .filter(session_id=session_id, role="user", id__lt=msg.id)
+        .order_by("-id")
+        .values_list("content", flat=True)
+        .first()
+    ) or ""
+
+    # 来源只留标题与分数（够判断"检索到没有 / 相不相关"），不存整段原文
+    sources = []
+    for item in (body.get("sources") or [])[:5]:
+        if isinstance(item, dict) and item.get("title"):
+            sources.append({
+                "title": str(item["title"])[:100],
+                "score": item.get("score"),
+            })
+
+    defaults = {
+        "session_id": session_id,
+        "rating": rating,
+        "reason": (body.get("reason") or "")[:200],
+        "comment": (body.get("comment") or "")[:1000],
+        "question": question[:2000],
+        "answer": (msg.content or "")[:2000],
+    }
+    # ⚠️ 只有请求里**确实带了** sources 才覆盖：缺这个键说明调用方没上报，
+    # 这时要保留上一次的快照。来源是排查「知识库缺」还是「答歪了」的唯一线索，
+    # 不能因为某次调用漏传就被清空 —— 用户改主意重评一次，证据不该跟着丢。
+    if "sources" in body:
+        defaults["sources"] = sources
+
+    try:
+        obj, created = MessageFeedback.objects.update_or_create(
+            message_id=msg.id,
+            user_id=user_id,
+            defaults=defaults,
+        )
+    except Exception as e:
+        return _server_error(e)
+
+    logger.info(
+        "收到回答反馈 session=%s msg=%s rating=%s reason=%s created=%s",
+        session_id, msg.id, rating, obj.reason, created,
+    )
+    return JsonResponse({
+        "success": True,
+        "feedback_id": obj.id,
+        "created": created,
+        "message": "感谢反馈，我们会据此优化知识库。" if rating == 1
+                   else "已记录，我们会尽快补充或修正相关内容。",
+    })
 
 
 # ══════════════════════════════════════════════════════════════

@@ -18,6 +18,7 @@ import os
 import threading
 from datetime import timedelta
 from decimal import Decimal
+from urllib.parse import urlencode
 
 from django.contrib import admin
 from django.contrib.auth import get_user_model
@@ -40,6 +41,7 @@ from agent.models import (
     CustomRequest,
     Inventory,
     KnowledgeChunk,
+    MessageFeedback,
     Orders,
     OrderStatus,
     PaymentStatus,
@@ -1392,6 +1394,223 @@ class AgentRunAdmin(ZYModelAdmin):
         cutoff = timezone.now() - timedelta(days=30)
         deleted, _ = AgentRun.objects.filter(created_at__lt=cutoff).delete()
         self.message_user(request, f'已清理 {deleted} 条 30 天前的调用链。')
+
+
+# ══════════════════════════════════════════════════════════════
+# 回答反馈 —— 从「用户点👎」到「知识库补上一条」的闭环
+# ══════════════════════════════════════════════════════════════
+# 为什么这一页值得单独做：
+# 「我有 RAG」到「我的 RAG 在被差评后变得更准」是一条完整的运营链路，
+# 而链路的每一环都需要一个落点 —— 用户在气泡下面点一下 → 服务端留档
+# → 运营在后台看到「这句话为什么答歪了」（当时的来源还在）→ 一键去补条目。
+# 少了任何一环，反馈就只是数据库里一堆没人看的 -1。
+@admin.action(description='✅ 标记为已处理')
+def mark_feedback_handled(modeladmin, request, queryset):
+    n = queryset.filter(handled=False).update(handled=True)
+    modeladmin.message_user(request, f'已把 {n} 条反馈标记为已处理。')
+
+
+@admin.action(description='↩️ 撤销「已处理」')
+def unmark_feedback_handled(modeladmin, request, queryset):
+    n = queryset.filter(handled=True).update(handled=False)
+    modeladmin.message_user(request, f'已撤销 {n} 条反馈的处理标记。')
+
+
+@admin.register(MessageFeedback)
+class MessageFeedbackAdmin(ZYModelAdmin):
+    """用户对 AI 回答的评价清单 —— 差评就是待补的知识盲区清单。
+
+    设计取向：**反馈内容只读，只有「处理」可写**。
+    rating / question / answer / sources 是用户当时看到的东西的快照，
+    后台能改就失去"用户到底看到了什么"的意义；运营要写的只有
+    handled 与 handled_note（"补了哪条""为什么不是知识库的问题"）。
+    """
+
+    # 列表页顶部的 KPI 条（Unfold 支持 list_before_template，含完整上下文）
+    list_before_template = 'admin/feedback_list_banner.html'
+
+    list_display = ('created_at', 'rating_badge', 'reason_display',
+                    'question_preview', 'recall_state', 'handled_badge', 'kb_link')
+    list_filter = ('rating', 'handled', 'created_at')
+    search_fields = ('question', 'answer', 'comment', 'reason', 'session_id')
+    date_hierarchy = 'created_at'
+    list_per_page = 30
+    ordering = ('-created_at',)
+    list_display_links = ('created_at',)
+    actions = (mark_feedback_handled, unmark_feedback_handled)
+
+    readonly_fields = ('rating_display', 'session_id', 'message_id', 'user_id',
+                       'created_at', 'qa_panel', 'sources_panel', 'conversation_link')
+
+    fieldsets = (
+        ('这条反馈', {
+            'fields': ('rating_display', 'created_at', 'session_id', 'message_id'),
+        }),
+        ('当时的一问一答', {
+            'fields': ('qa_panel',),
+            'description': '这是用户当时看到的原文快照，不随后续数据变化。',
+        }),
+        ('当时的引用来源', {
+            'fields': ('sources_panel',),
+            'description': '它区分了两种完全不同的差评：'
+                           '<b>一条来源都没有</b> = 知识库确实缺这条；'
+                           '<b>有来源但答歪了</b> = 条目在，是切分/表述/模型没用好。'
+                           '两者的修法不一样，所以必须留下来源。',
+        }),
+        ('处理', {
+            'fields': ('handled', 'handled_note'),
+            'description': '补完知识库后勾上，并在这里记一句「补了哪条」——'
+                           '下次同类差评进来能直接查到是否已覆盖。',
+        }),
+        ('追溯', {'fields': ('user_id', 'conversation_link')}),
+    )
+
+    # ── 权限：反馈是用户产生的，不在后台新建 ───────────────────
+    def has_add_permission(self, request):
+        return False
+
+    # ── 列表页 KPI ─────────────────────────────────────────────
+    def changelist_view(self, request, extra_context=None):
+        extra = dict(extra_context or {})
+        base = reverse('admin:agent_messagefeedback_changelist')
+        week_ago = timezone.now() - timedelta(days=7)
+        total = MessageFeedback.objects.count()
+        down = MessageFeedback.objects.filter(rating=MessageFeedback.Rating.DOWN)
+        down_n = down.count()
+        pending = down.filter(handled=False).count()
+        week_down = down.filter(created_at__gte=week_ago).count()
+        # 好评率只在有人评价时才有意义，0 条时显示「—」而不是 0%（否则像全是差评）
+        rate = f'{(total - down_n) / total * 100:.0f}%' if total else '—'
+        extra['feedback_kpi'] = [
+            {'label': '待优化', 'value': pending,
+             'url': base + '?rating=-1&handled=0', 'tone': 'warn'},
+            {'label': '差评总数', 'value': down_n,
+             'url': base + '?rating=-1', 'tone': 'bad'},
+            {'label': '近 7 天差评', 'value': week_down,
+             'url': base + '?rating=-1&created_at__gte=' + week_ago.strftime('%Y-%m-%d'),
+             'tone': 'mute'},
+            {'label': '好评率', 'value': rate, 'url': base, 'tone': 'ok'},
+            {'label': '累计评价', 'value': total, 'url': base, 'tone': 'mute'},
+        ]
+        return super().changelist_view(request, extra)
+
+    # ── 列表列 ─────────────────────────────────────────────────
+    @admin.display(description='评价', ordering='rating')
+    def rating_badge(self, obj):
+        if obj.rating == MessageFeedback.Rating.UP:
+            return format_html('<span class="zy-badge zy-badge-ok">👍 有用</span>')
+        return format_html('<span class="zy-badge zy-badge-bad">👎 没用</span>')
+
+    @admin.display(description='原因')
+    def reason_display(self, obj):
+        if obj.reason:
+            return obj.reason
+        return format_html('<span class="zy-trace-note">未选</span>')
+
+    @admin.display(description='用户问的')
+    def question_preview(self, obj):
+        text = (obj.question or '').replace('\n', ' ').strip()
+        if not text:
+            return '—'
+        return (text[:34] + '…') if len(text) > 34 else text
+
+    @admin.display(description='检索情况')
+    def recall_state(self, obj):
+        """一看就知道这条差评是「知识库缺」还是「检索到了但答歪」。"""
+        sources = obj.sources if isinstance(obj.sources, list) else []
+        if not sources:
+            return format_html(
+                '<span class="zy-badge zy-badge-warn" title="这次回答没有引用任何知识库条目">'
+                '✗ 未命中</span>')
+        titles = '、'.join(
+            str(s.get('title')) for s in sources[:5]
+            if isinstance(s, dict) and s.get('title')
+        )
+        return format_html(
+            '<span class="zy-badge zy-badge-ok" title="{}">✓ 命中 {} 条</span>',
+            titles or '（无标题）', len(sources),
+        )
+
+    @admin.display(description='已处理', ordering='handled')
+    def handled_badge(self, obj):
+        if obj.handled:
+            return format_html('<span class="zy-badge zy-badge-ok">已处理</span>')
+        return format_html('<span class="zy-badge zy-badge-warn">待优化</span>')
+
+    @admin.display(description='下一步')
+    def kb_link(self, obj):
+        """差评 → 新建知识库条目，标题预填用户原问。
+
+        为什么标题用用户原问而不是"退货政策"这类规范名：
+        用户提问的措辞本身就是检索时的 query，用原话当标题能让下一次
+        同样问法的人直接命中；规范名可以之后再改。
+        为什么不预填 content：**必须由人写标准答案**。把 AI 那句答歪的话
+        复制进知识库，等于把错误固化下来，下次会答得更自信。
+        """
+        if obj.rating != MessageFeedback.Rating.DOWN:
+            return format_html('<span class="zy-trace-note">—</span>')
+        question = (obj.question or '').strip()
+        if not question:
+            return format_html('<span class="zy-trace-note">无提问，无法预填</span>')
+        params = urlencode({'title': question[:100]})
+        url = reverse('admin:agent_knowledgechunk_add') + '?' + params
+        return format_html(
+            '<a class="zy-op-btn zy-op-go" href="{}" title="标题已用用户原问预填，正文请写标准答案">'
+            '➕ 补进知识库</a>', url)
+
+    # ── 详情面板 ───────────────────────────────────────────────
+    @admin.display(description='评价')
+    def rating_display(self, obj):
+        if not obj or not obj.pk:
+            return '—'
+        return self.rating_badge(obj)
+
+    @admin.display(description='一问一答')
+    def qa_panel(self, obj):
+        if not obj or not obj.pk:
+            return '—'
+        question = obj.question or '（未记录到提问）'
+        answer = obj.answer or '（未记录到回答）'
+        parts = [
+            format_html('<p class="zy-fb-q">用户问：{}</p>', question),
+            format_html('<div class="zy-fb-a">{}</div>', answer),
+        ]
+        if obj.reason or obj.comment:
+            hint = obj.reason or ''
+            if obj.comment:
+                hint = f'{hint}｜{obj.comment}' if hint else obj.comment
+            parts.append(format_html('<p class="zy-trace-note">用户补充：{}</p>', hint))
+        return format_html('<div class="zy-fb-qa">{}</div>', mark_safe(''.join(parts)))
+
+    @admin.display(description='引用来源')
+    def sources_panel(self, obj):
+        if not obj or not obj.pk:
+            return '—'
+        sources = obj.sources if isinstance(obj.sources, list) else []
+        if not sources:
+            return format_html(
+                '<p class="zy-trace-note">这次回答没有引用任何知识库条目 —— '
+                '说明知识库里大概率确实缺这一类问题，直接补条目即可。</p>')
+        rows = ''.join(
+            format_html(
+                '<li><b>{}</b> <span class="zy-trace-note">相关度 {}</span></li>',
+                s.get('title') or '—', s.get('score'),
+            )
+            for s in sources if isinstance(s, dict)
+        )
+        return format_html(
+            '<ul class="zy-trace-sources">{}</ul>'
+            '<p class="zy-trace-note">条目在库里却没答对 → 优先查这条的正文是否'
+            '漏了用户问的那个点，而不是急着新增。</p>',
+            mark_safe(rows))
+
+    @admin.display(description='完整会话')
+    def conversation_link(self, obj):
+        if not obj or not obj.pk or not obj.session_id:
+            return '—'
+        url = reverse('admin:agent_conversations_changelist') + f'?q={obj.session_id}'
+        return format_html(
+            '<a href="{}">在对话记录里看这个会话的全部消息 →</a>', url)
 
 
 # ══════════════════════════════════════════════════════════════
