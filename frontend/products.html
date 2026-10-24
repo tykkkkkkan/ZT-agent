@@ -182,7 +182,11 @@
                      class="product-card card-float bg-white overflow-hidden">
                     <!-- rounded-none：图容器紧贴卡片顶部，若自带圆角会在卡片的圆角外侧露出白边，
                          交给卡片自身的 overflow-hidden 统一裁剪 -->
-                    <div class="relative media-ratio media-ratio--contain rounded-none">
+                    <!-- 点图/标题进详情：列表页只放得下两行介绍（line-clamp-2），
+                         完整介绍 + 全部评价 + 参数必须有地方展开，否则"介绍被截断"
+                         就成了一条死路（这也是改造前唯一的点击项只有「N 条评价」的原因）。 -->
+                    <div class="relative media-ratio media-ratio--contain rounded-none cursor-pointer"
+                         @click="openDetail(p)">
                         <!-- 有实拍图才渲染 img；无图或加载失败时落到「设计化占位」版式，
                              避免同一张通用占位图在产品列表里反复出现（廉价感的主要来源）。 -->
                         <img v-if="hasProductImage(p.name) && !p.imgFailed"
@@ -211,7 +215,8 @@
                             <span class="px-2 py-0.5 bg-brand-50 text-brand-700 rounded"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg> {{ p.target_fish }}</span>
                             <span>{{ p.spec }}</span>
                         </div>
-                        <h3 class="text-lg font-bold text-ink-900 mb-2">{{ p.name }}</h3>
+                        <h3 class="text-lg font-bold text-ink-900 mb-2 cursor-pointer hover:text-brand-700 transition"
+                            @click="openDetail(p)">{{ p.name }}</h3>
                         <!-- 商品评价（任务书六·4）：有评价才露评分，不给新商品挂一个假的 0.0 分 -->
                         <div v-if="p.review_count > 0" class="flex items-center gap-2 mb-2">
                             <span class="text-sunset-500 text-sm tracking-tight">{{ starsOf(p.rating_avg) }}</span>
@@ -228,29 +233,35 @@
                            class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
                             {{ p.buy_block_message }}
                         </p>
-                        <div class="flex items-end justify-between pt-3 border-t border-stone-100">
-                            <div>
+                        <div class="flex items-end justify-between gap-3 pt-3 border-t border-stone-100">
+                            <div class="min-w-0">
                                 <div class="text-xs text-ink-400">零售价</div>
-                                <div class="text-xl font-extrabold text-brand-600">¥{{ p.retail_price.toFixed(2) }}<span class="text-xs font-normal text-ink-400">/包</span></div>
+                                <div class="text-xl font-extrabold text-brand-600">¥{{ money2(p.effective_price) }}<span class="text-xs font-normal text-ink-400">/包</span></div>
                                 <!-- 批发价只对经销商下发（任务书二·5）：
                                      个体钓友/未登录访客的响应体里连 wholesale_price 这个键都没有，
                                      所以这段天然不会渲染 —— 后端裁剪，不是前端隐藏。 -->
                                 <div v-if="p.can_see_wholesale && p.wholesale_price"
                                      class="text-xs text-lake-600 mt-0.5 font-medium">
-                                    经销商价 ¥{{ p.wholesale_price.toFixed(2) }}（{{ p.wholesale_min_qty }} 包起）
+                                    经销商价 ¥{{ money2(p.wholesale_price) }}（{{ p.wholesale_min_qty }} 包起）
                                 </div>
                                 <div v-else-if="!p.can_see_wholesale" class="text-xs text-ink-300 mt-0.5">
                                     经销商可享批发价
                                 </div>
                             </div>
-                            <a v-if="p.in_stock" :href="'order.html?product=' + p.id"
-                               class="px-4 py-2 bg-brand-50 text-brand-700 text-sm font-semibold rounded-lg hover:bg-brand-600 hover:text-white transition border border-brand-100">
-                                下单
-                            </a>
-                            <a v-else href="index.html#ai-section"
-                               class="px-4 py-2 bg-stone-100 text-ink-500 text-sm font-semibold rounded-lg hover:bg-stone-200 transition border border-stone-200">
-                                咨询客服
-                            </a>
+                            <div class="flex flex-col items-end gap-2 shrink-0">
+                                <a v-if="p.in_stock" :href="'order.html?product=' + p.id"
+                                   class="px-4 py-2 bg-brand-50 text-brand-700 text-sm font-semibold rounded-lg hover:bg-brand-600 hover:text-white transition border border-brand-100">
+                                    下单
+                                </a>
+                                <a v-else href="index.html#ai-section"
+                                   class="px-4 py-2 bg-stone-100 text-ink-500 text-sm font-semibold rounded-lg hover:bg-stone-200 transition border border-stone-200">
+                                    咨询客服
+                                </a>
+                                <button type="button" @click="openDetail(p)"
+                                        class="text-xs text-ink-500 hover:text-brand-700 underline underline-offset-2">
+                                    查看详情
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -287,45 +298,131 @@
         </div>
     </section>
 
-    <!-- 商品评价弹窗（任务书六·4）：点「N 条评价」打开，数据来自 /api/products/<id>/reviews/ -->
-    <div v-if="reviewOpen" class="fixed inset-0 z-[70] flex items-center justify-center p-4"
-         style="background:rgba(15,32,25,.55)" @click.self="closeReviews()">
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
-            <div class="flex items-start justify-between gap-3 p-5 border-b border-stone-100">
-                <div class="min-w-0">
-                    <h3 class="text-lg font-bold text-ink-900 truncate">{{ reviewProduct && reviewProduct.name }}</h3>
-                    <div class="flex items-center gap-2 mt-1">
-                        <span class="text-sunset-500 text-sm tracking-tight">{{ starsOf(reviewData.rating_avg) }}</span>
-                        <span class="text-sm font-semibold text-ink-700">{{ Number(reviewData.rating_avg).toFixed(1) }}</span>
-                        <span class="text-xs text-ink-400">共 {{ reviewData.review_count }} 条评价</span>
+    <!-- 商品详情弹窗（任务书二·4 商品信息展示 + 六·4 评价）
+         为什么要有它：列表卡片为了排版只放两行介绍（line-clamp-2），
+         完整配方说明 / 参数 / 全部评价没有第二个出口 —— 客户想细看只能去问客服。
+         现在点图、点标题、点「查看详情」都打开这里；点「N 条评价」打开同一个弹窗
+         并滚到评价区（一套弹窗，不叠两层）。
+         数据：列表字段来自 /api/products/，评价在打开时单独请求 /api/products/<id>/reviews/。 -->
+    <div v-if="detailOpen && detailProduct" class="fixed inset-0 z-[70] flex items-center justify-center p-4"
+         style="background:rgba(15,32,25,.55)" @click.self="closeDetail()">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[88vh] flex flex-col overflow-hidden">
+            <!-- 头部：图 + 关键参数 + 价格 + 主行动 -->
+            <div class="relative flex flex-col sm:flex-row gap-5 p-5 border-b border-stone-100">
+                <button type="button" @click="closeDetail()" aria-label="关闭商品详情"
+                        class="absolute top-3 right-3 z-10 w-8 h-8 flex items-center justify-center rounded-full text-ink-400 hover:text-ink-700 hover:bg-stone-100 text-2xl leading-none">&times;</button>
+
+                <div class="w-full sm:w-48 h-44 sm:h-48 rounded-xl overflow-hidden bg-brand-50 shrink-0">
+                    <img v-if="detailImage" :src="detailImage" :alt="detailProduct.name"
+                         class="w-full h-full object-cover" @error="detailImgFailed = true">
+                    <div v-else class="media-placeholder">
+                        <span class="ph-name">{{ detailProduct.name }}</span>
+                        <span class="ph-meta">{{ detailProduct.category || '中渔天下' }}</span>
                     </div>
                 </div>
-                <button type="button" @click="closeReviews()" aria-label="关闭"
-                        class="text-ink-400 hover:text-ink-700 text-2xl leading-none">&times;</button>
+
+                <div class="flex-1 min-w-0 sm:pr-8">
+                    <div class="flex items-center gap-2 mb-2 text-xs text-ink-500 flex-wrap">
+                        <span v-if="detailProduct.category" class="px-2 py-0.5 bg-lake-50 text-lake-700 rounded">{{ detailProduct.category }}</span>
+                        <span v-if="detailProduct.target_fish" class="px-2 py-0.5 bg-brand-50 text-brand-700 rounded">{{ detailProduct.target_fish }}</span>
+                        <span v-if="detailProduct.spec">{{ detailProduct.spec }}</span>
+                    </div>
+                    <h2 class="text-2xl font-bold text-ink-900 leading-snug">{{ detailProduct.name }}</h2>
+                    <p class="mt-1 text-xs text-ink-400 font-mono">商品编码 {{ detailProduct.sku || '—' }}</p>
+
+                    <div v-if="detailData.review_count > 0" class="flex items-center gap-2 mt-3">
+                        <span class="text-sunset-500 text-sm tracking-tight">{{ starsOf(detailData.rating_avg) }}</span>
+                        <span class="text-sm font-semibold text-ink-700">{{ Number(detailData.rating_avg).toFixed(1) }}</span>
+                        <button type="button" @click="scrollToReviews()"
+                                class="text-xs text-brand-600 hover:text-brand-700 hover:underline">
+                            {{ detailData.review_count }} 条评价
+                        </button>
+                    </div>
+                    <div v-else-if="!detailReviewsLoading" class="text-xs text-ink-400 mt-3">暂无评价</div>
+
+                    <div class="mt-4 flex items-end gap-5 flex-wrap">
+                        <div>
+                            <div class="text-xs text-ink-400">零售价</div>
+                            <div class="text-2xl font-extrabold text-brand-600">¥{{ money2(detailProduct.effective_price) }}<span class="text-xs font-normal text-ink-400">/包</span></div>
+                        </div>
+                        <div v-if="detailProduct.can_see_wholesale && detailProduct.wholesale_price">
+                            <div class="text-xs text-ink-400">经销商价</div>
+                            <div class="text-xl font-bold text-lake-600">¥{{ money2(detailProduct.wholesale_price) }}<span class="text-xs font-normal text-ink-400">/包（{{ detailProduct.wholesale_min_qty }} 包起）</span></div>
+                        </div>
+                        <div v-else-if="!detailProduct.can_see_wholesale" class="text-xs text-ink-300 pb-1">
+                            经销商登录后可享批发价
+                        </div>
+                    </div>
+
+                    <p class="mt-3 text-xs" :class="detailProduct.in_stock ? 'text-emerald-700' : 'text-amber-700'">
+                        {{ detailProduct.stock_label }}
+                        <span v-if="detailProduct.in_stock" class="text-ink-400">· 库存实时取自数据库</span>
+                    </p>
+                    <p v-if="!detailProduct.in_stock && detailProduct.buy_block_message"
+                       class="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 leading-relaxed">
+                        {{ detailProduct.buy_block_message }}
+                    </p>
+                    <p v-else-if="detailProduct.customer_notice"
+                       class="mt-2 text-xs text-brand-700 bg-brand-50 border border-brand-100 rounded-lg px-3 py-2 leading-relaxed">
+                        {{ detailProduct.customer_notice }}
+                    </p>
+
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        <a v-if="detailProduct.in_stock" :href="'order.html?product=' + detailProduct.id"
+                           class="px-5 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-xl hover:bg-brand-700 transition shadow-sm">
+                            立即下单
+                        </a>
+                        <a v-else href="index.html#ai-section"
+                           class="px-5 py-2.5 bg-brand-50 text-brand-700 text-sm font-semibold rounded-xl border border-brand-100 hover:bg-brand-600 hover:text-white transition">
+                            咨询 AI
+                        </a>
+                        <a href="custom.html"
+                           class="px-5 py-2.5 bg-white text-ink-700 text-sm font-semibold rounded-xl border border-stone-200 hover:border-brand-300 hover:text-brand-700 transition">
+                            批量定制
+                        </a>
+                    </div>
+                </div>
             </div>
 
-            <div class="p-5 overflow-y-auto flex-1">
-                <div v-if="reviewLoading" class="text-center py-10 text-ink-400 text-sm">正在加载评价…</div>
-                <div v-else-if="reviewData.reviews.length === 0" class="text-center py-10 text-ink-400 text-sm">
-                    这件商品还没有评价 —— 下单并确认收货后就能给它打分。
-                </div>
-                <div v-else class="space-y-3">
-                    <div v-for="r in reviewData.reviews" :key="r.id" class="pb-3 border-b border-stone-100 last:border-0">
-                        <div class="flex items-center justify-between gap-2 mb-1">
-                            <div class="flex items-center gap-2 min-w-0">
-                                <span class="text-sunset-500 text-sm tracking-tight">{{ r.stars }}</span>
-                                <span class="text-xs text-ink-500 truncate">{{ r.nickname }}</span>
-                            </div>
-                            <span class="text-xs text-ink-300 shrink-0">{{ r.created_at }}</span>
-                        </div>
-                        <p v-if="r.content" class="text-sm text-ink-700 leading-relaxed whitespace-pre-line">{{ r.content }}</p>
-                        <p v-else class="text-xs text-ink-300">该用户只打了分，没有留言</p>
+            <!-- 主体：完整介绍 + 全部评价（滚动区） -->
+            <div class="p-5 overflow-y-auto flex-1 space-y-6">
+                <section>
+                    <h3 class="text-sm font-bold text-ink-900 mb-2">商品介绍</h3>
+                    <p v-if="detailProduct.description"
+                       class="text-sm text-ink-700 leading-relaxed whitespace-pre-line">{{ detailProduct.description }}</p>
+                    <p v-else class="text-sm text-ink-400">这件商品还没有补充介绍，可点「咨询 AI」问配方与用法。</p>
+                    <dl class="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+                        <div class="flex gap-2"><dt class="text-ink-400 shrink-0">商品编码</dt><dd class="text-ink-700 font-mono truncate">{{ detailProduct.sku || '—' }}</dd></div>
+                        <div class="flex gap-2"><dt class="text-ink-400 shrink-0">产品分类</dt><dd class="text-ink-700 truncate">{{ detailProduct.category || '—' }}</dd></div>
+                        <div class="flex gap-2"><dt class="text-ink-400 shrink-0">规格</dt><dd class="text-ink-700 truncate">{{ detailProduct.spec || '—' }}</dd></div>
+                        <div class="flex gap-2"><dt class="text-ink-400 shrink-0">适用鱼种</dt><dd class="text-ink-700 truncate">{{ detailProduct.target_fish || '—' }}</dd></div>
+                    </dl>
+                </section>
+
+                <section id="detail-reviews">
+                    <h3 class="text-sm font-bold text-ink-900 mb-2">买家评价</h3>
+                    <div v-if="detailReviewsLoading" class="text-center py-8 text-ink-400 text-sm">正在加载评价…</div>
+                    <div v-else-if="detailData.reviews.length === 0" class="text-center py-8 text-ink-400 text-sm">
+                        这件商品还没有评价 —— 下单并确认收货后就能给它打分。
                     </div>
-                    <!-- 真实总数与已展示条数分开报，不做"共 20 条"的谎报 -->
-                    <p v-if="reviewData.review_count > reviewData.showing" class="text-xs text-ink-400 text-center pt-1">
-                        仅展示最近 {{ reviewData.showing }} 条 · 共 {{ reviewData.review_count }} 条评价
-                    </p>
-                </div>
+                    <div v-else class="space-y-3">
+                        <div v-for="r in detailData.reviews" :key="r.id" class="pb-3 border-b border-stone-100 last:border-0">
+                            <div class="flex items-center justify-between gap-2 mb-1">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <span class="text-sunset-500 text-sm tracking-tight">{{ r.stars }}</span>
+                                    <span class="text-xs text-ink-500 truncate">{{ r.nickname }}</span>
+                                </div>
+                                <span class="text-xs text-ink-300 shrink-0">{{ r.created_at }}</span>
+                            </div>
+                            <p v-if="r.content" class="text-sm text-ink-700 leading-relaxed whitespace-pre-line">{{ r.content }}</p>
+                            <p v-else class="text-xs text-ink-300">该用户只打了分，没有留言</p>
+                        </div>
+                        <!-- 真实总数与已展示条数分开报，不做"共 20 条"的谎报 -->
+                        <p v-if="detailData.review_count > detailData.showing" class="text-xs text-ink-400 text-center pt-1">
+                            仅展示最近 {{ detailData.showing }} 条 · 共 {{ detailData.review_count }} 条评价
+                        </p>
+                    </div>
+                </section>
             </div>
         </div>
     </div>
@@ -411,6 +508,34 @@
     function onImgError(e, p) {
         if (p) p.imgFailed = true;
         else e.target.src = FALLBACK_IMG;
+    }
+
+    // ── 详情弹窗的图片出口 ────────────────────────────────────────
+    // 优先用后端下发的 image_url（商品表里维护的图），没有才回落到上面按名称匹配的老映射。
+    // 顺序不能反：老映射只认 5 个商品名，新商品永远是通用占位；
+    // 落库之后运营在后台换图就能生效，不必再改这个文件。
+    function detailImageOf(p) {
+        if (!p) return '';
+        const url = String(p.image_url || '').trim();
+        if (url) return url;
+        return matchProductImage(p.name);
+    }
+
+    // 价格统一两位小数：后端下发的是 float，直接 {{ }} 渲染会出现「6」而不是「6.00」
+    function money2(v) {
+        return (Number(v) || 0).toFixed(2);
+    }
+
+    // 弹窗打开时锁住背景滚动。用 try 保护：这个文件的内联脚本会被
+    // verify_product_search.js 在 Node vm 里加载（那里没有真实 document.body）。
+    function lockBodyScroll(on) {
+        try {
+            if (typeof document !== 'undefined' && document.body && document.body.style) {
+                document.body.style.overflow = on ? 'hidden' : '';
+            }
+        } catch (e) {
+            // 滚动锁失败不影响弹窗本身
+        }
     }
 
     const fishSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><path d="M3 12c2.2-3.6 6.6-3.6 9 0 2.4 3.6 6.8 3.6 9 0"/><path d="M21 12l3-2.4v4.8z"/><circle cx="9" cy="10" r=".9"/></svg>';
@@ -530,13 +655,21 @@
 
             loadProducts();
 
-            // ── 商品评价（任务书六·4） ──────────────────────────
+            // ── 商品详情弹窗（任务书二·4 商品信息 / 六·4 评价） ──────
             // 评分/条数在 /api/products/ 里已经随列表返回（避免 N+1），
-            // 只有「打开评价列表」时才单独请求 /api/products/<id>/reviews/。
-            const reviewOpen = ref(false);
-            const reviewProduct = ref(null);
-            const reviewLoading = ref(false);
-            const reviewData = ref({ review_count: 0, showing: 0, rating_avg: 0, reviews: [] });
+            // 只有「打开详情」时才单独请求 /api/products/<id>/reviews/。
+            const detailOpen = ref(false);
+            const detailProduct = ref(null);
+            const detailReviewsLoading = ref(false);
+            const detailImgFailed = ref(false);
+            const detailData = ref({ review_count: 0, showing: 0, rating_avg: 0, reviews: [] });
+
+            // 图片出口：库里有 image_url 就用库里的，没有才回落到按名称匹配的老映射。
+            // （第三步把 image 落库后，新商品只要后台维护图片即可，不必再改代码。）
+            const detailImage = computed(function () {
+                if (!detailProduct.value || detailImgFailed.value) return '';
+                return detailImageOf(detailProduct.value);
+            });
 
             // 平均分 → 星串（四舍五入到整星，够直观；精确分值旁边另有数字）
             function starsOf(avg) {
@@ -544,16 +677,23 @@
                 return '★'.repeat(full) + '☆'.repeat(5 - full);
             }
 
-            async function openReviews(p) {
-                reviewProduct.value = p;
-                reviewOpen.value = true;
-                reviewLoading.value = true;
-                reviewData.value = { review_count: 0, showing: 0, rating_avg: 0, reviews: [] };
+            function onDetailImgError() {
+                detailImgFailed.value = true;
+            }
+
+            async function openDetail(p) {
+                if (!p || !p.id) return;
+                detailProduct.value = p;
+                detailImgFailed.value = false;
+                detailOpen.value = true;
+                lockBodyScroll(true);
+                detailReviewsLoading.value = true;
+                detailData.value = { review_count: 0, showing: 0, rating_avg: 0, reviews: [] };
                 try {
                     const resp = await axios.get('/api/products/' + p.id + '/reviews/');
                     const d = resp.data || {};
                     if (d.success) {
-                        reviewData.value = {
+                        detailData.value = {
                             review_count: d.review_count || 0,
                             showing: d.showing || 0,
                             rating_avg: d.rating_avg || 0,
@@ -563,14 +703,34 @@
                 } catch (e) {
                     // 评价拉取失败不该把整页拖垮 —— 弹窗里保持空态即可
                 } finally {
-                    reviewLoading.value = false;
+                    detailReviewsLoading.value = false;
                 }
             }
 
-            function closeReviews() {
-                reviewOpen.value = false;
-                reviewProduct.value = null;
+            function closeDetail() {
+                detailOpen.value = false;
+                detailProduct.value = null;
+                lockBodyScroll(false);
             }
+
+            function scrollToReviews() {
+                try {
+                    const el = document.getElementById('detail-reviews');
+                    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } catch (e) {
+                    // 滚动定位失败不影响查看评价本身
+                }
+            }
+
+            // 保留原入口：点「N 条评价」= 打开详情并直接滚到评价区
+            function openReviews(p) {
+                openDetail(p);
+                setTimeout(scrollToReviews, 80);
+            }
+
+            window.addEventListener('keydown', function (e) {
+                if (e && e.key === 'Escape' && detailOpen.value) closeDetail();
+            });
 
             return {
                 products, loading, error, loadProducts,
@@ -578,8 +738,10 @@
                 // 搜索筛选（任务书二·4）
                 kw, catFilter, fishFilter, filtering, filteredProducts,
                 categoryOptions, fishOptions, clearFilters,
-                reviewOpen, reviewProduct, reviewLoading, reviewData,
-                openReviews, closeReviews, starsOf,
+                // 详情弹窗（任务书二·4 / 六·4）
+                detailOpen, detailProduct, detailData, detailReviewsLoading,
+                detailImage, onDetailImgError, money2,
+                openDetail, closeDetail, openReviews, scrollToReviews, starsOf,
             };
         },
     }).mount('main');
