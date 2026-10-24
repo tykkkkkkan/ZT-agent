@@ -53,13 +53,25 @@ def get_referenced_products() -> list:
     return list(_referenced_products.get() or [])
 
 
-def _remember_product(product) -> None:
+def _remember_product(product, user=None) -> None:
     """登记一个被工具介绍过的商品，供前端渲染「产品名片」。
 
     字段口径必须与 /api/products/ 一致（can_buy 一律取 purchase_guard 判定），
     否则又会出现「卡片说能买、下单页说不能买」的自相矛盾。
+
+    价格同样只走 `agent.pricing.price_fields()` 这一个出口：
+
+    · 个体钓友 / 未登录访客的名片里**根本没有 `wholesale_price` 这个键**；
+      名片是直接下发到浏览器的，前端隐藏等于没隐藏，抓个包就看见了。
+    · 经销商才带 `wholesale_price` + `wholesale_min_qty`，卡片上多一行
+      「经销商价 ¥x/包（N 包起）」。
+
+    改造前这里把零售价与批发价无条件都塞进卡片 —— 等于把批发价发给了所有人，
+    且卡片只认零售价，经销商看到的价格与实际成交价（达到起订量时）对不上。
     """
     try:
+        from agent import pricing
+
         bucket = _referenced_products.get()
         if bucket is None:
             bucket = []
@@ -67,20 +79,27 @@ def _remember_product(product) -> None:
         if any(item["id"] == product.id for item in bucket):
             return
         v = _buyability(product)
-        bucket.append({
+        card = {
             "id": product.id,
             "name": product.name,
             "sku": product.sku or "",
             "spec": product.spec or "",
             "target_fish": product.target_fish or "",
-            "retail_price": float(product.retail_price or 0),
-            "wholesale_price": float(product.wholesale_price or 0),
             "available_stock": v["available_stock"],
             "can_buy": v["can_buy"],
             "buy_block_reason": v["reason"],
             "buy_block_message": v["message"],
             "customer_notice": v.get("customer_notice") or "",
-        })
+            # 商品图（第三步落地）：库里有图就用库里的，前端据此不再按名称猜图
+            "image_url": (getattr(product, "image", "") or "").strip(),
+        }
+        # 价格字段：与 /api/products/ 同一口径（quantity=1 时即单包价）
+        card.update(pricing.price_fields(
+            product,
+            get_current_user() if user is None else user,
+            quantity=1,
+        ))
+        bucket.append(card)
     except Exception:
         # 名片登记失败不影响问答主流程
         logger.exception("登记产品名片失败（product=%s）", getattr(product, "id", None))

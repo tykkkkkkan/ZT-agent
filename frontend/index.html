@@ -507,10 +507,18 @@
                                                         </div>
                                                         <p class="text-xs text-ink-500 truncate">规格：{{ msg.product.spec || '—' }}</p>
                                                         <p v-if="msg.product.target_fish" class="text-xs text-ink-500 truncate">适用鱼种：{{ msg.product.target_fish }}</p>
+                                                        <!-- 价格：唯一口径来自后端 pricing.price_fields()（按身份裁剪）。
+                                                             · 主价用 effective_price（该身份单包成交价），不再写死 retail_price；
+                                                             · 批发价只对经销商下发 —— 个体钓友的响应体里连这个键都没有，
+                                                               所以下面这段天然不会渲染（后端裁剪，不是前端隐藏）。 -->
                                                         <div class="flex items-baseline gap-2 pt-0.5">
-                                                            <span class="text-lg font-bold text-sunset-700">¥{{ msg.product.retail_price }}</span>
+                                                            <span class="text-lg font-bold text-sunset-700">¥{{ money(msg.product.effective_price) }}</span>
                                                             <span class="text-xs text-ink-400">零售价/包</span>
                                                         </div>
+                                                        <p
+                                                            v-if="msg.product.can_see_wholesale && msg.product.wholesale_price"
+                                                            class="text-xs text-brand-700 font-medium"
+                                                        >经销商价 ¥{{ money(msg.product.wholesale_price) }}/包（{{ msg.product.wholesale_min_qty }} 包起）</p>
                                                     </div>
                                                 </div>
                                                 <div class="px-4 pb-4">
