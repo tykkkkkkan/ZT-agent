@@ -189,8 +189,8 @@
                          @click="openDetail(p)">
                         <!-- 有实拍图才渲染 img；无图或加载失败时落到「设计化占位」版式，
                              避免同一张通用占位图在产品列表里反复出现（廉价感的主要来源）。 -->
-                        <img v-if="hasProductImage(p.name) && !p.imgFailed"
-                             :src="productImage(p.name)"
+                        <img v-if="productImageOf(p) && !p.imgFailed"
+                             :src="productImageOf(p)"
                              :alt="p.name"
                              class="w-full h-full"
                              loading="lazy"
@@ -314,7 +314,7 @@
 
                 <div class="w-full sm:w-48 h-44 sm:h-48 rounded-xl overflow-hidden bg-brand-50 shrink-0">
                     <img v-if="detailImage" :src="detailImage" :alt="detailProduct.name"
-                         class="w-full h-full object-cover" @error="detailImgFailed = true">
+                         class="w-full h-full object-cover" @error="onDetailImgError">
                     <div v-else class="media-placeholder">
                         <span class="ph-name">{{ detailProduct.name }}</span>
                         <span class="ph-meta">{{ detailProduct.category || '中渔天下' }}</span>
@@ -498,11 +498,21 @@
         return '';
     }
     function productImage(name) {
-        return matchProductImage(name) || FALLBACK_IMG;
+        return productImageOf(name) || FALLBACK_IMG;
+    }
+    // 商品图的**唯一出口**：先看数据库里的 image_url，再回落到上面的老映射。
+    // 顺序不能反 —— 老映射只认 5 个商品名，新商品永远只有通用占位。
+    // 入参既接受商品对象（列表接口返回的行），也接受商品名（老调用点）。
+    function productImageOf(p) {
+        if (!p) return '';
+        const isObj = typeof p === 'object';
+        const url = isObj ? String(p.image_url || '').trim() : '';
+        const name = isObj ? p.name : String(p);
+        return url || matchProductImage(name);
     }
     // 供模板判断该走 <img> 还是设计化占位
-    function hasProductImage(name) {
-        return !!matchProductImage(name);
+    function hasProductImage(p) {
+        return !!productImageOf(p);
     }
     // 加载失败：标记该产品改走占位版式（比统一换成同一张通用图更体面）
     function onImgError(e, p) {
@@ -511,14 +521,10 @@
     }
 
     // ── 详情弹窗的图片出口 ────────────────────────────────────────
-    // 优先用后端下发的 image_url（商品表里维护的图），没有才回落到上面按名称匹配的老映射。
-    // 顺序不能反：老映射只认 5 个商品名，新商品永远是通用占位；
+    // 与列表卡共用 productImageOf()：库里维护的 image_url 优先，老映射只做回落。
     // 落库之后运营在后台换图就能生效，不必再改这个文件。
     function detailImageOf(p) {
-        if (!p) return '';
-        const url = String(p.image_url || '').trim();
-        if (url) return url;
-        return matchProductImage(p.name);
+        return productImageOf(p);
     }
 
     // 价格统一两位小数：后端下发的是 float，直接 {{ }} 渲染会出现「6」而不是「6.00」
@@ -734,7 +740,7 @@
 
             return {
                 products, loading, error, loadProducts,
-                productImage, hasProductImage, onImgError,
+                productImage, productImageOf, hasProductImage, onImgError,
                 // 搜索筛选（任务书二·4）
                 kw, catFilter, fishFilter, filtering, filteredProducts,
                 categoryOptions, fishOptions, clearFilters,

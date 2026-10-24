@@ -145,6 +145,18 @@ class Products(models.Model):
     retail_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='零售价', db_comment='零售价')
     wholesale_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name='批发价', db_comment='批发价')
     description = models.TextField(blank=True, null=True, verbose_name='产品描述', db_comment='产品描述')
+    # 商品图（任务书四·2「产品名片含图片」的落点）
+    # 用 CharField 存路径而不是 ImageField，三个原因：
+    #   ① 本表是 inspectdb 出来的 managed=False 老表，加 ImageField 还得配 MEDIA_ROOT；
+    #   ② 项目没装 Pillow、没配 media 路由，ImageField 等于凭空引一条上传链路；
+    #   ③ 前端由 config/urls.py 的 serve_frontend_asset 托管 frontend/assets/，
+    #      存 `/assets/images/xxx.webp` 直接就能访问（管理端/前台同一份）。
+    # 改造前产品图是按商品名写死在两个前端文件里的映射 —— 新商品永远显示通用占位。
+    image = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='产品图片',
+        db_comment='产品图片路径（/assets/images/xxx.webp 或完整 URL，留空走占位图）',
+    )
     # P0 修复：软删除标志（替代硬删除，下架不丢历史订单关联）
     is_active = models.BooleanField(default=True, db_index=True, verbose_name='是否在售', db_comment='是否在售（软删除）')
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True, verbose_name='创建时间', db_comment='创建时间')

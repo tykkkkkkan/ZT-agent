@@ -183,7 +183,7 @@ def mark_as_read(modeladmin, request, queryset):
 # ══════════════════════════════════════════════════════════════
 @admin.register(Products)
 class ProductsAdmin(ZYQuickToggleAdmin):
-    list_display = ('id', 'sku', 'name', 'category', 'spec', 'target_fish', 'retail_price',
+    list_display = ('id', 'sku', 'name', 'image_thumb', 'category', 'spec', 'target_fish', 'retail_price',
                     'wholesale_price', 'is_active_display', 'quick_ops')
     # 任务书二·4：分类进搜索与筛选，后台是分类的唯一维护入口
     search_fields = ('sku', 'name', 'category', 'spec', 'description')
@@ -191,6 +191,8 @@ class ProductsAdmin(ZYQuickToggleAdmin):
     list_editable = ('retail_price', 'wholesale_price')      # 列表内直接改价
     ordering = ('id',)                                       # id 升序（1,2,3...）
     list_per_page = 25
+    # 图片：只读预览 + 可编辑的路径字段（image 本身可写，会出现在详情表单里）
+    readonly_fields = ('image_preview',)
 
     # 行内「上架 / 下架」一键切换
     toggle_field = 'is_active'
@@ -201,6 +203,33 @@ class ProductsAdmin(ZYQuickToggleAdmin):
     @admin.display(description='在售', boolean=True)
     def is_active_display(self, obj):
         return obj.is_active
+
+    @admin.display(description='图片')
+    def image_thumb(self, obj):
+        """列表缩略图。没有图就显示「—」，让"哪些商品还没配图"一眼可见。"""
+        url = (getattr(obj, 'image', '') or '').strip()
+        if not url:
+            return format_html('<span style="color:var(--zy-text-mute);">—</span>')
+        return format_html(
+            '<img src="{}" alt="" loading="lazy" '
+            'style="height:34px;width:34px;object-fit:cover;border-radius:6px;'
+            'border:1px solid var(--zy-line);">',
+            url,
+        )
+
+    @admin.display(description='图片预览')
+    def image_preview(self, obj):
+        url = (getattr(obj, 'image', '') or '').strip()
+        if not url:
+            return format_html(
+                '<span style="color:var(--zy-text-mute);">'
+                '未设置 —— 前台会显示品牌占位图（不是错误，只是没有实拍图）</span>'
+            )
+        return format_html(
+            '<img src="{}" alt="" style="max-height:180px;max-width:100%;'
+            'border-radius:8px;border:1px solid var(--zy-line);">',
+            url,
+        )
 
 
 # ══════════════════════════════════════════════════════════════

@@ -491,7 +491,7 @@
                                             <template v-else-if="msg.cardType === 'product'">
                                                 <div class="flex items-stretch">
                                                     <img
-                                                        :src="productImage(msg.product.name)"
+                                                        :src="productImage(msg.product)"
                                                         @error="onImgError"
                                                         :alt="msg.product.name"
                                                         loading="lazy" decoding="async"

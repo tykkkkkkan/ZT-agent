@@ -139,19 +139,27 @@ createApp({
             return sid;
         };
 
-        // ========== 产品图本地映射（与 products.html 保持同一套） ==========
-        // Products 表没有图片字段，产品图按名称映射到本地资源
+        // ========== 产品图（与 products.html 保持同一套规则） ==========
+        // 商品表已有 image 字段（migration 0026）：**先**用后端下发的 image_url，
+        // 没有才回落到下面按名称匹配的老映射。
+        // 顺序不能反 —— 这段映射只认 5 个商品名，新商品会永远显示通用占位；
+        // 落库之后后台换图即生效，不必再改代码。
         const PRODUCT_IMAGES = {
-            '红虫颗粒': 'assets/images/product-hongchong.png',
-            '九一八': 'assets/images/product-jiuyiba.png',
-            '螺鲤3号': 'assets/images/product-luoli.png',
-            '蓝鲫X5': 'assets/images/product-lanji.png',
-            '速攻2号': 'assets/images/product-sugong.png',
+            '红虫颗粒': 'assets/images/product-hongchong.webp',
+            '九一八': 'assets/images/product-jiuyiba.webp',
+            '螺鲤3号': 'assets/images/product-luoli.webp',
+            '蓝鲫X5': 'assets/images/product-lanji.webp',
+            '速攻2号': 'assets/images/product-sugong.webp',
         };
         const FALLBACK_IMG = 'assets/images/fallback.svg';
 
-        // 产品名 → 本地产品图（未知产品回退通用饵料袋）
-        const productImage = (name) => {
+        // 入参既接受商品对象（名片 / 接口行），也接受商品名（老调用点）
+        const productImage = (p) => {
+            if (!p) return FALLBACK_IMG;
+            const isObj = typeof p === 'object';
+            const url = isObj ? String(p.image_url || '').trim() : '';
+            if (url) return url;
+            const name = isObj ? p.name : String(p);
             if (!name) return FALLBACK_IMG;
             if (PRODUCT_IMAGES[name]) return PRODUCT_IMAGES[name];
             for (const key of Object.keys(PRODUCT_IMAGES)) {

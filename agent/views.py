@@ -584,6 +584,8 @@ def product_list(request):
                 "spec": p.spec or "",
                 "target_fish": p.target_fish or "",
                 "description": p.description or "",
+                # ── 商品图（任务书四·2）：库里维护的路径；空串表示没图，前端走占位 ──
+                "image_url": (p.image or "").strip(),
                 "is_active": p.is_active,
                 "stock": (inv.stock or 0) if inv else 0,
                 "available_stock": verdict["available_stock"],

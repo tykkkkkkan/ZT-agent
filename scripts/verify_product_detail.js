@@ -203,6 +203,21 @@ if (s) {
         check('starsOf 5 分 → 五星', s.starsOf(5) === '★★★★★');
         check('starsOf 0 分 → 五星空', s.starsOf(0) === '☆☆☆☆☆');
 
+        // 模板里用到的每个 handler 都必须真的被 return ——
+        // @click="onDetailImgError" 忘了 return 的后果是运行时 "is not a function"，
+        // 只有真点一下图才会暴露。
+        const pageHtml = fs.readFileSync(HTML, 'utf8');
+        const handlers = new Set();
+        let mm;
+        const reCall = /@(?:click|error)(?:\.[a-z]+)?="([a-zA-Z_$][\w$]*)\s*\(/g;
+        while ((mm = reCall.exec(pageHtml))) handlers.add(mm[1]);
+        const reBare = /@(?:click|error)(?:\.[a-z]+)?="([a-zA-Z_$][\w$]*)\s*"/g;
+        while ((mm = reBare.exec(pageHtml))) handlers.add(mm[1]);
+        const missingHandlers = [...handlers].filter((h) => !(h in s)).sort();
+        check(`模板用到的 ${handlers.size} 个 handler 都已被 return`,
+            missingHandlers.length === 0,
+            missingHandlers.length ? '缺失：' + missingHandlers.join(', ') : [...handlers].sort().join(', '));
+
         finish();
     })();
 }
