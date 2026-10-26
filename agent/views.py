@@ -12,6 +12,7 @@ P2 增强：管理类 API 加 staff 鉴权（session auth，同源 cookie 自动
 import json
 import logging
 import random
+import re
 import uuid
 from datetime import datetime
 from functools import wraps
@@ -32,6 +33,7 @@ from agent.services import (
 )
 
 logger = logging.getLogger(__name__)
+SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 # ════════════════════════════════════════════════════════════════
@@ -145,6 +147,50 @@ def csrf_protect_if_session(view_func):
     return wrapper
 
 
+def _valid_session_id(session_id: str) -> bool:
+    """会话 ID 只允许使用数据库可容纳的安全字符集。"""
+    return isinstance(session_id, str) and bool(SESSION_ID_RE.fullmatch(session_id))
+
+
+def _session_belongs_to_user(session_id: str, user, *, allow_unowned: bool = False) -> bool:
+    """校验会话是否属于当前用户。
+
+    AgentRun 在每轮对话结束时记录 user_id。历史数据或正在生成的首轮可能还没有
+    trace；没有可确认归属的旧会话默认拒绝访问，避免把“查不到主人”误当成
+    “谁都能访问”。一旦会话已有归属，其他用户不能靠猜 session_id 读取、反馈或转人工。
+    """
+    user_id = getattr(user, "id", None) or getattr(user, "pk", None)
+    if not user_id:
+        return False
+
+    from agent.models import AgentRun
+
+    owner_ids = set(
+        AgentRun.objects.filter(session_id=session_id)
+        .exclude(user_id__isnull=True)
+        .values_list("user_id", flat=True)
+        .distinct()
+    )
+    if not owner_ids:
+        return allow_unowned
+    return owner_ids == {user_id}
+
+
+def _session_error(session_id: str, user, *, allow_unowned: bool = True):
+    """返回会话参数或归属错误响应；通过时返回 None。"""
+    if not _valid_session_id(session_id):
+        return JsonResponse(
+            {"success": False, "code": "INVALID_SESSION_ID", "message": "session_id 格式不合法"},
+            status=400,
+        )
+    if not _session_belongs_to_user(session_id, user, allow_unowned=allow_unowned):
+        return JsonResponse(
+            {"success": False, "code": "SESSION_FORBIDDEN", "message": "无权访问该会话"},
+            status=403,
+        )
+    return None
+
+
 def staff_required(view_func):
     """要求 staff（后台管理员）登录，session 与 JWT 双通道。
 
@@ -194,7 +240,17 @@ def chat(request):
     if not user_message:
         return JsonResponse({"error": "message 不能为空"}, status=400)
 
-    session_id = (body.get("session_id") or "").strip() or uuid.uuid4().hex
+    supplied_session_id = (body.get("session_id") or "").strip()
+    session_id = supplied_session_id or uuid.uuid4().hex
+    if not _valid_session_id(session_id):
+        return JsonResponse(
+            {"error": "session_id 格式不合法，长度不能超过 64 个字符"},
+            status=400,
+        )
+
+    me, _ = _resolve_request_user(request)
+    if supplied_session_id and not _session_belongs_to_user(session_id, me):
+        return JsonResponse({"error": "无权继续该会话"}, status=403)
 
     # 输入安全审核（C 端客服合规前置）：命中脏话 / 注入 / 刷屏 / 超长 → 拒绝
     ok, reason = check_message(user_message)
@@ -210,7 +266,6 @@ def chat(request):
     # 把当前登录用户注入工具层上下文 —— AI 才能回答「我的订单到哪了」（任务书五·3）：
     # 工具函数拿不到 request，`query_my_orders` 依赖这个身份按归属规则查自己的订单。
     from agent.tools import set_current_user
-    me, _ = _resolve_request_user(request)
 
     # 先落库用户消息
     _save_conversation(session_id, "user", user_message)
@@ -274,6 +329,11 @@ def history(request, session_id):
     而已经评过的消息不该再摆两个按钮（也顺手堵住了重复刷的入口）。
     """
     try:
+        user, _ = _resolve_request_user(request)
+        error = _session_error(session_id, user)
+        if error:
+            return error
+
         from agent.models import Conversations, MessageFeedback
         records = Conversations.objects.filter(
             session_id=session_id
@@ -338,6 +398,11 @@ def feedback(request):
         return JsonResponse(
             {"success": False, "message": "缺少 message_id / session_id"}, status=400)
 
+    user, _ = _resolve_request_user(request)
+    error = _session_error(session_id, user)
+    if error:
+        return error
+
     from agent.models import Conversations, MessageFeedback
 
     # 双校验：这条消息既要存在、是 AI 回答，又必须属于客户端声明的这个会话
@@ -348,7 +413,6 @@ def feedback(request):
         return JsonResponse(
             {"success": False, "message": "找不到这条回答（可能已被清理）"}, status=404)
 
-    user, _ = _resolve_request_user(request)
     user_id = getattr(user, "id", None)
 
     # 这一问一答一起留档：只有回答没有提问，复盘时看不懂"它为什么答成这样"
@@ -433,6 +497,11 @@ def handoff(request):
     if not session_id:
         return JsonResponse({"success": False, "message": "缺少 session_id"}, status=400)
 
+    me, _ = _resolve_request_user(request)
+    error = _session_error(session_id, me)
+    if error:
+        return error
+
     from agent.models import SupportTicket
     from agent.tools import (
         drain_handoff,
@@ -441,8 +510,6 @@ def handoff(request):
         set_current_session,
         set_current_user,
     )
-
-    me, _ = _resolve_request_user(request)
 
     pending = (
         SupportTicket.objects

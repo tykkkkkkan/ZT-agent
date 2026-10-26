@@ -132,6 +132,90 @@ def test_csrf_boundary_distinguishes_valid_jwt_from_session():
         assert endpoint(session_request).status_code == 403
 
 
+def test_session_owner_check_rejects_foreign_agent_run():
+    """防止拿到别人的 session_id 后读取或继续操作整段会话。"""
+    agent_run_manager = MagicMock()
+    agent_run_manager.filter.return_value.exclude.return_value.values_list.return_value.distinct.return_value = [42]
+    fake_models = SimpleNamespace(
+        AgentRun=SimpleNamespace(objects=agent_run_manager),
+    )
+
+    with patch.dict(sys.modules, {"agent.models": fake_models}):
+        assert views._valid_session_id("session-1")
+        assert not views._session_belongs_to_user(
+            "session-1", SimpleNamespace(id=7), allow_unowned=False
+        )
+
+
+def test_chat_rejects_foreign_session_before_writing_message():
+    """防止跨用户继续聊天时先把消息写进对方会话。"""
+    request = request_with_json(
+        "POST",
+        "/api/agent/chat/",
+        {"session_id": "foreign-session", "message": "继续刚才的问题"},
+    )
+
+    with patch.object(views, "_session_belongs_to_user", return_value=False), patch.object(
+        views, "_save_conversation"
+    ) as save:
+        response = views.chat(request)
+
+    assert response.status_code == 403
+    assert json_body(response)["error"] == "无权继续该会话"
+    save.assert_not_called()
+
+
+def test_history_rejects_foreign_session():
+    """防止历史接口按客户端传入的 session_id 泄露对话内容。"""
+    request = request_with_json("GET", "/api/agent/history/foreign-session/", {})
+
+    with patch.object(views, "_session_belongs_to_user", return_value=False):
+        response = views.history(request, "foreign-session")
+
+    assert response.status_code == 403
+    assert json_body(response)["code"] == "SESSION_FORBIDDEN"
+
+
+def test_history_rejects_invalid_session_id():
+    """防止超长或含特殊字符的会话标识进入查询链路。"""
+    request = request_with_json("GET", "/api/agent/history/bad/", {})
+
+    response = views.history(request, "x" * 65)
+
+    assert response.status_code == 400
+    assert json_body(response)["code"] == "INVALID_SESSION_ID"
+
+
+def test_feedback_rejects_foreign_session():
+    """防止用户给别人的回答写入反馈记录。"""
+    request = request_with_json(
+        "POST",
+        "/api/agent/feedback/",
+        {"message_id": 12, "session_id": "foreign-session", "rating": 1},
+    )
+
+    with patch.object(views, "_session_belongs_to_user", return_value=False):
+        response = views.feedback(request)
+
+    assert response.status_code == 403
+    assert json_body(response)["code"] == "SESSION_FORBIDDEN"
+
+
+def test_handoff_rejects_foreign_session():
+    """防止用户拿别人的会话创建或复用转人工工单。"""
+    request = request_with_json(
+        "POST",
+        "/api/agent/handoff/",
+        {"session_id": "foreign-session", "reason": "user_request"},
+    )
+
+    with patch.object(views, "_session_belongs_to_user", return_value=False):
+        response = views.handoff(request)
+
+    assert response.status_code == 403
+    assert json_body(response)["code"] == "SESSION_FORBIDDEN"
+
+
 def test_register_and_login_success_without_database():
     """防止注册成功后 token 响应缺字段，或登录成功路径意外触碰真实用户表。"""
     user = SimpleNamespace(id=11, username="alice", email="alice@example.com")
@@ -418,7 +502,8 @@ def test_handoff_creates_ticket_and_returns_ticket_number():
 
     with patch.dict(sys.modules, {"agent.models": fake_models}), patch.object(
         views, "_resolve_request_user", return_value=(request.user, True)
-    ), patch.object(views, "_ticket_payload", return_value={"ticket_no": ticket.ticket_no}), patch.object(
+    ), patch.object(views, "_session_belongs_to_user", return_value=True), patch.object(
+        views, "_ticket_payload", return_value={"ticket_no": ticket.ticket_no}), patch.object(
         tools, "_ticket_transcript", return_value=[]
     ), patch.object(tools, "get_referenced_sources", return_value=[]), patch.object(
         tools, "get_referenced_orders", return_value=[]
