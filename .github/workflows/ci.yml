@@ -26,17 +26,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
       - name: Syntax check (py_compile)
         run: |
           python -m compileall -q agent config 2>/dev/null || python -m py_compile $(git ls-files '*.py')
 
-      - name: RAG engine unit tests (pure, no DB)
-        run: python tests/test_rag.py
+      - name: Full test suite with coverage
+        run: pytest tests/ -q --cov=agent --cov-report=term-missing
+
+      - name: Ruff lint
+        run: ruff check agent config tests
 
       - name: Django system check
         run: python manage.py check
-
-      - name: Module smoke tests (best-effort)
-        run: python tests/test_chat.py
-        continue-on-error: true

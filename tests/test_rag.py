@@ -16,8 +16,8 @@ import sys
 # 允许直接 import agent 包（本文件在 tests/ 下，项目根是上一级；agent/__init__.py 为空，rag.py 纯标准库）
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agent.rag import RAGEngine, chunk_text, tokenize
 from agent.knowledge_data import get_knowledge_rag
+from agent.rag import RAGEngine, chunk_text, tokenize
 
 
 def test_chunking():

@@ -19,7 +19,7 @@ from functools import wraps
 from django.db import transaction
 from django.http import JsonResponse, StreamingHttpResponse
 from django.utils import timezone
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from agent.agent import _save_conversation, agent_stream
@@ -125,6 +125,26 @@ def login_required(view_func):
     return wrapper
 
 
+def csrf_protect_if_session(view_func):
+    """JWT 请求免 CSRF，Session 请求必须通过 CSRF 校验。
+
+    C 端前端通过 Authorization 头携带 JWT，不依赖浏览器自动发送的 Cookie；
+    后台和兼容旧页面的 Session 请求则必须带 CSRF Token。外层标记为 exempt
+    是为了让中间件把判断交给这里，而不是在看到 Bearer 请求时提前拦截。
+    """
+    protected_view = csrf_protect(view_func)
+
+    @csrf_exempt
+    @wraps(view_func)
+    def wrapper(request, *args, **kwargs):
+        authorization = request.META.get("HTTP_AUTHORIZATION", "")
+        if authorization.lower().startswith("bearer ") and _jwt_user(request)[1]:
+            return view_func(request, *args, **kwargs)
+        return protected_view(request, *args, **kwargs)
+
+    return wrapper
+
+
 def staff_required(view_func):
     """要求 staff（后台管理员）登录，session 与 JWT 双通道。
 
@@ -160,7 +180,7 @@ def _server_error(e):
 # ══════════════════════════════════════════════════════════════
 # AI 聊天接口（SSE 真·流式）
 # ══════════════════════════════════════════════════════════════
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 @login_required
 def chat(request):
@@ -282,7 +302,7 @@ def history(request, session_id):
 # ══════════════════════════════════════════════════════════════
 # AI 回答反馈（👍 / 👎）—— 把"答得不好"变成可处理的问题
 # ══════════════════════════════════════════════════════════════
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 @login_required
 def feedback(request):
@@ -388,7 +408,7 @@ def feedback(request):
 # ══════════════════════════════════════════════════════════════
 # 转人工（工单）—— 顾客主动点按钮
 # ══════════════════════════════════════════════════════════════
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 @login_required
 def handoff(request):
@@ -415,8 +435,11 @@ def handoff(request):
 
     from agent.models import SupportTicket
     from agent.tools import (
-        drain_handoff, handoff_to_human, reset_handoff,
-        set_current_session, set_current_user,
+        drain_handoff,
+        handoff_to_human,
+        reset_handoff,
+        set_current_session,
+        set_current_user,
     )
 
     me, _ = _resolve_request_user(request)
@@ -469,7 +492,7 @@ def _ticket_payload(ticket) -> dict:
 # ══════════════════════════════════════════════════════════════
 # 联系表单接口
 # ══════════════════════════════════════════════════════════════
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 @login_required
 def contact_submit(request):
@@ -501,7 +524,7 @@ def contact_submit(request):
 # ══════════════════════════════════════════════════════════════
 # 定制表单接口
 # ══════════════════════════════════════════════════════════════
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 @login_required
 def custom_submit(request):
@@ -613,7 +636,7 @@ def product_list(request):
 # ══════════════════════════════════════════════════════════════
 # 创建订单（下单页提交）
 # ══════════════════════════════════════════════════════════════
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 @login_required
 def create_order_api(request):
@@ -801,7 +824,7 @@ def _err(message, code=400):
     return JsonResponse({"success": False, "message": message}, status=code)
 
 
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 @login_required
 def query_orders(request):
@@ -906,16 +929,13 @@ def query_orders(request):
 # `agent/me_views.py`（`_serialize_order`）以及既有验证脚本
 # （scripts/verify_order_payment.py、verify_reviews.py）的 `from agent.views import ...`
 # 继续有效，一处都不用改。AI 对话的订单名片也共用同一套 actions 判定，避免口径漂移。
-from agent.order_presenter import (  # noqa: E402
-    order_actions as _order_actions,
-    serialize_order as _serialize_order,
-)
+from agent.order_presenter import serialize_order as _serialize_order  # noqa: E402
 
 
 # ══════════════════════════════════════════════════════════════
 # 查询单个订单（下单成功页查询）
 # ══════════════════════════════════════════════════════════════
-@csrf_exempt
+@csrf_protect_if_session
 @require_GET
 @login_required
 def order_detail(request, order_no):
@@ -958,7 +978,7 @@ def order_detail(request, order_no):
 # ══════════════════════════════════════════════════════════════
 # 模拟支付（任务书五·1）
 # ══════════════════════════════════════════════════════════════
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 @login_required
 def pay_order_api(request, order_no):
@@ -1110,7 +1130,7 @@ def product_reviews_api(request, product_id):
 #   POST /api/orders/<order_no>/ship/
 #   Body: {"ship_company": "顺丰", "tracking_no": "SF1234567890"}
 #
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 @staff_required
 def ship_order_api(request, order_no):
@@ -1147,7 +1167,7 @@ def ship_order_api(request, order_no):
                          "message": result.message})
 
 
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 @staff_required
 def cancel_order_api(request, order_no):
@@ -1174,7 +1194,7 @@ def cancel_order_api(request, order_no):
                          "message": result.message})
 
 
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 @staff_required
 def return_order_api(request, order_no):
@@ -1243,7 +1263,7 @@ def _serialize_product(p, inv_map=None, rating_map=None, viewer=None, mask_prici
     return data
 
 
-@csrf_exempt
+@csrf_protect_if_session
 @require_http_methods(["GET", "POST"])
 @staff_required
 def products_collection(request):
@@ -1314,7 +1334,7 @@ def products_collection(request):
         return _server_error(e)
 
 
-@csrf_exempt
+@csrf_protect_if_session
 @require_http_methods(["GET", "PATCH", "PUT", "DELETE"])
 @staff_required
 def product_detail_api(request, product_id):
@@ -1505,7 +1525,7 @@ def coordination_inbound_api(request):
     })
 
 
-@csrf_exempt
+@csrf_protect_if_session
 @require_http_methods(["PATCH", "PUT"])
 @staff_required
 def inventory_update_api(request, product_id):
@@ -1643,7 +1663,7 @@ def custom_requests_list(request):
         return _server_error(e)
 
 
-@csrf_exempt
+@csrf_protect_if_session
 @require_http_methods(["GET", "PATCH", "DELETE"])
 @staff_required
 def contact_message_api(request, message_id):
@@ -1687,7 +1707,7 @@ def contact_message_api(request, message_id):
     })
 
 
-@csrf_exempt
+@csrf_protect_if_session
 @require_http_methods(["GET", "PATCH", "DELETE"])
 @staff_required
 def custom_request_api(request, request_id):

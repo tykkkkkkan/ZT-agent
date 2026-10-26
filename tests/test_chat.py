@@ -11,14 +11,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 import django
+
 django.setup()
 
 
 def test_imports():
-    from agent.agent import agent_stream, _parse_tool_args, _load_history
-    from agent.tools import TOOL_SCHEMAS, TOOL_REGISTRY, call_tool
-    from agent.prompts import load_prompt
     from agent import llm
+    from agent.agent import _load_history, _parse_tool_args, agent_stream
+    from agent.prompts import load_prompt
+    from agent.tools import TOOL_REGISTRY, TOOL_SCHEMAS, call_tool
 
     # 契约：Schema 与实现必须一一对应（工具增减不该让测试假失败，漏注册才该报警）
     schema_names = {s["function"]["name"] for s in TOOL_SCHEMAS}

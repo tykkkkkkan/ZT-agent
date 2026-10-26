@@ -39,4 +39,6 @@ ignore = [
 minversion = "8.0"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-q --no-header"
+# test_agent.py 是 Day2 的裸调演示脚本：import 期就要求 DEEPSEEK_API_KEY，缺 key 直接 SystemExit，
+# 会让整套用例 INTERNALERROR。CI 里 key 是空的，必须排除；要跑它请手动 python tests/test_agent.py。
+addopts = "-q --no-header --ignore=tests/test_agent.py"

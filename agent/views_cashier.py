@@ -45,7 +45,7 @@ from agent.cashier import (
 from agent.me_helpers import my_orders_q
 from agent.models import Orders, PayTicket
 from agent.user_wallet import UserWalletError, serialize_transaction, wallet_balance
-from agent.views import _resolve_request_user, _server_error
+from agent.views import _resolve_request_user, _server_error, csrf_protect_if_session
 
 # 订单状态把"能不能付款"这件事说清楚了 → 用 HTTP 语义表达，前端好分支：
 #   404 找不到订单/凭据；409 订单状态与请求冲突（已付/已退/已取消/历史单）；400 其它
@@ -82,7 +82,7 @@ def _find_order(request, order_no, me):
 # ════════════════════════════════════════════════════════════════
 # PC 端：开票
 # ════════════════════════════════════════════════════════════════
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 def create_ticket_api(request, order_no):
     """POST /api/pay/<order_no>/ticket/ —— 开一张收银凭据（在有效期内复用）。"""
@@ -153,7 +153,7 @@ def ticket_status_api(request, order_no):
 # ════════════════════════════════════════════════════════════════
 # PC 端：余额支付（第二条入账通路）
 # ════════════════════════════════════════════════════════════════
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 def balance_pay_api(request, order_no):
     """POST /api/pay/<order_no>/balance/ —— 用钱包余额支付【需登录 + 归属校验】。

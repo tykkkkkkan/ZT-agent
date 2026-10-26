@@ -1712,7 +1712,6 @@ class TicketStatusFilter(admin.SimpleListFilter):
         if v == 'overdue':
             # 超时判定与模型里的 is_overdue 同一口径：还没首响且已过 SLA。
             # 用 SQL 表达是为了能在列表里筛，而不是取出来再在 Python 里过滤。
-            now = timezone.now()
             q = Q(first_reply_at__isnull=True,
                   status__in=[S.OPEN, S.ASSIGNED])
             overdue_ids = [
@@ -2156,6 +2155,7 @@ class KnowledgeChunkAdmin(ZYModelAdmin):
     def _run_search(self, backend: str, query: str, top_k: int, min_score: float) -> dict:
         """跑一次检索并整理成模板要的形状；任何异常都收进 panel 而不是 500。"""
         from django.utils import timezone as _tz
+
         from agent.knowledge_data import get_engine
 
         label = dict(self.SEARCH_TEST_BACKENDS).get(backend, backend)
