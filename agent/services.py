@@ -426,6 +426,15 @@ def transition_order(
     with transaction.atomic():
         # 行级锁：防止并发发货/取消同一订单
         order = Orders.objects.select_for_update().get(pk=order.pk)
+        # 锁内必须重新校验状态：锁外的检查只代表调用方拿到对象时的快照。
+        # 两个并发请求可能同时通过锁外检查，第二个拿到锁后必须看到第一个
+        # 请求已经写入的状态，否则会重复扣库存或重复退款。
+        if order.status not in allowed[to_status]:
+            raise OrderTransitionError(
+                f"订单 {order.order_no} 当前状态为「{order.status}」，"
+                f"无法跃迁到「{to_status}」。",
+                code="invalid_transition",
+            )
 
         inv: Optional[Inventory] = None
         if to_status == OrderStatus.SHIPPED:

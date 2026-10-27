@@ -436,7 +436,7 @@ data: {"done": true, "session_id": "abc123"}
 |--------|------|------|----------|
 | `query_product` | 产品名 / **分类** / **适用鱼种**（如"红虫颗粒"/"薯香饵"/"鲫鱼"） | 分类、规格、适用鱼种、价格（**按登录身份给：钓友只有零售价，经销商多一行批发价与起订量**）、可购状态、**真实评分与评价条数** | `products` 表 + `purchase_guard` + `reviews` + `pricing` |
 | `check_inventory` | 产品名（如"螺鲤3号"） | 总库存 / 已预占 / **可用库存**、是否低于预警线 | `inventory` + `products` 表 |
-| `get_order_status` | 订单号（如"DD20240801"） | 订单状态、商品、金额、**支付状态**、收货地址与期望交期、物流、售后进展 | `orders` 表 |
+| `get_order_status` | 当前用户自己的订单号（如"DD20240801"） | 订单状态、商品、金额、**支付状态**、收货地址与期望交期、物流、售后进展；订单不存在或不属于当前账号统一拒绝 | `orders` 表 + `my_orders_q` |
 | `query_orders_by_phone` | 下单手机号（**须为本人账号绑定的号码，需登录**） | 该号码名下全部订单（真实总笔数 + 物流 + 售后）；未登录或填他人号码一律拒绝 | `orders` 表 + `me_helpers.my_orders_q` |
 | `query_my_orders` | 无（按登录账号） | 当前登录客户自己的最近订单（含支付状态、物流与售后） | `orders` 表 + `me_helpers.my_orders_q` |
 | `calculate_quote` | 商品清单（name + qty） | 单价、小计、合计 + 不可购/超量提醒（单价走 `pricing.price_for`，与下单落库价同源） | `products` 表 + `pricing` |

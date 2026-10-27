@@ -43,7 +43,7 @@ from agent.cashier import (
     ticket_payload,
 )
 from agent.me_helpers import my_orders_q
-from agent.models import Orders, PayTicket
+from agent.models import Orders, PayTicket, PayTicketStatus
 from agent.user_wallet import UserWalletError, serialize_transaction, wallet_balance
 from agent.views import _resolve_request_user, _server_error, csrf_protect_if_session
 
@@ -214,6 +214,14 @@ def ticket_info_api(request, token):
     """GET /api/pay/ticket/<token>/ —— 手机确认页的订单摘要（脱敏）。"""
     try:
         ticket = load_ticket(token)
+        if ticket.status == PayTicketStatus.PENDING and ticket.is_expired:
+            ticket.status = PayTicketStatus.EXPIRED
+            ticket.save(update_fields=["status"])
+        if ticket.status == PayTicketStatus.EXPIRED:
+            return _error(
+                "二维码已过期，请回到收银台刷新后重新扫码。",
+                "expired",
+            )
         order = Orders.objects.filter(order_no=ticket.order_no).first()
         return JsonResponse({
             "success": True,

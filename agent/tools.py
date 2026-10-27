@@ -484,14 +484,22 @@ def check_inventory(name: str) -> str:
 # 订单状态查询
 # ──────────────────────────────────────────────────────────────
 def get_order_status(order_no: str) -> str:
-    """按订单号查询订单状态（含物流与售后进展）。"""
+    """按订单号查询当前用户自己的订单状态（含物流与售后进展）。"""
+    user = get_current_user()
+    if user is None or not getattr(user, "is_authenticated", False):
+        return "为保护客户隐私，请先登录后查询自己的订单。"
+
     try:
-        order = Orders.objects.filter(order_no=order_no).first()
+        from agent.me_helpers import my_orders_q
+
+        order = Orders.objects.filter(
+            my_orders_q(user), order_no=order_no,
+        ).first()
     except Exception as e:
         return f"查询订单出错：{e}"
 
     if not order:
-        return f"没找到订单号「{order_no}」，麻烦确认下号码？"
+        return "订单不存在或不属于当前账号，请确认订单号或登录对应账号查询。"
 
     # 订单名片：客户问「到哪了」时，回答之外再给一张结构化进度卡（可直接去支付/看物流）
     _remember_order(order)
@@ -1009,7 +1017,7 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_order_status",
-            "description": "按订单号查询订单状态、金额、下单时间、物流信息，以及售后进展（退货申请中/已同意/已拒绝、客户是否已确认收货）。客户问「我的货到哪了」「我申请的退货怎么样了」时都应调用本工具",
+            "description": "按订单号查询当前登录用户自己的订单状态、金额、下单时间、物流信息和售后进展。订单不存在或不属于当前账号时会统一拒绝；客户未提供订单号时使用 query_my_orders",
             "parameters": {
                 "type": "object",
                 "properties": {
