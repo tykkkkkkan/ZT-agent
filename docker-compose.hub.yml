@@ -64,7 +64,7 @@ services:
       DB_NAME: agent_db
       DB_USER: root
       DB_PASSWORD: ${DB_PASSWORD:-123456}
-      DEBUG: ${DEBUG:-True}
+      DEBUG: ${DEBUG:-False}
       # 末尾必须有 web：容器间调用时 Host 头为容器名，否则被 DisallowedHost 拦截
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-127.0.0.1,localhost},web
       # 不要在此声明 DJANGO_SECRET_KEY：`.env` 缺该变量时 `:-` 会注入空字符串，

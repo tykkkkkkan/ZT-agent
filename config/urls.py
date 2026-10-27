@@ -13,6 +13,7 @@ from django.db import connection
 from django.conf import settings
 
 import os
+import logging
 import mimetypes
 from pathlib import Path
 from dotenv import load_dotenv
@@ -33,6 +34,8 @@ from agent.views_admin import admin_dashboard
 from agent.manage_views import manage_login, manage_logout
 from rest_framework_simplejwt.views import TokenRefreshView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+
+logger = logging.getLogger(__name__)
 
 FRONTEND_DIR = Path(settings.BASE_DIR) / "frontend"
 
@@ -107,7 +110,8 @@ def test_ai(request):
             "answer": answer,
         })
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        logger.exception("test_ai upstream failed: %s", e)
+        return JsonResponse({"error": "upstream_unavailable"}, status=500)
 
 
 def healthz(request):
@@ -128,7 +132,8 @@ def healthz(request):
             cur.fetchone()
         checks["database"] = "ok"
     except Exception as e:  # noqa: BLE001
-        checks["database"] = f"error: {e}"
+        logger.exception("healthz database check failed: %s", e)
+        checks["database"] = "error"
 
     # 2) 向量库持久化目录
     chroma_dir = settings.BASE_DIR / "chroma_data"
@@ -143,7 +148,8 @@ def healthz(request):
             cache.get("__health__")
             checks["redis"] = "ok"
         except Exception as e:  # noqa: BLE001
-            checks["redis"] = f"error: {e}"
+            logger.exception("healthz redis check failed: %s", e)
+            checks["redis"] = "error"
     else:
         checks["redis"] = "not_configured(skip)"
 

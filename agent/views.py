@@ -176,8 +176,13 @@ def _session_belongs_to_user(session_id: str, user, *, allow_unowned: bool = Fal
     return owner_ids == {user_id}
 
 
-def _session_error(session_id: str, user, *, allow_unowned: bool = True):
-    """返回会话参数或归属错误响应；通过时返回 None。"""
+def _session_error(session_id: str, user, *, allow_unowned: bool = False):
+    """返回会话参数或归属错误响应；通过时返回 None。
+
+    默认 strict：查不到归属的会话一律拒绝，与 chat() 的口径保持一致。
+    原先默认 True 会让「有对话记录但尚无带 user_id 的 AgentRun」的会话对任意
+    已登录用户开放，history/feedback/handoff 三处调用都没显式传参，因此全部受影响。
+    """
     if not _valid_session_id(session_id):
         return JsonResponse(
             {"success": False, "code": "INVALID_SESSION_ID", "message": "session_id 格式不合法"},
@@ -1100,7 +1105,7 @@ def pay_order_api(request, order_no):
 # ══════════════════════════════════════════════════════════════
 # 商品评价（任务书六·4）
 # ══════════════════════════════════════════════════════════════
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 @login_required
 def create_review_api(request, order_no):
@@ -1515,7 +1520,7 @@ def inventory_list_api(request):
 _ALLOWED_COORD_EVENTS = {"pause_product", "resume_product", "set_notice"}
 
 
-@csrf_exempt
+@csrf_protect_if_session
 @require_POST
 @staff_required
 def coordination_inbound_api(request):

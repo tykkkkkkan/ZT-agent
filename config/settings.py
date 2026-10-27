@@ -29,10 +29,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # 原因：os.getenv(key, default) 只在「key 不存在」时返回 default；
 # 若环境变量被显式注入为空字符串（例如 docker-compose 的 ${VAR:-} 写法），
 # 会返回 ""，绕过兜底并触发 ImproperlyConfigured: The SECRET_KEY setting must not be empty.
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY') or 'django-insecure-local-dev-only-please-change-in-prod'
-
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'False') == 'True'
+
+# 生产（DEBUG=False）缺密钥直接拒绝启动：源码里的 fallback 是公开固定串，
+# 一旦被用作 SECRET_KEY，JWT 的 SIGNING_KEY 也会继承它（见 SIMPLE_JWT），
+# 任何人都能自签任意 user_id 的 access token 打进管理接口。
+_secret_key_from_env = os.getenv('DJANGO_SECRET_KEY')
+if not _secret_key_from_env and not DEBUG:
+    from django.core.exceptions import ImproperlyConfigured
+
+    raise ImproperlyConfigured(
+        'DEBUG=False（生产环境）必须配置 DJANGO_SECRET_KEY，'
+        '否则 SECRET_KEY 与 JWT 签名密钥会退化为源码中的公开固定串。'
+    )
+SECRET_KEY = _secret_key_from_env or 'django-insecure-local-dev-only-please-change-in-prod'
 
 # 生产环境白名单，逗号分隔；本地开发默认仅允许本机访问
 ALLOWED_HOSTS = [h.strip() for h in os.getenv('ALLOWED_HOSTS', '127.0.0.1,localhost').split(',') if h.strip()]
