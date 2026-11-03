@@ -164,7 +164,7 @@ ZT-agent/
 │   ├── test_chat.py                # ★ Agent 模块冒烟（CI 跑）
 │   ├── test_rag_hybrid.py          # 混合检索单测（pytest）
 │   └── test_agent.py               # 早期裸调验证（历史，需 API Key）
-├── docs/                           # 技术说明与 RAG 评测产物
+├── docs/                           # 技术说明、需求分析与 RAG 评测产物
 ├── prompts/                        # System Prompt 版本（load_prompt 按名加载）
 ├── templates/                      # Django Admin 模板覆写
 ├── design-system/MASTER.md         # 视觉规范
@@ -182,7 +182,7 @@ ZT-agent/
 ├── pyproject.toml                  # ruff / pytest 配置
 ├── .editorconfig
 ├── .env.example                    # 环境变量模板（.env 本身不入库）
-├── README.md / DEPLOY.md / PRD.md / 需求分析.md
+├── README.md / DEPLOY.md / PRD.md
 ├── LICENSE                         # 开源协议
 └── .github/workflows/ci.yml        # CI：compileall + tests/test_rag.py + manage.py check
 ```
