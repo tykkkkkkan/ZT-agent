@@ -116,3 +116,8 @@ chroma_data/
 zt-agent-image.*
 offline-package/
 dist-offline/
+
+# pytest 覆盖率产物
+.coverage
+.coverage.*
+htmlcov/

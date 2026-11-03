@@ -45,6 +45,7 @@ from agent.models import (  # noqa: E402
     UserProfile,
 )
 from agent.order_presenter import order_actions, order_card, serialize_order  # noqa: E402
+from django.contrib.auth import get_user_model  # noqa: E402
 
 PASS, FAIL = [], []
 
@@ -58,19 +59,24 @@ def check(label, cond, detail=""):
 # 自造数据
 # ══════════════════════════════════════════════════════════════
 suffix = uuid.uuid4().hex[:8]
+# 订单归属与工具层身份：get_order_status 现在只查「当前登录用户的订单」
+# （fix(security): close order access and race conditions），所以自造订单必须
+# 挂到专用测试用户名下，并在调用工具前注入 current_user。
+User = get_user_model()
+vc_user = User.objects.create_user(username=f"vc_{suffix}", password="verify-only")
 product = Products.objects.create(
     sku=f"VC-{suffix}", name=f"验证饵料-{suffix}", spec="200g/包",
     target_fish="鲫鱼", retail_price=8, wholesale_price=5, is_active=1,
     category="验证分类",
 )
 order_unpaid = Orders.objects.create(
-    order_no=f"VCUNPAID{suffix}", product=product,
+    order_no=f"VCUNPAID{suffix}", product=product, user=vc_user,
     product_name=product.name, product_sku=product.sku, quantity=5,
     unit_price=8, total_price=40, status=OrderStatus.PENDING,
     payment_status=PaymentStatus.UNPAID, address="山东省济南市验证路 1 号",
 )
 order_shipped = Orders.objects.create(
-    order_no=f"VCSHIP{suffix}", product=product,
+    order_no=f"VCSHIP{suffix}", product=product, user=vc_user,
     product_name=product.name, product_sku=product.sku, quantity=2,
     unit_price=8, total_price=16, status=OrderStatus.SHIPPED,
     payment_status=PaymentStatus.PAID, ship_company="中通快递",
@@ -134,6 +140,7 @@ try:
 
     # get_order_status 命中时会自动登记
     tools.reset_referenced_orders()
+    tools.set_current_user(vc_user)
     text = tools.get_order_status(order_unpaid.order_no)
     check("get_order_status 能查到该单", order_unpaid.order_no in text)
     check("查订单时自动登记了名片", len(tools.get_referenced_orders()) == 1)
@@ -222,6 +229,7 @@ finally:
     # ── 精确还原 ────────────────────────────────────────────────
     Orders.objects.filter(order_no__in=[order_unpaid.order_no, order_shipped.order_no]).delete()
     Products.objects.filter(sku=product.sku).delete()
+    vc_user.delete()
     print("\n（自造数据已清理）")
 
 print("\n" + "=" * 62)

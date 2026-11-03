@@ -153,7 +153,7 @@ def main():
 
         check("未发货（待支付）订单不可评价", reviewable_reason(order1) != "")
         check("未发货的拒绝原因指向订单状态",
-              "只有已完成" in reviewable_reason(order1), reviewable_reason(order1))
+              "未发货" in reviewable_reason(order1), reviewable_reason(order1))
         check("未发货订单的 actions 不含 review", "review" not in _order_actions(order1))
 
         # 用一个订单逐一切换状态，确认每种状态都被挡住（直接改 status，不走状态机）
@@ -162,9 +162,13 @@ def main():
             order1.refresh_from_db()
             return reviewable_reason(order1)
 
-        for st in (OrderStatus.PENDING, OrderStatus.SHIPPED,
+        # 口径变更（cdca8bc）：评价门槛从「已完成」放宽到「已发货」，
+        # 对齐任务书六·4「收到货后对产品与服务作出评价」的字面要求。
+        for st in (OrderStatus.PENDING,
                    OrderStatus.RETURNING, OrderStatus.CANCELLED, OrderStatus.RETURNED):
             check(f"「{st}」订单不可评价", status_reason(st) != "")
+        check("「已发货」订单现在可以评价（任务书六·4：收到货后评价）",
+              status_reason(OrderStatus.SHIPPED) == "", reviewable_reason(order1))
 
         Orders.objects.filter(pk=order1.pk).update(status=OrderStatus.PENDING)
         order1.refresh_from_db()

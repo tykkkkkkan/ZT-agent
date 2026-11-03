@@ -1084,7 +1084,10 @@ def query_orders(request):
 # `agent/me_views.py`（`_serialize_order`）以及既有验证脚本
 # （scripts/verify_order_payment.py、verify_reviews.py）的 `from agent.views import ...`
 # 继续有效，一处都不用改。AI 对话的订单名片也共用同一套 actions 判定，避免口径漂移。
-from agent.order_presenter import serialize_order as _serialize_order  # noqa: E402
+from agent.order_presenter import (  # noqa: E402
+    order_actions as _order_actions,
+    serialize_order as _serialize_order,
+)
 
 
 # ══════════════════════════════════════════════════════════════

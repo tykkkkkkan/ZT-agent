@@ -45,7 +45,7 @@ from django.utils import timezone  # noqa: E402
 
 from agent import agent as agent_mod  # noqa: E402
 from agent import llm, tools  # noqa: E402
-from agent.models import Conversations, SupportTicket  # noqa: E402
+from agent.models import AgentRun, Conversations, SupportTicket  # noqa: E402
 
 PASS, FAIL = [], []
 
@@ -97,6 +97,11 @@ for role, text in (
     ("user", TAG + "你们怎么赔"),
 ):
     Conversations.objects.create(session_id=SID, role=role, content=text)
+
+# 会话归属：会话隔离加固后，转人工要求该 session 在 AgentRun 里有 user_id 归属。
+# 真实链路每轮对话都会落一条 AgentRun（agent/agent.py::_persist_run），这里补同等记录。
+AgentRun.objects.create(session_id=SID, user_id=user.id,
+                       user_message=TAG + "我收到的鱼竿竿稍是断的")
 
 # ══════════════════════════════════════════════════════════════
 # 【3】工具：上下文快照

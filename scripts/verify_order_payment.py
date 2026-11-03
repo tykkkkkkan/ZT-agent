@@ -234,18 +234,23 @@ def main():
             d3 = place_order(c, auth, product.id, 1, "13800000003")
             no3 = d3["order_no"]
             created.append(no3)
+            # 工具层只查「当前登录用户的订单」（fix(security): close order access
+            # and race conditions），所以调用前必须注入身份，否则拿到的是
+            # 「订单不存在或不属于当前账号」。
+            tools.set_current_user(me)
             txt = tools.get_order_status(no3)
             check("未支付订单：工具输出含「未支付」", "未支付" in txt)
             check("未支付订单：工具说明付款后才会发货", "支付" in txt and "发货" in txt)
-            tools.set_current_user(me)
             mine = tools.query_my_orders(limit=5)
             check("「我的订单」工具能列出该订单", no3 in mine)
             check("「我的订单」工具标注了未支付", "未支付" in mine)
             tools.set_current_user(None)
 
             st, _ = jpost(c, f"/api/orders/{no3}/pay/", {}, auth)
+            tools.set_current_user(me)
             txt2 = tools.get_order_status(no3)
             check("支付后：工具输出含「已支付」", "已支付" in txt2)
+            tools.set_current_user(None)
 
             # ══ 8. 超时未支付自动取消 ═══════════════════════════
             print("\n[8] 超时未支付自动取消并释放预占")

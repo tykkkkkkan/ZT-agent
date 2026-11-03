@@ -42,7 +42,7 @@ from django.contrib.auth import get_user_model  # noqa: E402
 from django.test import Client  # noqa: E402
 from django.urls import reverse  # noqa: E402
 
-from agent.models import Conversations, MessageFeedback  # noqa: E402
+from agent.models import AgentRun, Conversations, MessageFeedback  # noqa: E402
 
 PASS, FAIL = [], []
 
@@ -94,6 +94,12 @@ a_msg = Conversations.objects.create(
 o_q = Conversations.objects.create(session_id=OTHER, role="user", content=TAG + "别人的问题")
 o_a = Conversations.objects.create(
     session_id=OTHER, role="assistant", content=TAG + "别人的回答")
+
+# 会话归属：会话隔离加固后（fix(security): isolate conversation sessions by user），
+# 反馈 / 历史 / 转人工都要求该 session 在 AgentRun 里有 user_id 归属，否则一律 403。
+# 真实链路每轮对话都会落一条 AgentRun（agent/agent.py::_persist_run），这里补同等记录。
+AgentRun.objects.create(session_id=SESSION, user_id=user.id,
+                       user_message=TAG + "鱼竿断了能换吗")
 
 client = Client()
 client.force_login(user)

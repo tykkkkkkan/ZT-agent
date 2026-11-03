@@ -18,6 +18,7 @@ AI 客服工具层口径一致性验证（agent/tools.py）
 用法：./.venv/Scripts/python.exe scripts/verify_agent_tools_sync.py
 """
 import os
+import uuid
 import sys
 
 import django
@@ -27,7 +28,14 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
 from agent import tools  # noqa: E402
-from agent.models import Inventory, Orders, OrderStatus, ProductCoordination, Products  # noqa: E402
+from agent.models import (  # noqa: E402
+    Inventory,
+    Orders,
+    OrderStatus,
+    PaymentStatus,
+    ProductCoordination,
+    Products,
+)
 from agent.purchase_guard import evaluate  # noqa: E402
 
 PASS, FAIL = [], []
@@ -173,25 +181,49 @@ def main():
 
     # ── ④ 订单状态：物流（含已完成）+ 售后进展 ──────────────────
     print("\n④ get_order_status 的物流与售后")
-    done = Orders.objects.filter(status=OrderStatus.COMPLETED).exclude(
-        tracking_no__isnull=True).exclude(tracking_no="").first()
-    if done:
-        out = tools.get_order_status(done.order_no)
-        check("已完成订单仍返回物流运单号（原先只在'已发货'时给）",
-              done.tracking_no in out, f"{done.order_no} 运单 {done.tracking_no}")
-    else:
-        print("  (无已完成的带运单订单，跳过)")
+    # get_order_status 现在只查「当前登录用户的订单」
+    # （fix(security): close order access and race conditions）。库里现成的历史订单
+    # 不一定属于当前身份，会被判成「不属于当前账号」而查不到 —— 照 ⑤ 段的范式
+    # 自造一个专用身份 + 两条订单，不依赖库里历史数据，测完即删。
+    from django.contrib.auth import get_user_model
 
-    ret = Orders.objects.exclude(return_status="").first()
-    if ret:
-        out = tools.get_order_status(ret.order_no)
+    ats_user = get_user_model().objects.create_user(
+        username=f"_vc_ats_{os.getpid()}", password="vc-tmp")
+    ats_tag = uuid.uuid4().hex[:8]
+    ats_done = Orders.objects.create(
+        order_no=f"ATSDONE{ats_tag}", user=ats_user,
+        product_name="验证饵料", quantity=1, unit_price=8, total_price=8,
+        status=OrderStatus.COMPLETED, payment_status=PaymentStatus.PAID,
+        ship_company="中通快递", tracking_no=f"VT{ats_tag}",
+        address="验证地址 1 号",
+    )
+    ats_ret = Orders.objects.create(
+        order_no=f"ATSRET{ats_tag}", user=ats_user,
+        product_name="验证饵料", quantity=1, unit_price=8, total_price=8,
+        status=OrderStatus.RETURNED, payment_status=PaymentStatus.PAID,
+        return_status="已同意", return_reason="买别的了",
+        address="验证地址 2 号",
+    )
+    tools.set_current_user(ats_user)
+    try:
+        out = tools.get_order_status(ats_done.order_no)
+        check("已完成订单仍返回物流运单号（原先只在'已发货'时给）",
+              ats_done.tracking_no in out, f"{ats_done.order_no} 运单 {ats_done.tracking_no}")
+
+        out = tools.get_order_status(ats_ret.order_no)
         check("有售后的订单会报出售后进展",
-              ret.return_status in out and "售后进展" in out,
-              f"{ret.order_no} return_status={ret.return_status}")
-        if ret.return_reason:
-            check("售后进展含客户退货原因", ret.return_reason in out, ret.return_reason[:30])
-    else:
-        print("  (无带售后状态的订单，跳过)")
+              ats_ret.return_status in out and "售后进展" in out,
+              f"{ats_ret.order_no} return_status={ats_ret.return_status}")
+        if ats_ret.return_reason:
+            check("售后进展含客户退货原因", ats_ret.return_reason in out, ats_ret.return_reason[:30])
+
+        # 归属边界：别人的订单号查不到（安全加固后的硬要求）
+        out = tools.get_order_status("NOTMINE0000000000")
+        check("查不到不属于当前账号的订单", "不属于当前账号" in out, out[:40])
+    finally:
+        tools.set_current_user(None)
+        Orders.objects.filter(order_no__in=[ats_done.order_no, ats_ret.order_no]).delete()
+        get_user_model().objects.filter(pk=ats_user.pk).delete()
 
     # ── ⑤ 按手机号查订单：总数必须真实 ──────────────────────────
     print("\n⑤ query_orders_by_phone 的条数口径")

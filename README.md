@@ -25,7 +25,7 @@ flowchart LR
     U[用户 / 前端 Vue3] -->|HTTP + SSE 真流式| API[Django REST API]
     API --> JWT[JWT 鉴权]
     API --> AG[Agent 编排<br/>ReAct + Function Calling]
-    AG -->|tool_calls| T[8 个业务工具]
+    AG -->|tool_calls| T[11 个业务工具]
     T --> DB[(MySQL<br/>产品 / 库存 / 订单 / 钱包)]
     AG --> LLM[DeepSeek]
     AG --> RAG[RAG 双后端<br/>TF-IDF / bge-m3 + Chroma]
@@ -53,7 +53,7 @@ flowchart LR
 
 ## 功能特性
 
-- [x] **Agent Function Calling**：基于 OpenAI 兼容 `tools` + `tool_calls` 的标准工具调用（ReAct 循环，最多 3 轮），AI 自动判断意图并调用 `query_product` / `check_inventory` / `get_order_status` / `query_orders_by_phone` / `query_my_orders` / `calculate_quote` / `search_knowledge` / `guide_to_contact` / `handoff_to_human` 共 9 个工具
+- [x] **Agent Function Calling**：基于 OpenAI 兼容 `tools` + `tool_calls` 的标准工具调用（ReAct 循环，最多 3 轮），AI 自动判断意图并调用 `query_product` / `check_inventory` / `get_order_status` / `query_orders_by_phone` / `query_my_orders` / `calculate_quote` / `recommend_quantity` / `search_knowledge` / `guide_to_order` / `guide_to_contact` / `handoff_to_human` 共 11 个工具
 - [x] **产品名片卡片**：对话中查过商品后自动补发 `product_card` 事件，前端渲染名称 / 规格 / 图片（取 `products.image`）/ 价格 / 可用库存卡片，「立即下单」深链到 `order.html?product=<id>` 并预选商品（可购性复用 `purchase_guard`，不可购时按钮置灰并说明原因）。**价格同样按身份裁剪**：个体钓友的卡片里连 `wholesale_price` 这个键都没有（卡片是下发到浏览器的数据，前端隐藏等于没隐藏），经销商才多一行「经销商价 ¥x/包（10 包起）」
 - [x] **顾问引导式客服（不代客下单）**：AI 先帮顾客明确产品选择（查产品/库存/报价），顾客表达购买或定制意向时调用 `guide_to_contact` 引导，前端自动渲染「定制服务 / 联系我们」按钮卡片收尾，由人工承接交易
 - [x] **在线下单**：消费者通过 `/order.html` 主动下单（产品下拉 + 单价联动 + 总额自动计算，填写收货地址与期望交期），后端自动生成订单号并**预占库存**；发货时才正式扣减 `stock`，取消时释放 `reserved_stock`，退货完成时回滚库存；Django Admin 可按状态筛选、一键发货/取消/退货
