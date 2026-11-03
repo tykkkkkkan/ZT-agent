@@ -24,6 +24,30 @@ from agent.models import OrderStatus, PaymentStatus, ReturnStatus
 
 
 # ══════════════════════════════════════════════════════════════
+# 状态展示文案（任务书五·1「支付完成后进入备货流程」、六·1「查看备货进度」）
+# ══════════════════════════════════════════════════════════════
+def status_label(order) -> str:
+    """订单状态的中文展示文案。
+
+    为什么需要这一层：`OrderStatus` 里只有「未发货」，而任务书写的是「备货」——
+    支付完成到发货之间的这段时间，客户和后台看到的应该叫「备货中」。
+    状态机与数据库里的值一个字都不动（后台筛选、状态流转、库存联动全靠它），
+    只在这里按「钱到没到」补一个更好懂的展示名。
+
+    未支付 → 待付款；已支付未发货 → 备货中；历史订单（未跟踪支付）→ 待发货。
+    """
+    s = order.status
+    if s == OrderStatus.PENDING:
+        pay = getattr(order, "payment_status", "") or ""
+        if pay == PaymentStatus.UNPAID:
+            return "待付款"
+        if pay == PaymentStatus.PAID:
+            return "备货中"
+        return "待发货"          # 支付功能上线前的历史订单，不参与支付流程
+    return s or ""
+
+
+# ══════════════════════════════════════════════════════════════
 # 用户可执行操作（唯一规则出口）
 # ══════════════════════════════════════════════════════════════
 def order_actions(order) -> list:
@@ -44,6 +68,10 @@ def order_actions(order) -> list:
     if s == OrderStatus.SHIPPED:
         acts.append('confirm')                      # 已发货：可确认收货
         acts.append('return')                       #        可申请退货
+        # 任务书六·4 原文是「收到货后评价」，所以发货后就能评，不必等到确认收货；
+        # 一单一评仍由 reviews.can_review 兜住。
+        if review_helper.can_review(order):
+            acts.append('review')
     if s == OrderStatus.COMPLETED:
         acts.append('return')                       # 已完成：仍可申请售后
         # 任务书六·4：已完成（=已确认收货）且尚未评价 → 可评价。
@@ -76,6 +104,7 @@ def serialize_order(order, with_actions: bool = False) -> dict:
         "unit_price": float(order.unit_price or 0),         # P0 新增：单价快照
         "total_price": float(order.total_price or 0),
         "status": order.status,
+        "status_label": status_label(order),                # 任务书五·1：备货中/待付款
         # 任务书四·4：下单时填写的收货地址与期望交期
         "address": getattr(order, "address", "") or "",
         "expected_date": (order.expected_date.strftime("%Y-%m-%d")
@@ -107,7 +136,7 @@ def serialize_order(order, with_actions: bool = False) -> dict:
     data["review"] = review_helper.serialize_review(rv) if rv else None
     data["review_block_reason"] = (
         review_helper.reviewable_reason(order)
-        if order.status == OrderStatus.COMPLETED and not rv else ""
+        if order.status in (OrderStatus.SHIPPED, OrderStatus.COMPLETED) and not rv else ""
     )
     if with_actions:
         data["actions"] = order_actions(order)
@@ -139,6 +168,7 @@ def order_card(order) -> dict:
         "unit_price": float(order.unit_price or 0),
         "total_price": float(order.total_price or 0),
         "status": order.status or "",
+        "status_label": status_label(order),
         "payment_status": getattr(order, "payment_status", "") or "",
         "tracking_no": order.tracking_no or "",
         "ship_company": order.ship_company or "",

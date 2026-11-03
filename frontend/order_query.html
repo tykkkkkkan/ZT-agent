@@ -112,14 +112,18 @@
         <div class="max-w-3xl mx-auto px-6">
             <!-- 查询表单 -->
             <div class="card-float bg-white rounded-2xl shadow-lg shadow-brand-500/5 p-6 lg:p-8">
-                <h2 class="text-xl font-bold text-ink-900 mb-1">输入下单手机号</h2>
+                <h2 class="text-xl font-bold text-ink-900 mb-1">凭手机号查订单</h2>
                 <p class="text-sm text-ink-500 mb-5">
-                    仅可查询<span class="font-semibold text-ink-700">当前账号绑定的手机号</span>名下的订单，与「我的订单」结果一致
+                    登录后可直接查<span class="font-semibold text-ink-700">本账号绑定手机号</span>名下的全部订单；
+                    <span class="font-semibold text-ink-700">未登录也可以查</span>，但要再填一次订单号（或订单号后四位）确认是你自己的单
                 </p>
 
                 <form @submit.prevent="doQuery" class="flex flex-col sm:flex-row gap-3">
                     <input v-model="phone" type="tel" required maxlength="20"
                            placeholder="请输入下单时预留的手机号"
+                           class="form-input flex-1 px-4 py-3 border border-stone-200 rounded-xl text-sm transition" />
+                    <input v-model="orderNo" type="text" maxlength="40"
+                           placeholder="订单号或后四位（未登录时必填）"
                            class="form-input flex-1 px-4 py-3 border border-stone-200 rounded-xl text-sm transition" />
                     <button type="submit" :disabled="loading || !phone.trim()"
                             class="px-7 py-3 bg-gradient-to-r from-brand-600 to-lake-600 text-white text-sm font-semibold rounded-xl hover:shadow-lg hover:shadow-brand-500/30 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[120px]">
@@ -181,8 +185,8 @@
                                 </div>
                                 <!-- 状态徽章：与「个人中心」「后台」同一套配色与文案，避免同一订单三处显示不一致 -->
                                 <span class="px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap"
-                                      :style="statusStyle(o.status)">
-                                    {{ statusLabel(o.status) }}
+                                      :style="statusStyle(o.status_label || o.status)">
+                                    {{ statusLabel(o.status_label || o.status) }}
                                 </span>
                             </div>
                             <div class="px-5 py-4">
@@ -344,6 +348,7 @@
     createApp({
         setup() {
             const phone = ref('');
+            const orderNo = ref('');      // 未登录查单的第二要素（订单号或后四位）
             const loading = ref(false);
             const queried = ref(false);
             const orders = ref([]);
@@ -357,6 +362,8 @@
             // 改造前这里只有「已发货 / 其他」两色，导致已完成、退货申请中、已取消的订单
             // 在查订单页全都显示成橙色"未发货"样式 —— 同一订单在不同页面看起来状态不同。
             const STATUS_MAP = {
+                '待付款':     { bg: 'var(--status-pending-bg)', fg: 'var(--status-pending-fg)', label: '待付款' },
+                '备货中':     { bg: 'var(--status-shipping-bg)', fg: 'var(--status-pending-fg)', label: '备货中' },
                 '未发货':     { bg: 'var(--status-shipping-bg)', fg: 'var(--status-pending-fg)', label: '待发货' },
                 '已发货':     { bg: 'var(--wave)', fg: 'var(--status-active-fg)', label: '已发货' },
                 '已完成':     { bg: 'var(--status-done-bg)', fg: 'var(--status-done-fg)', label: '已完成' },
@@ -397,7 +404,11 @@
                 errorMsg.value = '';
                 notBound.value = false;
                 loading.value = true;
-                axios.post('/api/orders/query/', { phone: p })
+                // 未登录时必须带订单号（或后四位）：手机号 + 订单号双要素才放行
+                const payload = { phone: p };
+                const key = orderNo.value.trim();
+                if (key) payload.order_no = key;
+                axios.post('/api/orders/query/', payload)
                     .then(r => {
                         const d = r.data;
                         if (d.success) {
@@ -458,7 +469,7 @@
                     .catch(function () { /* 预填属增强体验，失败静默 */ });
             });
 
-            return { phone, loading, queried, orders, total, truncated, errorMsg, notBound,
+            return { phone, orderNo, loading, queried, orders, total, truncated, errorMsg, notBound,
                      boundPhoneMasked, useBoundPhone,
                      doQuery, formatTime, money, copyText, statusStyle, statusLabel };
         },

@@ -140,6 +140,40 @@ def admin_dashboard(request):
     )
     conv_7d = _safe(lambda: Conversations.objects.filter(created_at__gte=week_ago).count())
 
+    # ── 缺货 / 低库存明细（任务书五·4「缺货时会收到系统提示」）──────────────
+    # 只给一个数字看不出是哪些货，补货的人还得自己去库存列表里翻。
+    # 这里直接列出商品名与可用库存，让「收到提示」变成「知道该补什么」。
+    stock_alerts = []
+    try:
+        for inv in (
+            Inventory.objects.filter(stock__isnull=False)
+            .annotate(avail=F("stock") - Coalesce(F("reserved_stock"), 0))
+            .select_related("product")
+            .order_by("avail")[:20]
+        ):
+            avail = inv.avail or 0
+            line = inv.alert_line or 0
+            if avail <= 0:
+                state = "out"
+            elif line and avail <= line:
+                state = "low"
+            else:
+                continue
+            stock_alerts.append({
+                "name": getattr(inv.product, "name", "") or "—",
+                "sku": getattr(inv.product, "sku", "") or "",
+                "available": avail,
+                "reserved": inv.reserved_stock or 0,
+                "alert_line": line,
+                "state": state,
+            })
+    except Exception:
+        stock_alerts = []
+
+    # 需要立刻处理的事：缺货、退货待审、未读留言 —— 看板顶部横幅用
+    urgent_count = len([a for a in stock_alerts if a["state"] == "out"])
+    has_urgent = bool(urgent_count or returning_orders or unread_msgs)
+
     # 余额 / 流水汇总
     wallet_balance = _safe(lambda: float(Wallet.get_solo().balance))
     month_start = today.replace(day=1)
@@ -242,6 +276,10 @@ def admin_dashboard(request):
         # 口径统一后的订单分组计数（供模板显示"口径说明"与售后待办）
         "returning_orders": returning_orders,
         "refunded_orders": refunded_orders,
+        # 缺货 / 低库存明细 + 顶部告警横幅（任务书五·4）
+        "stock_alerts": stock_alerts,
+        "urgent_count": urgent_count,
+        "has_urgent": has_urgent,
         "paid_orders": _safe(lambda: Orders.objects.filter(
             status__in=[s.value for s in PAID_ORDER_STATUSES]).count()),
     }

@@ -90,6 +90,9 @@ function suggestFor(cards) {
     if (list.some((c) => c && c.cardType === 'product')) {
         return ['这款适合什么鱼？', '批发价是多少？', '还有别的推荐吗？'];
     }
+    if (list.some((c) => c && c.cardType === 'order_entry')) {
+        return ['怎么付款？', '多久能发货？', '能开票吗？'];
+    }
     return [];
 }
 
@@ -251,6 +254,8 @@ createApp({
         const pendingOrders = ref([]);
         // 本轮转人工生成的工单（工单卡：工单号 + 受理角色 + 承诺时限）
         const pendingHandoffs = ref([]);
+        // 本轮 Agent 的「去下单」卡（任务书四·1：引导客户跳转到在线下单界面）
+        const pendingOrderEntry = ref(null);
         // 手动转人工按钮的提交中状态（防连点重复建单）
         const handoffSending = ref(false);
         const handoffError = ref('');
@@ -404,6 +409,7 @@ createApp({
             pendingProducts.value = [];
             pendingOrders.value = [];
             pendingHandoffs.value = [];
+            pendingOrderEntry.value = null;
             scrollToBottom();
         };
 
@@ -506,6 +512,7 @@ createApp({
             pendingProducts.value = [];
             pendingOrders.value = [];
             pendingHandoffs.value = [];
+            pendingOrderEntry.value = null;
 
             try {
                 const sessionId = getSessionId();
@@ -590,6 +597,14 @@ createApp({
                                 continue;
                             }
 
+                            // 「去下单」卡（任务书四·1：引导客户跳转到在线下单界面）
+                            // 单独事件而不是靠 AI 在正文里写一句「去下单」：
+                            // 正文里的字点不动，卡片上的按钮才真的能进页面
+                            if (data.type === 'order_entry_card' && data.entry) {
+                                pendingOrderEntry.value = data.entry;
+                                continue;
+                            }
+
                             // 引用来源（这条回答依据了知识库哪几条、相关度多少）
                             // 单独事件而不是塞进正文：来源不是回答内容，
                             // 混进 content 会被落库、也会被下一轮当成上下文喂回模型。
@@ -640,6 +655,12 @@ createApp({
                 pendingOrders.value.forEach((o) => {
                     trailingCards.push({ role: 'card', cardType: 'order', order: o });
                 });
+                // 「去下单」卡（任务书四·1：引导客户跳转到在线下单界面）
+                if (pendingOrderEntry.value) {
+                    trailingCards.push({
+                        role: 'card', cardType: 'order_entry', entry: pendingOrderEntry.value,
+                    });
+                }
                 // 转人工工单卡（工单号 / 受理角色 / 承诺时限）
                 pendingHandoffs.value.forEach((t) => {
                     trailingCards.push({ role: 'card', cardType: 'handoff', ticket: t });
@@ -654,7 +675,8 @@ createApp({
                     const aiText = messages.value[aiMsgIdx] ? (messages.value[aiMsgIdx].content || '') : '';
                     needGuide = /(定制服务|联系我们|提交需求|联系客服)/.test(aiText);
                 }
-                if (needGuide && !pendingHandoffs.value.length) {
+                if (needGuide && !pendingHandoffs.value.length
+                        && !trailingCards.some((c) => c.cardType === 'order_entry')) {
                     trailingCards.push({ role: 'card', cardType: 'guide' });
                 }
                 if (trailingCards.length) {

@@ -19,7 +19,7 @@ from django.views.decorators.http import require_http_methods
 def manage_login(request):
     # 已登录且是 staff，直接跳 admin 索引
     if request.user.is_authenticated and request.user.is_staff:
-        return redirect('admin:index')
+        return redirect('admin_dashboard')
 
     error = None
     username = ''
@@ -40,7 +40,7 @@ def manage_login(request):
                 # next 仅允许跳同站路径，避免开放重定向
                 if next_url.startswith('/') and not next_url.startswith('//'):
                     return redirect(next_url)
-                return redirect('admin:index')
+                return redirect('admin_dashboard')
 
     return render(request, 'manage/login.html', {
         'error': error,

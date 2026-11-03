@@ -80,9 +80,9 @@ def reviewable_reason(order: Orders) -> str:
     单一出口：视图层、`_order_actions`、AI 工具层都用它判断，
     避免"前端显示能评、后端拒绝"这种口径漂移。
     """
-    if order.status != OrderStatus.COMPLETED:
+    if order.status not in (OrderStatus.SHIPPED, OrderStatus.COMPLETED):
         return (f"订单当前为「{order.status}」，"
-                f"只有已完成（已确认收货）的订单才能评价。")
+                f"只有已发货（收到货）或已完成的订单才能评价。")
     if not order.product_id:
         # 历史订单可能没有关联商品（product 可空），无法归到某个商品的评分上
         return "该订单没有关联商品，暂不支持评价。"

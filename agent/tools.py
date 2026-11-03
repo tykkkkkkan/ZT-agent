@@ -146,6 +146,63 @@ def _remember_order(order) -> None:
 
 
 # ──────────────────────────────────────────────────────────────
+# 「引导下单」卡片 —— 任务书四·1
+# ──────────────────────────────────────────────────────────────
+# 为什么不复用产品名片：产品名片回答的是「这东西长什么样、多少钱」，
+# 引导下单卡回答的是「下一步点哪儿」。客户已经说出「怎么买」时，
+# 需要的是一个带预选商品的下单入口，而不是再介绍一遍参数。
+# 与产品名片同理用 ContextVar：多线程下不能把 A 客户的预选商品串给 B 客户。
+_pending_order_entry = contextvars.ContextVar[dict | None]("pending_order_entry", default=None)
+
+
+def reset_pending_order_entry() -> None:
+    """每轮对话开始前清空（由 agent_stream 调用）。"""
+    _pending_order_entry.set(None)
+
+
+def get_pending_order_entry():
+    """取本轮「去下单」卡片的载荷；本轮没调用过 guide_to_order 则返回 None。"""
+    return _pending_order_entry.get()
+
+
+def _remember_order_entry(product=None, qty: int = 0) -> dict:
+    """登记一张「去下单」卡片。
+
+    只登记一次：同一轮里模型可能重复调用 guide_to_order，
+    重复登记会让前端弹出一串一模一样的按钮。
+    """
+    existing = _pending_order_entry.get()
+    if existing:
+        return existing
+
+    from agent import pricing
+
+    entry: dict = {"qty": int(qty or 0)}
+    if product is not None:
+        verdict = _buyability(product)
+        entry.update({
+            "product_id": product.id,
+            "name": product.name,                 # 前端 productImage() 按 name 兜底取图
+            "product_name": product.name,
+            "spec": product.spec or "",
+            "target_fish": product.target_fish or "",
+            "image_url": (getattr(product, "image", "") or "").strip(),
+            "can_buy": verdict["can_buy"],
+            "available_stock": verdict["available_stock"],
+            "buy_block_message": verdict.get("message") or "",
+            "url": f"order.html?product={product.id}",
+        })
+        # 价格与产品页/下单页同源，避免「名片报一个价、结算另一个价」
+        entry.update(pricing.price_fields(
+            product, get_current_user(), quantity=entry["qty"] or 1,
+        ))
+    else:
+        entry["url"] = "order.html"
+    _pending_order_entry.set(entry)
+    return entry
+
+
+# ──────────────────────────────────────────────────────────────
 # 本轮对话「知识库命中了哪几条」→ 前端「参考来源」折叠条
 # ──────────────────────────────────────────────────────────────
 # 引用溯源（对齐 RAGFlow grounded citations / Dify 引用预览）：
@@ -787,6 +844,134 @@ def guide_to_contact() -> str:
 
 
 # ──────────────────────────────────────────────────────────────
+# 引导下单（任务书四·1）
+# ──────────────────────────────────────────────────────────────
+def _find_product(keyword: str):
+    """按 名称 / 分类 / 适用鱼种 找一款产品（与 query_product 同口径）。
+
+    抽成函数是因为引导下单、用量测算都要用同一套查找规则 ——
+    三处各写一遍「name__icontains」迟早会漂移成三种结果。
+    """
+    kw = (keyword or "").strip()
+    if not kw:
+        return None
+    try:
+        return (
+            Products.objects.filter(
+                Q(name__icontains=kw) | Q(category__icontains=kw) | Q(target_fish__icontains=kw)
+            )
+            .order_by("id")
+            .first()
+        )
+    except Exception:
+        logger.exception("查找产品失败（keyword=%s）", kw)
+        return None
+
+
+def guide_to_order(product_name: str = "", qty: int = 0) -> str:
+    """引导客户进入在线下单界面，并预选商品（任务书四·1）。
+
+    与 guide_to_contact 的分工：
+      · 客户要买标准品、能直接下单        → 本工具（进下单页，自己填数量/地址/交期）
+      · 客户要定制配方、谈批量政策、要人对接 → guide_to_contact
+
+    AI 仍然不代客下单：这里只把客户送到下单页并把商品选好，
+    数量、收货地址、期望交期都由客户自己填（任务书四·4）。
+    """
+    qty = int(qty or 0)
+    product = _find_product(product_name) if product_name else None
+    entry = _remember_order_entry(product, qty)
+
+    if product is None:
+        lines = [
+            "好的，可以直接在线下单。",
+            "点下面的「去下单」进入下单页，选好商品后填三项就能提交：要几包、收货地址、期望到货日期。",
+            "提交后可以在订单页立即支付，支付完成我们就开始备货。",
+        ]
+        if product_name:
+            lines.insert(0, f"没找到叫「{product_name}」的具体商品，"
+                            f"下单页里可以按分类或适用鱼种挑，也可以先问我是哪一款。")
+        return "\n".join(lines)
+
+    # 商品图与可购性都登记进名片了，这里只补文字
+    price_label = f"单价 ¥{entry.get('effective_price')}/包" if entry.get("effective_price") else ""
+    lines = [f"「{product.name}」可以直接在线下单。"]
+    if product.spec:
+        lines.append(f"规格 {product.spec}" + (f"，{price_label}" if price_label else ""))
+    elif price_label:
+        lines.append(price_label)
+    if entry["can_buy"]:
+        lines.append(
+            f"下单页已经帮你把这款选好了，可用库存 {entry['available_stock']} 包；"
+            f"填一下要几包、收货地址和期望到货日期，提交后就能支付。"
+        )
+        if qty > 0:
+            lines.append(f"数量先按 {qty} 包填好了，要改直接在下单页改。")
+    else:
+        lines.append(
+            f"不过这款现在下不了单：{entry.get('buy_block_message') or '暂时不可购'}。"
+            f"可以先看看同类其他款，或者留个联系方式等补货通知。"
+        )
+    return "\n".join(lines)
+
+
+# ──────────────────────────────────────────────────────────────
+# 用饵量测算（任务书三·3「买多少够用」）
+# ──────────────────────────────────────────────────────────────
+def recommend_quantity(fish: str = "", area_mu: float = 0, days: int = 0,
+                       trips: int = 0, people: int = 1,
+                       product_name: str = "") -> str:
+    """算「买多少够用」，并折算成包数/箱数。
+
+    两套口径，由参数决定走哪条（这是这个工具最容易被用错的地方）：
+      · 养殖投喂：客户提到塘口、亩数、投喂 → 传 area_mu，
+        按「亩产 × 面积 × 饵料系数」算出周期总量（公斤/吨级）；
+      · 钓友作钓：客户问「去钓几次要买多少」→ 传 trips（可带 people），
+        按每次每人 2 包估算。
+
+    数字由 `agent.feeding` 算出，模型只负责转述 —— 与价格、库存同一个原则：
+    有确定答案的数字不让模型编。
+
+    :param fish: 主养鱼种，如「鲤鱼」「草鱼」「四大家鱼」
+    :param area_mu: 塘口面积（亩）。传了就走养殖投喂口径
+    :param days: 养殖周期（天），不传按该鱼种的常规周期
+    :param trips: 作钓次数。不传 area_mu 时用它走作钓口径
+    :param people: 每次作钓人数，默认 1
+    :param product_name: 想用哪款饵；给了就用它的单包净含量折算并核对库存
+    """
+    from agent import feeding
+
+    product = _find_product(product_name) if product_name else None
+    pkg_g = feeding.package_grams(product.spec) if product is not None else None
+    result = feeding.recommend(
+        fish=fish or "", area_mu=area_mu or 0, days=days or None,
+        trips=trips or 0, people=people or 1,
+        package_grams_override=pkg_g,
+    )
+    text = feeding.explain(result)
+
+    if product is None:
+        if product_name:
+            text += (f"\n（没找到叫「{product_name}」的商品，包数按每包 "
+                     f"{result['package_grams']} g 折算；告诉我们具体型号可以算得更准。）")
+        return text
+
+    # 有具体商品：把它登记成名片，并把库存够不够一起说清楚
+    _remember_product(product)
+    inv = Inventory.objects.filter(product=product).first()
+    available = inv.available_stock if inv else 0
+    text += f"\n按「{product.name}」（{product.spec or '规格未填'}）折算，约需 {result['bags']} 包。"
+    if available >= result["bags"]:
+        text += f"当前可用库存 {available} 包，够用，可以直接下单。"
+    elif available > 0:
+        text += (f"当前可用库存只有 {available} 包，先备 {available} 包、"
+                 f"剩下的等补货再补，或者问我要不要换同类款。")
+    else:
+        text += "这款现在没有可用库存，可以换同类款，或留联系方式等补货通知。"
+    return text
+
+
+# ──────────────────────────────────────────────────────────────
 # 转人工（工单）
 # ──────────────────────────────────────────────────────────────
 # 与 guide_to_contact 的分工必须分清，否则模型会乱用一个：
@@ -978,7 +1163,9 @@ TOOL_REGISTRY = {
     "query_orders_by_phone": query_orders_by_phone,
     "query_my_orders": query_my_orders,
     "calculate_quote": calculate_quote,
+    "recommend_quantity": recommend_quantity,
     "search_knowledge": search_knowledge,
+    "guide_to_order": guide_to_order,
     "guide_to_contact": guide_to_contact,
     "handoff_to_human": handoff_to_human,
 }
@@ -1083,6 +1270,25 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
+            "name": "recommend_quantity",
+            "description": "算「买多少够用」（任务书三·3）。两套口径，按客户问法选参数：①养殖投喂——客户提到塘口面积、亩数、投喂、养殖周期时传 area_mu，按「亩产 × 面积 × 饵料系数」算出周期总用量（公斤/吨级）；②钓友作钓——客户问「去钓几次要买多少包」时传 trips（和 people），按每次每人 2 包估算。**只要客户问「要备多少 / 买多少够用 / 够不够用」就必须调用本工具，不要自己估数字**，转述时把计算口径一起说出来",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fish": {"type": "string", "description": "鱼种，如「鲤鱼」「草鱼」「罗非鱼」「四大家鱼」"},
+                    "area_mu": {"type": "number", "description": "塘口面积（亩）。传了就按养殖投喂口径算；钓友问作钓用量时不要传"},
+                    "days": {"type": "integer", "description": "养殖周期天数，不填按该鱼种的常规周期"},
+                    "trips": {"type": "integer", "description": "作钓次数。不传 area_mu 时用这个走作钓口径"},
+                    "people": {"type": "integer", "description": "每次作钓人数，默认 1"},
+                    "product_name": {"type": "string", "description": "客户想用哪款饵（可选）。给了就用它的单包净含量折算并核对库存"},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_knowledge",
             "description": "检索企业知识库，回答政策、售后、退换货、发货、运费、钓鱼技巧等问题",
             "parameters": {
@@ -1091,6 +1297,21 @@ TOOL_SCHEMAS = [
                     "query": {"type": "string", "description": "用户的问题原文"},
                 },
                 "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "guide_to_order",
+            "description": "客户表达下单意向、问「怎么买 / 怎么下单 / 在哪下单」时调用：把客户引导到在线下单界面，并把商品预选好（任务书四·1）。客户想买标准品、能直接下单时用这个；要定制配方、谈批量政策、要人对接时才用 guide_to_contact。AI 不代客下单，数量/收货地址/期望交期由客户在下单页自己填。不可购的商品不要调用本工具，先说明原因并推荐同类",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_name": {"type": "string", "description": "客户要买的产品名称，如「红虫颗粒」。不确定可留空，进下单页再选"},
+                    "qty": {"type": "integer", "description": "客户提到的数量（包），没提就留空"},
+                },
+                "required": [],
             },
         },
     },

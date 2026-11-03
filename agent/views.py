@@ -896,30 +896,114 @@ def _err(message, code=400):
     return JsonResponse({"success": False, "message": message}, status=code)
 
 
+# ── 未登录查单（任务书五·2「用户凭手机号查询自己的历史订单」）──────────────
+GUEST_QUERY_LIMIT = 10          # 同一 IP + 手机号 10 分钟内最多查几次
+GUEST_QUERY_WINDOW = 600
+_PHONE_ONLY_RE = re.compile(r"^\d{7,20}$")
+
+
+def _guest_rate_ok(request, phone: str) -> bool:
+    """未登录查单的简易频控。
+
+    为什么必须限：手机号 + 订单号后四位是可以被猜的（后四位只有一万种），
+    不限频等于给了暴力枚举的机会。用 Django 缓存（生产是 Redis）计数，
+    缓存不可用时放行 —— 宁可少一层保护，也不能让查单功能整体不可用。
+    """
+    from django.core.cache import cache
+
+    ip = (request.META.get("REMOTE_ADDR") or "")[:64]
+    key = f"guest_order_query:{ip}:{phone}"
+    try:
+        n = cache.get(key) or 0
+        if n >= GUEST_QUERY_LIMIT:
+            return False
+        cache.set(key, n + 1, GUEST_QUERY_WINDOW)
+    except Exception:
+        return True
+    return True
+
+
+def _guest_order_query(request, phone: str, order_no: str):
+    """未登录用户的订单查询：手机号 + 订单号（全号或后四位）双要素核验。
+
+    为什么不是「只填手机号就能查」：只凭一个号码就列出某人全部订单
+    （买了什么、多少钱、走到哪），等于把客户交易记录公开。
+    任务书五·2 要的是「凭手机号查询**自己的**历史订单」，
+    「自己的」这层身份由订单号来证明 —— 订单号只在下单成功后发给下单人。
+    两个要素同时对上才返回，且只返回这一笔、不带收货地址、不带操作按钮。
+    """
+    from agent.models import Orders
+
+    if not phone or not _PHONE_ONLY_RE.match(phone):
+        return JsonResponse({
+            "success": False, "code": "PHONE_REQUIRED",
+            "message": "请填写下单时使用的手机号",
+        }, status=400)
+
+    key = (order_no or "").strip()
+    if len(key) < 4:
+        return JsonResponse({
+            "success": False, "code": "ORDER_NO_REQUIRED",
+            "message": "未登录查询需要再填订单号（或订单号后四位），用来确认这单是你自己的",
+        }, status=400)
+
+    if not _guest_rate_ok(request, phone):
+        return JsonResponse({
+            "success": False, "code": "TOO_MANY_REQUESTS",
+            "message": "查询太频繁了，请过几分钟再试，或登录后查询",
+        }, status=429)
+
+    try:
+        qs = Orders.objects.filter(phone=phone).select_related("product", "review")
+        if len(key) >= 8:
+            order = qs.filter(order_no__iexact=key).first()
+        else:
+            order = qs.filter(order_no__iendswith=key).first()
+    except Exception as e:
+        return _server_error(e)
+
+    if order is None:
+        # 手机号对、订单号错 与 两者都错 给同一句话：不区分，避免用来探测
+        return JsonResponse({
+            "success": False, "code": "NOT_FOUND",
+            "message": "手机号和订单号没有对上，请核对后再试，或登录后查询",
+        }, status=404)
+
+    data = _serialize_order(order, with_actions=False)
+    data["address"] = ""            # 未登录不返回收货地址
+    data["actions"] = []            # 未登录不提供支付/退货等操作按钮
+    return JsonResponse({
+        "success": True, "guest": True,
+        "message": "未登录状态只显示这一笔订单，登录后可查看全部历史订单",
+        "order": data, "orders": [data],
+        "count": 1, "total": 1, "truncated": False,
+    })
+
+
 @csrf_protect_if_session
 @require_POST
-@login_required
 def query_orders(request):
-    """POST /api/orders/query/ — 查询「我的」订单（脱敏，不返回姓名/电话）【需登录】
+    """POST /api/orders/query/ — 查询订单（脱敏，不返回姓名/电话）
 
-    Body: {"phone": "13800138000", "order_no": "DD20260827xxxx"}（order_no 可选）
+    Body: {"phone": "13800138000", "order_no": "DD20260827xxxx"}
 
-    归属规则与「我的订单」(/api/me/orders/) **完全一致**，统一走
-    `agent.me_helpers.my_orders_q`：
+    两条通道（任务书五·2：用户凭手机号查询自己的历史订单）：
 
-        我的订单 = user_id == 我
-                 或 (phone == 我绑定的手机号 且 user_id 为空)
+      · **已登录**：phone 只能等于自己绑定的手机号（不填则默认本人号），
+        可以用订单号精查，也可以列全部历史订单；归属规则与
+        `/api/me/orders/` 完全一致，统一走 `agent.me_helpers.my_orders_q`：
+
+            我的订单 = user_id == 我
+                     或 (phone == 我绑定的手机号 且 user_id 为空)
+
+      · **未登录**：手机号 + 订单号（或后四位）双要素核验，只返回那一笔，
+        不带收货地址与操作按钮，并做频控（见 `_guest_order_query`）。
 
     改造前这里只按 `phone=手机号` 过滤，造成两个真实问题：
       1. **同一用户两个页面看到的订单不一样** —— 实测某用户「我的」显示 6 单、
          「查订单」显示 8 单（差的 2 单是已被其它账号认领的同号订单）；
       2. **越权** —— 任何登录用户填别人的手机号即可拿到他人订单的
          物流单号、退货原因等。
-
-    因此现在：
-      · phone 只能等于**自己绑定的手机号**（未填则默认用自己的）；
-        填了别人的手机号一律 403，且不透露该号码是否存在订单。
-      · count 返回**真实总数**（此前用截断后的列表长度，超过 50 条会显示错）。
     """
     try:
         body = json.loads(request.body)
@@ -936,11 +1020,10 @@ def query_orders(request):
     from agent.models import Orders
 
     me, ok = _resolve_request_user(request)
+
+    # 未登录 → 走双要素核验通道，而不是直接 401
     if not ok or me is None:
-        return JsonResponse(
-            {"success": False, "code": "LOGIN_REQUIRED", "message": "请先登录后再查询"},
-            status=401,
-        )
+        return _guest_order_query(request, phone, order_no)
 
     my_phone = (get_profile(me).phone or "").strip()
     if phone and phone != my_phone:

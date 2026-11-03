@@ -5,6 +5,21 @@
 
 {% block content %}
 <div class="zy-dash">
+  {% if has_urgent %}
+  <!-- 待处理提醒（任务书五·4：缺货时企业要收到系统提示，而不是自己翻库存表） -->
+  <div style="margin:0 0 20px;padding:12px 16px;border:1px solid var(--zy-warn);
+              border-left:4px solid var(--zy-warn);border-radius:var(--zy-radius);
+              background:var(--zy-surface);">
+    <div style="font-family:var(--zy-serif);font-size:14px;color:var(--zy-warn);margin-bottom:6px;">
+      待处理提醒
+    </div>
+    <div style="font-size:13px;color:var(--zy-text);line-height:1.7;">
+      {% if urgent_count %}有 <b>{{ urgent_count }}</b> 项商品已经缺货，客户当前下不了单；{% endif %}
+      {% if returning_orders %}有 <b>{{ returning_orders }}</b> 单退货申请等着审核；{% endif %}
+      明细见下方「缺货与库存预警」。
+    </div>
+  </div>
+  {% endif %}
   <style>
     /* 极简奢版：层次只靠 1px 描边与留白，色值全部来自 zy-tokens.css */
     .zy-dash{max-width:1180px;}
@@ -208,6 +223,35 @@
       <a href="/admin/agent/transaction/" class="badge jade" style="text-decoration:none;">查看全部收支流水 →</a>
       <a href="/admin/agent/wallet/" class="badge fire" style="text-decoration:none;margin-left:8px;">进入公司钱包 →</a>
     </div>
+  </div>
+
+  <div class="sec">
+    <h2>缺货与库存预警</h2>
+    {% if stock_alerts %}
+    <table class="tbl">
+      <thead><tr><th>商品</th><th>SKU</th><th>可用库存</th><th>已预占</th><th>预警线</th><th>状态</th></tr></thead>
+      <tbody>
+      {% for s in stock_alerts %}
+        <tr>
+          <td>{{ s.name }}</td>
+          <td class="muted">{{ s.sku|default:"—" }}</td>
+          <td><b>{{ s.available }}</b></td>
+          <td class="muted">{{ s.reserved }}</td>
+          <td class="muted">{{ s.alert_line }}</td>
+          <td>
+            {% if s.state == "out" %}<span class="badge fire">已缺货</span>
+            {% else %}<span class="badge fire">低于预警线</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <div style="margin-top:10px;text-align:right;">
+      <a href="/admin/agent/inventory/" class="badge fire" style="text-decoration:none;">去库存列表补货 →</a>
+    </div>
+    {% else %}
+      <p class="muted" style="font-size:13px;">当前没有缺货或低于预警线的商品。</p>
+    {% endif %}
   </div>
 
   <div class="sec">

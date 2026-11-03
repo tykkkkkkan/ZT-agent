@@ -551,6 +551,53 @@
                                                     </div>
                                                 </div>
                                             </template>
+                                            <!-- 「去下单」卡（Agent 判断出下单意向 → 直接送去在线下单界面） -->
+                                            <!-- 对应任务书四·1（引导跳转到在线下单界面）、四·3（按钮直达下单/联系页） -->
+                                            <template v-else-if="msg.cardType === 'order_entry'">
+                                                <div class="px-5 py-3 bg-gradient-to-r from-sunset-700 to-sunset-600 text-white flex items-center gap-2">
+                                                    <span class="text-lg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:1.15em;height:1.15em;vertical-align:middle;flex-shrink:0" aria-hidden="true"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></span>
+                                                    <span class="font-semibold text-sm">下一步：在线下单</span>
+                                                </div>
+                                                <div class="px-5 py-4 space-y-3">
+                                                    <div v-if="msg.entry.product_name" class="flex items-center gap-3">
+                                                        <img
+                                                            :src="productImage(msg.entry)"
+                                                            @error="onImgError"
+                                                            :alt="msg.entry.product_name"
+                                                            loading="lazy" decoding="async"
+                                                            class="w-14 h-14 rounded-lg object-cover flex-shrink-0 bg-brand-50"
+                                                        >
+                                                        <div class="min-w-0">
+                                                            <p class="font-semibold text-sm text-ink-900 truncate">{{ msg.entry.product_name }}</p>
+                                                            <p class="text-xs text-ink-500 truncate">{{ msg.entry.spec || '规格以商品页为准' }}</p>
+                                                            <p v-if="msg.entry.effective_price" class="text-sm font-bold text-sunset-700 pt-0.5">
+                                                                ¥{{ money(msg.entry.effective_price) }}/包
+                                                                <span v-if="msg.entry.qty" class="text-xs font-normal text-ink-500">· 先按 {{ msg.entry.qty }} 包</span>
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <p v-if="msg.entry.can_buy === false" class="text-xs text-sunset-700 bg-sunset-50 rounded-lg px-3 py-2 leading-relaxed">
+                                                        {{ msg.entry.buy_block_message || '这款暂时下不了单，看看同类其他款？' }}
+                                                    </p>
+                                                    <p v-else class="text-sm text-ink-600 leading-relaxed">
+                                                        进去填一下要几包、收货地址和期望到货日期就能提交，提交后可立即支付。
+                                                    </p>
+                                                    <div class="grid grid-cols-2 gap-2 pt-1">
+                                                        <button
+                                                            @click="goToPage(msg.entry.url || 'order.html')"
+                                                            class="px-3 py-2.5 bg-sunset-700 text-white text-xs font-semibold rounded-lg hover:bg-sunset-800 transition shadow-sm flex items-center justify-center gap-1"
+                                                        >
+                                                            去下单
+                                                        </button>
+                                                        <button
+                                                            @click="goToPage('contact.html')"
+                                                            class="px-3 py-2.5 bg-white text-ink-700 text-xs font-semibold rounded-lg border border-brand-100 hover:border-brand-400 hover:text-brand-600 transition flex items-center justify-center gap-1"
+                                                        >
+                                                            联系我们
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </template>
                                             <!-- 订单名片（Agent 查到订单 → 结构化进度卡：直接支付 / 看物流 / 进订单页） -->
                                             <!-- 对应任务书五·3「用户向 Agent 问订单进度，Agent 给出实时进度」 -->
                                             <template v-else-if="msg.cardType === 'order'">
@@ -565,7 +612,7 @@
                                                         <span class="flex-shrink-0 text-xs text-ink-500">× {{ msg.order.quantity }} 包</span>
                                                     </div>
                                                     <div class="flex flex-wrap items-center gap-1.5">
-                                                        <span class="px-2 py-0.5 rounded-full text-[11px] font-medium" :class="orderStatusClass(msg.order)">{{ msg.order.status || '状态未知' }}</span>
+                                                        <span class="px-2 py-0.5 rounded-full text-[11px] font-medium" :class="orderStatusClass(msg.order)">{{ msg.order.status_label || msg.order.status || '状态未知' }}</span>
                                                         <span
                                                             v-if="msg.order.payment_status"
                                                             class="px-2 py-0.5 rounded-full text-[11px] font-medium"

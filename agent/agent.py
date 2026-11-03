@@ -14,6 +14,7 @@ agent/agent.py — ReAct 式 Agent 循环 + 真·流式输出
 对外：agent_stream(session_id, user_message) 为生成器，逐条 yield 事件 dict：
     {"content": "..."}                            文本增量（兜底清洗后，逐 chunk）
     {"type": "product_card", "product": {...}}    产品名片（名称/规格/图片/价格/库存，可一键下单）
+    {"type": "order_entry_card", "entry": {...}}  去下单卡（预选商品 + 进入在线下单界面，任务书四·1）
     {"type": "order_card", "order": {...}}        订单名片（订单号/商品/金额/状态/物流，可去支付）
     {"type": "guide_card"}                        引导转化卡片（去定制服务 / 联系我们）
     {"type": "sources", "sources": [...]}         引用来源（标题/相关度/命中路径），最后一律补发
@@ -320,9 +321,11 @@ def _agent_loop(session_id: str, user_message: str):
         TOOL_SCHEMAS,
         call_tool,
         drain_handoff,
+        get_pending_order_entry,
         get_referenced_orders,
         get_referenced_products,
         reset_handoff,
+        reset_pending_order_entry,
         reset_referenced_orders,
         reset_referenced_products,
         set_current_session,
@@ -340,6 +343,8 @@ def _agent_loop(session_id: str, user_message: str):
             get_referenced_orders, get_referenced_products,
             reset_referenced_orders, reset_referenced_products,
             drain_handoff,
+            get_pending_order_entry=get_pending_order_entry,
+            reset_pending_order_entry=reset_pending_order_entry,
         )
     finally:
         # 放 finally 而不是各 return 前：客户端中途断开（generator close）、
@@ -351,13 +356,16 @@ def _agent_loop(session_id: str, user_message: str):
 def _react_loop(session_id, user_message, trace, TOOL_SCHEMAS, call_tool,
                 get_referenced_orders, get_referenced_products,
                 reset_referenced_orders, reset_referenced_products,
-                drain_handoff=lambda: None):
+                drain_handoff=lambda: None,
+                get_pending_order_entry=lambda: None,
+                reset_pending_order_entry=lambda: None):
     """ReAct 主体（拆出来是为了让 `_agent_loop` 的 try/finally 保持单出口）。"""
 
     # 购买/批发/定制/下单意图：用于确定性兜底引导（不依赖 LLM 的 tool_choice 决策）
     purchase_intent = _has_purchase_intent(user_message)
     guide_emitted = False
     handoff_emitted = False
+    order_entry_emitted = False
 
     def _drain_handoff_card() -> list:
         """转人工工单 → handoff_card 事件（一张工单只发一次）。
@@ -375,6 +383,8 @@ def _react_loop(session_id, user_message, trace, TOOL_SCHEMAS, call_tool,
     # 每轮开始清空 —— 否则上一轮问过的商品会跟着这一轮再弹一次
     reset_referenced_products()
     carded_ids: set = set()
+    # 「去下单」卡片同理每轮清空，否则上一轮的下单入口会跟着这一轮再弹一次
+    reset_pending_order_entry()
     # 订单名片：本轮「被工具查过」的订单（问「我的订单到哪了」→ 弹结构化进度卡）
     reset_referenced_orders()
     carded_order_nos: set = set()
@@ -405,6 +415,21 @@ def _react_loop(session_id, user_message, trace, TOOL_SCHEMAS, call_tool,
             carded_order_nos.add(o["order_no"])
             events.append({"type": "order_card", "order": o})
         return events
+
+    def _drain_order_entry() -> list:
+        """把「去下单」卡片发出去（任务书四·1：引导客户跳转到在线下单界面）。
+
+        一轮只发一张：模型可能重复调用 guide_to_order，
+        重复发卡会让对话里排开一串一模一样的按钮。
+        """
+        nonlocal order_entry_emitted
+        if order_entry_emitted:
+            return []
+        entry = get_pending_order_entry()
+        if not entry:
+            return []
+        order_entry_emitted = True
+        return [{"type": "order_entry_card", "entry": entry}]
 
     system_prompt = load_prompt("system_prompt_agent")
     history = _load_history(session_id)
@@ -462,7 +487,10 @@ def _react_loop(session_id, user_message, trace, TOOL_SCHEMAS, call_tool,
             # 工单已经建好了就必须告诉顾客（它已经在库里，不能因为本轮报错就装作没转）
             for card in _drain_handoff_card():
                 yield card
-            if purchase_intent and not guide_emitted and not handoff_emitted:
+            for card in _drain_order_entry():
+                yield card
+            if (purchase_intent and not guide_emitted
+                    and not handoff_emitted and not order_entry_emitted):
                 guide_emitted = True
                 yield {"type": "guide_card"}
             yield {"content": f"⚠️ AI 服务调用失败：{e}"}
@@ -488,9 +516,12 @@ def _react_loop(session_id, user_message, trace, TOOL_SCHEMAS, call_tool,
                 yield card
             for card in _drain_handoff_card():
                 yield card
+            for card in _drain_order_entry():
+                yield card
             # 已经转人工就别再推「去定制服务」：一个让顾客等电话、一个让他去填单，
             # 两句话同时出现会互相抵消
-            if purchase_intent and not guide_emitted and not handoff_emitted:
+            if (purchase_intent and not guide_emitted
+                    and not handoff_emitted and not order_entry_emitted):
                 guide_emitted = True
                 yield {"type": "guide_card"}
             return
@@ -547,7 +578,10 @@ def _react_loop(session_id, user_message, trace, TOOL_SCHEMAS, call_tool,
         yield card
     for card in _drain_handoff_card():
         yield card
-    if purchase_intent and not guide_emitted and not handoff_emitted:
+    for card in _drain_order_entry():
+        yield card
+    if (purchase_intent and not guide_emitted
+            and not handoff_emitted and not order_entry_emitted):
         guide_emitted = True
         yield {"type": "guide_card"}
     fallback = last_tool_result or "抱歉，这个问题比较复杂，建议转人工处理。"
